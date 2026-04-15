@@ -10,9 +10,32 @@
 		84A866B72F8F44E700546587 /* FleetManagementSystem.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FleetManagementSystem.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		18999AC92F8F63AE00252C57 /* Exceptions for "FleetManagementSystem" folder in "FleetManagementSystem" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Core/DesignSystem/.gitkeep,
+				Core/Managers/.gitkeep,
+				Core/Networking/.gitkeep,
+				Core/Storage/.gitkeep,
+				Features/Dashboard/Models/.gitkeep,
+				Features/Fleet/.gitkeep,
+				Features/Maintenance/.gitkeep,
+				Features/Trips/.gitkeep,
+				Resources/.gitkeep,
+				Shared/Components/.gitkeep,
+				Shared/Helpers/.gitkeep,
+			);
+			target = 84A866B62F8F44E700546587 /* FleetManagementSystem */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		84A866B92F8F44E700546587 /* FleetManagementSystem */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				18999AC92F8F63AE00252C57 /* Exceptions for "FleetManagementSystem" folder in "FleetManagementSystem" target */,
+			);
 			path = FleetManagementSystem;
 			sourceTree = "<group>";
 		};
