@@ -9,8 +9,8 @@ final class FleetManagerDashboardViewModel: ObservableObject {
 
     private let service: FleetService
 
-    init(service: FleetService = FleetService()) {
-        self.service = service
+    init(service: FleetService? = nil) {
+        self.service = service ?? FleetService()
     }
 
     func loadVehicles() async {
