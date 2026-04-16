@@ -8,6 +8,7 @@ struct MaintenanceHomeView: View {
                     Label("Work Orders", systemImage: "list.bullet")
                 }
             
+            
             InventoryView()
                 .tabItem {
                     Label("Inventory", systemImage: "cube.box")
