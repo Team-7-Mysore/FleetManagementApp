@@ -7,7 +7,7 @@ struct RootView: View {
         Group {
             switch sessionStore.state {
             case .signedOut:
-                LoginView()
+                RoleGatewayView(session: AppUserSession(user: AppUser(id: UUID(), fullName: "Aarav Kulkarni", email: "driver@fms.com", role: .driver)))
             case .signedIn(let session):
                 RoleGatewayView(session: session)
             }

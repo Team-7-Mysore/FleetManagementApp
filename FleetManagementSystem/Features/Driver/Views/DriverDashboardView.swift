@@ -452,64 +452,198 @@ struct DriverTripsView: View {
 
 struct DriverInspectionView: View {
     @ObservedObject var viewModel: DriverDashboardViewModel
+    
+    @State private var currentIndex = 0
+    @State private var showingSlider = false
+    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ZStack {
             DriverTheme.background
                 .ignoresSafeArea()
-
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 16) {
-                    DashboardCard {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Pre/Post Trip Checklist")
-                                .font(.headline)
-                                .foregroundStyle(DriverTheme.primaryText)
-
-                            Text("Mark each item as you inspect the vehicle. These updates can later feed maintenance tickets.")
-                                .font(.footnote)
-                                .foregroundStyle(DriverTheme.secondaryText)
+            
+            VStack {
+                Spacer()
+                
+                let progress = showingSlider ? 1.0 : Double(currentIndex) / Double(max(1, viewModel.inspectionItems.count))
+                let truckOffset = -300.0 * (1.0 - progress)
+                
+                Image(systemName: "box.truck.fill")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 180)
+                    .foregroundStyle(DriverTheme.primaryText)
+                    .offset(x: truckOffset)
+                    .padding()
+                
+                Spacer()
+                
+                VStack(alignment: .leading, spacing: 20) {
+                    HStack(spacing: 8) {
+                        ForEach(0..<viewModel.totalInspectionCount, id: \.self) { index in
+                            if index == currentIndex && !showingSlider {
+                                Capsule()
+                                    .fill(DriverTheme.accent)
+                                    .frame(width: 24, height: 8)
+                            } else if index < currentIndex || showingSlider {
+                                Circle()
+                                    .fill(DriverTheme.accent)
+                                    .frame(width: 8, height: 8)
+                            } else {
+                                Circle()
+                                    .fill(DriverTheme.subtleFill)
+                                    .frame(width: 8, height: 8)
+                            }
                         }
                     }
+                    .padding(.bottom, 10)
+                    
+                    if showingSlider {
+                        Text("Inspect Better\nDrive Safer")
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .foregroundStyle(DriverTheme.primaryText)
+                            .lineSpacing(4)
+                        
+                        Text("One tap. Full check. Zero hassle.")
+                            .font(.body)
+                            .foregroundStyle(DriverTheme.secondaryText)
+                            .padding(.bottom, 20)
+                        
+                        HStack(spacing: 16) {
+                            Button {
+                                dismiss()
+                            } label: {
+                                Image(systemName: "chevron.left")
+                                    .font(.title3.weight(.semibold))
+                                    .foregroundStyle(DriverTheme.primaryText)
+                                    .frame(width: 64, height: 64)
+                                    .background(DriverTheme.subtleFill, in: Circle())
+                            }
+                            
+                            SwipeToStartSlider {
+                                if let trip = viewModel.trips.first(where: { $0.status == .upcoming }) ?? viewModel.trips.first {
+                                    viewModel.startTrip(trip)
+                                }
+                                dismiss()
+                            }
+                        }
+                    } else if currentIndex < viewModel.inspectionItems.count {
+                        let currentItem = viewModel.inspectionItems[currentIndex]
+                        
+                        Text(currentItem.title)
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .foregroundStyle(DriverTheme.primaryText)
+                            .lineSpacing(4)
+                        
+                        Text(currentItem.detail)
+                            .font(.body)
+                            .foregroundStyle(DriverTheme.secondaryText)
+                            .padding(.bottom, 20)
+                        
+                        HStack(spacing: 12) {
+                            Button("Report Issue") {
+                                handleAnswer(item: currentItem)
+                            }
+                            .font(.headline)
+                            .foregroundStyle(DriverTheme.primaryText)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 64)
+                            .background(DriverTheme.subtleFill, in: RoundedRectangle(cornerRadius: 32, style: .continuous))
+                            
+                            Button("Okay") {
+                                handleAnswer(item: currentItem)
+                            }
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 64)
+                            .background(DriverTheme.accent, in: RoundedRectangle(cornerRadius: 32, style: .continuous))
+                        }
+                    }
+                }
+                .padding(32)
+            }
+        }
+        .navigationBarHidden(true)
+    }
+    
+    private func handleAnswer(item: DriverInspectionItem) {
+        if !item.isCompleted {
+            viewModel.toggleInspectionItem(item)
+        }
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            if currentIndex < viewModel.inspectionItems.count - 1 {
+                currentIndex += 1
+            } else {
+                showingSlider = true
+            }
+        }
+    }
+}
 
-                    ForEach(viewModel.inspectionItems) { item in
-                        Button {
-                            viewModel.toggleInspectionItem(item)
-                        } label: {
-                            DashboardCard {
-                                HStack(spacing: 14) {
-                                    ZStack {
-                                        Circle()
-                                            .fill(item.isCompleted ? DriverTheme.accent : DriverTheme.subtleFill)
-                                            .frame(width: 30, height: 30)
-
-                                        Image(systemName: item.isCompleted ? "checkmark" : "circle")
-                                            .font(.system(size: 12, weight: .bold))
-                                            .foregroundStyle(item.isCompleted ? .white : DriverTheme.secondaryText)
-                                    }
-
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(item.title)
-                                            .font(.headline)
-                                            .foregroundStyle(DriverTheme.primaryText)
-
-                                        Text(item.detail)
-                                            .font(.footnote)
-                                            .foregroundStyle(DriverTheme.secondaryText)
-                                    }
-
-                                    Spacer()
+struct SwipeToStartSlider: View {
+    let action: () -> Void
+    
+    @State private var offset: CGFloat = 0
+    @State private var isCompleted = false
+    
+    private let thumbSize: CGFloat = 64
+    
+    var body: some View {
+        GeometryReader { geo in
+            let trackWidth = geo.size.width
+            ZStack(alignment: .leading) {
+                RoundedRectangle(cornerRadius: thumbSize / 2, style: .continuous)
+                    .fill(DriverTheme.subtleFill)
+                    .frame(height: thumbSize)
+                
+                Text("Start    >>")
+                    .font(.headline)
+                    .foregroundStyle(DriverTheme.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                
+                ZStack {
+                    Circle()
+                        .fill(DriverTheme.accent)
+                        .frame(width: thumbSize, height: thumbSize)
+                    
+                    Image(systemName: "box.truck.fill")
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(.white)
+                }
+                .offset(x: offset)
+                .gesture(
+                    DragGesture()
+                        .onChanged { value in
+                            guard !isCompleted else { return }
+                            let maxOffset = trackWidth - thumbSize
+                            if value.translation.width > 0 && value.translation.width <= maxOffset {
+                                offset = value.translation.width
+                            } else if value.translation.width > maxOffset {
+                                offset = maxOffset
+                            }
+                        }
+                        .onEnded { value in
+                            guard !isCompleted else { return }
+                            let maxOffset = trackWidth - thumbSize
+                            if offset > maxOffset * 0.8 {
+                                withAnimation(.spring()) {
+                                    offset = maxOffset
+                                    isCompleted = true
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                    action()
+                                }
+                            } else {
+                                withAnimation(.spring()) {
+                                    offset = 0
                                 }
                             }
                         }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(20)
+                )
             }
         }
-        .navigationTitle("Inspection")
-        .navigationBarTitleDisplayMode(.inline)
+        .frame(height: thumbSize)
     }
 }
 
