@@ -9,12 +9,10 @@ import SwiftUI
 struct CustomDropdown: View {
     
     let title: String
-    @State private var selection: String
+    let options: [String]
+    @Binding var selection: String
     
-    init(title: String, value: String) {
-        self.title = title
-        _selection = State(initialValue: value)
-    }
+    
     
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -22,10 +20,12 @@ struct CustomDropdown: View {
             Text(title)
                 .font(.caption2)
                 .foregroundColor(Color(.systemGray))
-            
             Menu {
-                
-                Button(selection) {}
+                ForEach(options, id: \.self) { option in
+                    Button(option) {
+                        selection = option  
+                    }
+                }
             } label: {
                 HStack {
                     Text(selection)

@@ -1,6 +1,16 @@
 import SwiftUI
 
 struct AddVehicleView: View {
+    @State private var vehicleName = ""
+    @State private var registrationNumber = ""
+    @State private var vehicleType = "Truck"
+    @State private var fuelType = "Diesel"
+    @State private var manufacturer = ""
+    @State private var model = ""
+
+    @State private var registrationDate = Date()
+    @State private var pucExpiry = Date()
+    @State private var rcExpiry = Date()
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
@@ -35,32 +45,65 @@ struct AddVehicleView: View {
                 
                 FormCard(title: "Vehicle Info", icon: "car.fill") {
                     
-                    CustomTextField(title: "VEHICLE NAME", placeholder: "e.g. Silver Ghost V8")
-                    
-                    CustomTextField(title: "REGISTRATION NUMBER", placeholder: "ABC-1234")
+                    CustomTextField(
+                        title: "VEHICLE NAME",
+                        placeholder: "e.g. Silver Ghost V8",
+                        text: $vehicleName
+                    )
+
+                    CustomTextField(
+                        title: "REGISTRATION NUMBER",
+                        placeholder: "ABC-1234",
+                        text: $registrationNumber
+                    )
                     HStack(spacing: 16) {
-                        CustomDropdown(title: "VEHICLE TYPE", value: "Commercial Truck")
-                        
-                        CustomDropdown(title: "FUEL TYPE", value: "Diesel")
-                    }
+                           CustomDropdown(
+                               title: "VEHICLE TYPE",
+                               options: ["Truck", "Car", "Bike"],
+                               selection: $vehicleType
+                           )
+                           
+                           CustomDropdown(
+                               title: "FUEL TYPE",
+                               options: ["Diesel", "Petrol", "Electric"],
+                               selection: $fuelType
+                           )
+                       }
                 }
                 
                
                 FormCard(title: "Basic Details", icon: "gearshape.fill") {
                     
-                    CustomTextField(title: "MANUFACTURER", placeholder: "Rolls Royce Heritage")
+                    CustomTextField(
+                        title: "MANUFACTURER",
+                        placeholder: "Rolls Royce Heritage",
+                        text: $manufacturer
+                    )
                     
-                    CustomTextField(title: "MODEL", placeholder: "Phantom Edition")
+                    CustomTextField(
+                        title: "MODEL",
+                        placeholder: "Phantom Edition",
+                        text: $model
+                    )
                     
-                    CustomDateField(title: "REGISTRATION DATE")
+                    CustomDateField(
+                        title: "REGISTRATION DATE",
+                        date: $registrationDate
+                    )
                 }
-                
               
                 FormCard(title: "Validity", icon: "shield.fill") {
                     HStack(spacing: 16) {
-                        CustomDateField(title: "PUC EXPIRY DATE")
                         
-                        CustomDateField(title: "RC EXPIRY DATE")
+                        CustomDateField(
+                            title: "PUC EXPIRY DATE",
+                            date: $pucExpiry
+                        )
+                        
+                        CustomDateField(
+                            title: "RC EXPIRY DATE",
+                            date: $rcExpiry
+                        )
                     }
                 }
                 
