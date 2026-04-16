@@ -16,17 +16,21 @@ struct CustomDropdown: View {
             
             Text(title)
                 .font(.caption2)
-                .foregroundColor(.gray)
+                .foregroundColor(Color(.systemGray))
             
             HStack {
                 Text(value)
                 Spacer()
                 Image(systemName: "chevron.down")
-                    .foregroundColor(.gray)
+                    .foregroundColor(Color(.systemGray))
             }
             .padding()
-            .background(Color.gray.opacity(0.1))
+            .background(Color(.systemGray5))
             .cornerRadius(10)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color(.systemGray4), lineWidth: 0.5)
+            )
         }
     }
 }

@@ -8,6 +8,10 @@
 import SwiftUI
 
 struct FleetManagerTabView: View {
+    init() {
+        UITabBar.appearance().unselectedItemTintColor = UIColor.systemGray
+    }
+
     var body: some View {
         TabView {
             TripsListView()
@@ -34,7 +38,8 @@ struct FleetManagerTabView: View {
                     Text("Chat")
                 }
         }
-       
+        .accentColor(.primaryBrown)
+        .tint(.primaryBrown)
     }
 }
 #Preview {

@@ -15,19 +15,19 @@ struct AddVehicleView: View {
                     HStack {
                         Text("PROGRESS")
                             .font(.caption2)
-                            .foregroundColor(.gray)
+                            .foregroundColor(Color(.systemGray))
                         
                         Spacer()
                         
                         Text("STEP 1 OF 2")
                             .font(.caption2)
-                            .foregroundColor(.gray)
+                            .foregroundColor(Color(.systemGray))
                     }
                     
                     // Progress Bar
                     ZStack(alignment: .leading) {
                         Capsule()
-                            .fill(Color.gray.opacity(0.2))
+                            .fill(Color(.systemGray4))
                             .frame(height: 4)
                         
                         Capsule()
@@ -68,9 +68,7 @@ struct AddVehicleView: View {
                 }
                 
                 // MARK: CTA
-                Button {
-                    // Next step
-                } label: {
+                NavigationLink(destination: AddVehicleStep2View()) {
                     Text("Next Step →")
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)

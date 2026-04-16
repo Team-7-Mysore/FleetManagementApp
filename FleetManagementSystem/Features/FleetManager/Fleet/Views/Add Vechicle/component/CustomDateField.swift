@@ -15,20 +15,24 @@ struct CustomDateField: View {
             
             Text(title)
                 .font(.caption2)
-                .foregroundColor(.gray)
+                .foregroundColor(Color(.systemGray))
             
             HStack {
                 Text("dd/mm/yyyy")
-                    .foregroundColor(.gray)
+                    .foregroundColor(Color(.systemGray).opacity(0.7))
                 
                 Spacer()
                 
                 Image(systemName: "calendar")
-                    .foregroundColor(.gray)
+                    .foregroundColor(Color(.systemGray))
             }
             .padding()
-            .background(Color.gray.opacity(0.1))
+            .background(Color(.systemGray5))
             .cornerRadius(10)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color(.systemGray4), lineWidth: 0.5)
+            )
         }
     }
 }
