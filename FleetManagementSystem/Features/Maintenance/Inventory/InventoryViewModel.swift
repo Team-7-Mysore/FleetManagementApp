@@ -4,11 +4,6 @@ import Combine
 
 // Temporary initialized client assuming standard setup.
 // Replace with shared instance if your project centralizes this.
-let supabase = SupabaseClient(
-    supabaseURL: URL(string: "https://qisdvwaldghndrurbv.supabase.co")!,
-    supabaseKey: "sb_publishable_lmLZmLRCHlDY18ITwq3RMA_c7ggW-Gr"
-)
-
 @MainActor
 final class InventoryViewModel: ObservableObject {
     @Published var items: [InventoryItem] = []
@@ -34,25 +29,22 @@ final class InventoryViewModel: ObservableObject {
     
     func fetchInventory() async {
         do {
-            let response = try await supabase
+            let fetchedItems: [InventoryItem] = try await SupabaseManager.shared.client
                 .from("inventory")
                 .select()
                 .execute()
-            
-            print("RAW RESPONSE:", response)
-            
-            let fetchedItems = try JSONDecoder().decode([InventoryItem].self, from: response.data)
+                .value   // ✅ THIS is the correct way
             
             print("DECODED COUNT:", fetchedItems.count)
-            print("FIRST ITEM:", fetchedItems.first ?? "nil")
             
             self.items = fetchedItems
-            self.filteredItems = fetchedItems   // ⚠️ bypass filter temporarily
+            self.filteredItems = fetchedItems
             
         } catch {
             print("ERROR:", error)
         }
     }
+    
     func filterItems() {
         var result = items
         
