@@ -1,5 +1,5 @@
 //
-//  ContentView.swift
+//  FleetManagerDashboardView.swift
 //  FleetManagementSystem
 //
 //  Created by harshwardhan patil on 15/04/26.
@@ -9,7 +9,9 @@ import SwiftUI
 
 struct FleetManagerDashboardView: View {
     var body: some View {
-        Color.clear
+        Text("Fleet Manager Dashboard — Coming Soon")
+            .font(.headline)
+            .foregroundStyle(.secondary)
     }
 }
 

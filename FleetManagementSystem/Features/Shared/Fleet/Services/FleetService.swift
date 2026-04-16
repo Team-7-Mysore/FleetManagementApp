@@ -5,6 +5,6 @@ final class FleetService {
 
     func fetchVehicles() async throws -> [Vehicle] {
         try await Task.sleep(for: .milliseconds(400))
-        return []
+        return MockDataStore.shared.vehicles
     }
 }
