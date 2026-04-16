@@ -12,27 +12,31 @@ struct FleetManagerTabView: View {
         TabView {
             TripsListView()
                 .tabItem {
-                    Label("Trips", systemImage: "map")
+                    Image(systemName: "map.fill")
+                    Text("Trips")
                 }
             
             FleetListView()
                 .tabItem {
-                    Label("Fleet", systemImage: "car.2")
+                    Image(systemName: "car.2.fill")
+                    Text("Fleet")
                 }
             
             StaffListView()
                 .tabItem {
-                    Label("Staff", systemImage: "person.2")
+                    Image(systemName: "person.2.fill")
+                    Text("Staff")
                 }
             
             ChatView()
                 .tabItem {
-                    Label("Chat", systemImage: "message")
+                    Image(systemName: "message.fill")
+                    Text("Chat")
                 }
         }
+       
     }
 }
-
 #Preview {
     FleetManagerTabView()
 }
