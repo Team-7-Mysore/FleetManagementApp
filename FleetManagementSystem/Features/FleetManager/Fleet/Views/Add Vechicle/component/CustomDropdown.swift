@@ -24,7 +24,7 @@ struct CustomDropdown: View {
                 .foregroundColor(Color(.systemGray))
             
             Menu {
-                // Future options will go here
+                
                 Button(selection) {}
             } label: {
                 HStack {

@@ -8,7 +8,7 @@ struct AddVehicleView: View {
         ScrollView {
             VStack(spacing: 20) {
                 
-                // MARK: Header
+             
                 VStack(spacing: 8) {
 
                     Text("1 of 2")
@@ -16,7 +16,7 @@ struct AddVehicleView: View {
                         .fontWeight(.semibold)
                         .foregroundColor(Color(.label))
                         
-                    // Progress Bar
+                  
                     GeometryReader { geometry in
                         ZStack(alignment: .leading) {
                             Capsule()
@@ -32,7 +32,7 @@ struct AddVehicleView: View {
                 }
                 .padding(.horizontal)
                 
-                // MARK: Vehicle Info
+                
                 FormCard(title: "Vehicle Info", icon: "car.fill") {
                     
                     CustomTextField(title: "VEHICLE NAME", placeholder: "e.g. Silver Ghost V8")
@@ -45,7 +45,7 @@ struct AddVehicleView: View {
                     }
                 }
                 
-                // MARK: Basic Details
+               
                 FormCard(title: "Basic Details", icon: "gearshape.fill") {
                     
                     CustomTextField(title: "MANUFACTURER", placeholder: "Rolls Royce Heritage")
@@ -55,7 +55,7 @@ struct AddVehicleView: View {
                     CustomDateField(title: "REGISTRATION DATE")
                 }
                 
-                // MARK: Validity
+              
                 FormCard(title: "Validity", icon: "shield.fill") {
                     HStack(spacing: 16) {
                         CustomDateField(title: "PUC EXPIRY DATE")
@@ -64,7 +64,7 @@ struct AddVehicleView: View {
                     }
                 }
                 
-                // MARK: CTA
+             
                 NavigationLink(destination: AddVehicleStep2View()) {
                     Text("Next Step →")
                         .foregroundColor(.white)
