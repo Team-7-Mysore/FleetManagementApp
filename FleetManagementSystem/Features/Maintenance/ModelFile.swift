@@ -7,7 +7,7 @@
 
 import Foundation
 
-// MARK: - Enums
+// MARK: - Work Order Enums
 enum WorkOrderPriority: String, Codable, CaseIterable {
     case low = "Low"
     case medium = "Medium"
@@ -22,25 +22,41 @@ enum WorkOrderStatus: String, Codable, CaseIterable {
     case cancelled = "Cancelled"
 }
 
-// MARK: - Inventory Model
+// MARK: - Chat Enums
+enum ChatRoomType: String, Codable {
+    case direct = "Direct"       // 1-on-1 chat
+    case group = "Group"         // Standard group chat
+    case workOrder = "WorkOrder" // Chat specifically tied to a repair job
+}
+
+enum MessageType: String, Codable {
+    case text = "Text"
+    case image = "Image"
+    case system = "System"       // Auto-generated messages (e.g., "Status changed to Completed")
+}
+
+// MARK: - 1. Inventory Model
 struct InventoryItem: Identifiable, Codable {
-    let id: UUID
+    let inventoryId: UUID
     var partName: String
-    var category: String?
+    var vehicleCategory: String?
     var categoryDescription: String?
     var supplier: String?
     var quantity: Int
     var costPerUnit: Double?
     var sku: String?
     var location: String?
-    var imageUrl: String? // Supabase Storage URL
+    var imageUrl: String?
     let createdAt: Date?
     var updatedAt: Date?
+    
+    // Satisfies Identifiable for SwiftUI
+    var id: UUID { inventoryId }
 
     enum CodingKeys: String, CodingKey {
-        case id
+        case inventoryId = "inventory_id"
         case partName = "part_name"
-        case category
+        case vehicleCategory = "vehicle_category"
         case categoryDescription = "category_description"
         case supplier
         case quantity
@@ -53,9 +69,9 @@ struct InventoryItem: Identifiable, Codable {
     }
 }
 
-// MARK: - Main Work Order Model
+// MARK: - 2. Work Order Model
 struct WorkOrder: Identifiable, Codable {
-    let id: UUID
+    let workOrderId: UUID
     var vehicleVin: String
     var vehicleName: String?
     var fleetUnitId: String?
@@ -69,9 +85,12 @@ struct WorkOrder: Identifiable, Codable {
     var maintenanceNotes: String?
     let createdAt: Date?
     var updatedAt: Date?
+    
+    // Satisfies Identifiable for SwiftUI
+    var id: UUID { workOrderId }
 
     enum CodingKeys: String, CodingKey {
-        case id
+        case workOrderId = "work_order_id"
         case vehicleVin = "vehicle_vin"
         case vehicleName = "vehicle_name"
         case fleetUnitId = "fleet_unit_id"
@@ -88,16 +107,19 @@ struct WorkOrder: Identifiable, Codable {
     }
 }
 
-// MARK: - Work Order Task (Checklist)
+// MARK: - 3. Work Order Task
 struct WorkOrderTask: Identifiable, Codable {
-    let id: UUID
+    let taskId: UUID
     var workOrderId: UUID
     var description: String
     var isCompleted: Bool
     let createdAt: Date?
+    
+    // Satisfies Identifiable for SwiftUI
+    var id: UUID { taskId }
 
     enum CodingKeys: String, CodingKey {
-        case id
+        case taskId = "task_id"
         case workOrderId = "work_order_id"
         case description
         case isCompleted = "is_completed"
@@ -105,9 +127,9 @@ struct WorkOrderTask: Identifiable, Codable {
     }
 }
 
-// MARK: - Work Order Part (Linked Inventory)
+// MARK: - 4. Work Order Part
 struct WorkOrderPart: Codable {
-    // Note: No 'id' here since the Primary Key is the combination of these two IDs
+    // No Identifiable needed here as it's a junction table
     var workOrderId: UUID
     var inventoryId: UUID
     var quantityRequired: Int
@@ -121,17 +143,60 @@ struct WorkOrderPart: Codable {
     }
 }
 
-// MARK: - Work Order Image (Documentation)
-struct WorkOrderImage: Identifiable, Codable {
+// MARK: - 5. Chat Room
+struct ChatRoom: Identifiable, Codable {
     let id: UUID
-    var workOrderId: UUID
-    var imageUrl: String
+    var type: ChatRoomType
+    var name: String?            // Optional: Name for group chats (e.g., "Mechanics Team")
+    var workOrderId: UUID?       // Optional: Links the chat directly to a Work Order
     let createdAt: Date?
-
+    var updatedAt: Date?         // Useful for sorting the inbox by "most recently active"
+    
     enum CodingKeys: String, CodingKey {
         case id
+        case type
+        case name
         case workOrderId = "work_order_id"
-        case imageUrl = "image_url"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+    }
+}
+
+// MARK: - 6. Chat Participant
+// A junction table linking Users to Chat Rooms
+struct ChatParticipant: Codable {
+    var chatRoomId: UUID
+    var userId: UUID             // Links to your auth.users or public.profiles table
+    var joinedAt: Date?
+    var lastReadAt: Date?        // Crucial for showing unread message badges/counts
+    
+    enum CodingKeys: String, CodingKey {
+        case chatRoomId = "chat_room_id"
+        case userId = "user_id"
+        case joinedAt = "joined_at"
+        case lastReadAt = "last_read_at"
+    }
+}
+
+// MARK: - 7. Chat Message
+struct ChatMessage: Identifiable, Codable {
+    let id: UUID
+    var chatRoomId: UUID
+    var senderId: UUID           // The user who sent the message
+    var messageType: MessageType
+    var content: String?         // The text of the message (optional if it's just an image)
+    var mediaUrl: String?        // Supabase Storage URL if they send a photo
+    var isEdited: Bool?
+    let createdAt: Date?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case chatRoomId = "chat_room_id"
+        case senderId = "sender_id"
+        case messageType = "message_type"
+        case content
+        case mediaUrl = "media_url"
+        case isEdited = "is_edited"
         case createdAt = "created_at"
     }
 }
