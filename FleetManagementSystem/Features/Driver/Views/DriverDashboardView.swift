@@ -32,15 +32,13 @@ struct DriverHomeView: View {
 
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 18) {
-                    topHeader
-
                     if viewModel.isLoading && viewModel.assignment == nil {
                         loadingCard
                     } else if let assignment = viewModel.assignment {
                         activeRouteCard(assignment)
-                        assignedVehicleCard(assignment)
+                          .padding(.bottom, 15)
                         startInspectionButton
-                        dashboardActions
+                        assignedVehicleCard(assignment)
                         upcomingTasksSection
                     } else if let errorMessage = viewModel.errorMessage {
                         ErrorStateCard(message: errorMessage) {
@@ -49,88 +47,12 @@ struct DriverHomeView: View {
                     }
                 }
                 .padding(.horizontal, 20)
-                .padding(.vertical, 16)
+                .padding(.top, 24)
+                .padding(.bottom, 16)
             }
         }
-        .navigationBarHidden(true)
-    }
-
-    private var topHeader: some View {
-        HStack(alignment: .center, spacing: 14) {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color(red: 0.84, green: 0.95, blue: 0.88), Color(red: 0.68, green: 0.83, blue: 0.74)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay {
-                    Text(driverInitials)
-                        .font(.subheadline.weight(.bold))
-                        .foregroundStyle(DriverTheme.primaryText)
-                }
-                .frame(width: 42, height: 42)
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("DRIVER")
-                    .font(.caption.weight(.bold))
-                    .tracking(1.6)
-                    .foregroundStyle(DriverTheme.accent)
-
-                Text(driverName)
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(DriverTheme.primaryText)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            NavigationLink {
-                DriverMessagesView(viewModel: viewModel)
-            } label: {
-                Image(systemName: "headphones.circle.fill")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(DriverTheme.primaryText)
-                    .frame(width: 42, height: 42)
-                    .background(Color.white, in: Circle())
-                    .shadow(color: DriverTheme.shadowColor, radius: 10, x: 0, y: 4)
-            }
-            .buttonStyle(.plain)
-
-            Button {
-            } label: {
-                Image(systemName: "bell.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(DriverTheme.primaryText)
-                    .frame(width: 42, height: 42)
-                    .background(Color.white, in: Circle())
-                    .shadow(color: DriverTheme.shadowColor, radius: 10, x: 0, y: 4)
-            }
-            .buttonStyle(.plain)
-
-            Menu {
-                Button("Sign Out", role: .destructive) {
-                    sessionStore.signOut()
-                }
-            } label: {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [DriverTheme.accent.opacity(0.95), DriverTheme.accent.opacity(0.6)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .overlay {
-                        Image(systemName: "person.fill")
-                            .foregroundStyle(.white)
-                    }
-                    .frame(width: 42, height: 42)
-                    .shadow(color: DriverTheme.shadowColor, radius: 10, x: 0, y: 4)
-            }
-        }
-        .padding(.top, 6)
+        .navigationTitle("Welcome, \(driverFirstName)")
+        .navigationBarTitleDisplayMode(.large)
     }
 
     private func activeRouteCard(_ assignment: DriverAssignment) -> some View {
@@ -266,32 +188,6 @@ struct DriverHomeView: View {
         .buttonStyle(PrimaryActionButtonStyle())
     }
 
-    private var dashboardActions: some View {
-        HStack(spacing: 12) {
-            NavigationLink {
-                DriverTripsView(viewModel: viewModel)
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "play.fill")
-                    Text("Start Trip")
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(SecondaryActionButtonStyle(isSelected: true))
-
-            NavigationLink {
-                DriverTripsView(viewModel: viewModel)
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "map")
-                    Text("View Trips")
-                }
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(SecondaryActionButtonStyle(isSelected: false))
-        }
-    }
-
     private var upcomingTasksSection: some View {
         VStack(spacing: 14) {
             HStack {
@@ -335,45 +231,18 @@ struct DriverHomeView: View {
     }
 
     private var upcomingTasks: [UpcomingTask] {
-        var tasks: [UpcomingTask] = []
+        let upcomingTrips = viewModel.trips.filter { $0.status == .upcoming }
+        let latestUpcomingTrips = Array(upcomingTrips.suffix(3))
 
-        if let upcomingTrip = viewModel.trips.first(where: { $0.status == .upcoming }) {
-            tasks.append(
-                UpcomingTask(
-                    icon: "truck.box.fill",
-                    title: upcomingTrip.title,
-                    subtitle: upcomingTrip.route,
-                    eta: upcomingTrip.eta,
-                    badge: "SOON"
-                )
+        return latestUpcomingTrips.map { trip in
+            UpcomingTask(
+                icon: "truck.box.fill",
+                title: trip.title,
+                subtitle: trip.route,
+                eta: trip.eta,
+                badge: "SOON"
             )
         }
-
-        if let fuelStat = viewModel.stats.first(where: { $0.title.localizedCaseInsensitiveContains("fuel") }) {
-            tasks.append(
-                UpcomingTask(
-                    icon: "fuelpump.fill",
-                    title: "Fuel Stop",
-                    subtitle: fuelStat.detail,
-                    eta: fuelStat.value,
-                    badge: "CHECK"
-                )
-            )
-        }
-
-        if tasks.isEmpty, let nextMessage = viewModel.messages.first {
-            tasks.append(
-                UpcomingTask(
-                    icon: "message.fill",
-                    title: nextMessage.subject,
-                    subtitle: nextMessage.preview,
-                    eta: nextMessage.time,
-                    badge: "NEW"
-                )
-            )
-        }
-
-        return tasks
     }
 
     private var driverName: String {
@@ -384,13 +253,11 @@ struct DriverHomeView: View {
         return "Aarav Kulkarni"
     }
 
-    private var driverInitials: String {
+    private var driverFirstName: String {
         driverName
             .split(separator: " ")
-            .prefix(2)
-            .compactMap { $0.first }
-            .map(String.init)
-            .joined()
+            .first
+            .map(String.init) ?? driverName
     }
 }
 

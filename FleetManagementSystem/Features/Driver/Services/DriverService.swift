@@ -44,10 +44,10 @@ struct DriverService {
                     id: UUID(uuidString: "1682992A-1E7D-48D8-941B-C16A2D01D0BB") ?? UUID(),
                     title: "Depot Pickup",
                     route: "Baner -> Hinjawadi",
-                    schedule: "Completed yesterday",
-                    status: .completed,
+                    schedule: "Scheduled for 05:20 PM",
+                    status: .upcoming,
                     distance: "26 km",
-                    eta: "Closed successfully"
+                    eta: "ETA 06:15 PM"
                 )
             ],
             inspectionItems: [
