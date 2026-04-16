@@ -19,13 +19,7 @@ struct CustomTextField: View {
                 .foregroundColor(Color(.systemGray))
             
             TextField(placeholder, text: .constant(""))
-                .padding()
-                .background(Color(.systemGray5))
-                .cornerRadius(10)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color(.systemGray4), lineWidth: 0.5)
-                )
+                .textFieldStyle(.roundedBorder)
         }
     }
 }

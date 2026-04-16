@@ -1,37 +1,32 @@
 import SwiftUI
 
 struct AddVehicleStep2View: View {
+    @Environment(\.dismiss) var dismiss
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
                 
                 // MARK: Header Progress
                 VStack(spacing: 8) {
-                    HStack {
-                        Text("REGISTRATION PROGRESS")
-                            .font(.caption2)
-                            .fontWeight(.bold)
-                            .foregroundColor(Color(.systemGray))
+                    Text("2 of 2")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Color(.label))
                         
-                        Spacer()
-                        
-                        Text("STEP 2 OF 2")
-                            .font(.caption2)
-                            .fontWeight(.bold)
-                            .foregroundColor(Color(.systemGray))
-                    }
-                    
                     // Progress Bar
-                    ZStack(alignment: .leading) {
-                        Capsule()
-                            .fill(Color(.systemGray4))
-                            .frame(height: 4)
-                        
-                        Capsule()
-                            .fill(Color.primaryBrown)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .frame(height: 4)
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(Color(.systemGray5))
+                                .frame(height: 3)
+                            
+                            Capsule()
+                                .fill(Color.primaryBrown)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .frame(height: 3)
+                        }
                     }
+                    .frame(height: 3)
                 }
                 .padding(.horizontal)
                 .padding(.top, 10)
@@ -81,8 +76,22 @@ struct AddVehicleStep2View: View {
             }
         }
         .background(Color(.systemGray6))
-        .navigationTitle("Add Vehicle")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("Add Vehicle")
+                    .font(.headline)
+            }
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: {
+                    dismiss()
+                }) {
+                    Image(systemName: "chevron.left")
+                        .foregroundColor(Color(.label))
+                }
+            }
+        }
     }
 }
 

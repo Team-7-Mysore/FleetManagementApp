@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AddVehicleView: View {
+    @Environment(\.dismiss) var dismiss
     
     var body: some View {
        
@@ -9,31 +10,25 @@ struct AddVehicleView: View {
                 
                 // MARK: Header
                 VStack(spacing: 8) {
-                    
-                    
-                                        
-                    HStack {
-                        Text("PROGRESS")
-                            .font(.caption2)
-                            .foregroundColor(Color(.systemGray))
+
+                    Text("1 of 2")
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundColor(Color(.label))
                         
-                        Spacer()
-                        
-                        Text("STEP 1 OF 2")
-                            .font(.caption2)
-                            .foregroundColor(Color(.systemGray))
-                    }
-                    
                     // Progress Bar
-                    ZStack(alignment: .leading) {
-                        Capsule()
-                            .fill(Color(.systemGray4))
-                            .frame(height: 4)
-                        
-                        Capsule()
-                            .fill(Color.primaryBrown)
-                            .frame(width: 120, height: 4)
+                    GeometryReader { geometry in
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(Color(.systemGray5))
+                                .frame(height: 3)
+                            
+                            Capsule()
+                                .fill(Color.primaryBrown)
+                                .frame(width: geometry.size.width * 0.5, height: 3)
+                        }
                     }
+                    .frame(height: 3)
                 }
                 .padding(.horizontal)
                 
@@ -43,10 +38,11 @@ struct AddVehicleView: View {
                     CustomTextField(title: "VEHICLE NAME", placeholder: "e.g. Silver Ghost V8")
                     
                     CustomTextField(title: "REGISTRATION NUMBER", placeholder: "ABC-1234")
-                    
-                    CustomDropdown(title: "VEHICLE TYPE", value: "Commercial Truck")
-                    
-                    CustomDropdown(title: "FUEL TYPE", value: "Diesel")
+                    HStack(spacing: 16) {
+                        CustomDropdown(title: "VEHICLE TYPE", value: "Commercial Truck")
+                        
+                        CustomDropdown(title: "FUEL TYPE", value: "Diesel")
+                    }
                 }
                 
                 // MARK: Basic Details
@@ -61,10 +57,11 @@ struct AddVehicleView: View {
                 
                 // MARK: Validity
                 FormCard(title: "Validity", icon: "shield.fill") {
-                    
-                    CustomDateField(title: "RC EXPIRY DATE")
-                    
-                    CustomDateField(title: "PUC EXPIRY DATE")
+                    HStack(spacing: 16) {
+                        CustomDateField(title: "PUC EXPIRY DATE")
+                        
+                        CustomDateField(title: "RC EXPIRY DATE")
+                    }
                 }
                 
                 // MARK: CTA
@@ -79,9 +76,23 @@ struct AddVehicleView: View {
                 .padding()
             }
         }
-        .background(Color(.systemGray6) )
-        .navigationTitle("Add Vehicle")
+        .background(Color(.systemGray6))
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text("Add Vehicle")
+                    .font(.headline)
+            }
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: {
+                    dismiss()
+                }) {
+                    Image(systemName: "chevron.left")
+                        .foregroundColor(Color(.label))
+                }
+            }
+        }
       
     }
 }
