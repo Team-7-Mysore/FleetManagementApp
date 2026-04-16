@@ -24,13 +24,6 @@
 				Features/FleetManager/Maintenance/Views/.gitkeep,
 				Features/FleetManager/Trips/ViewModels/.gitkeep,
 				Features/FleetManager/Trips/Views/.gitkeep,
-				Features/Maintenance/.gitkeep,
-				Features/Maintenance/Dashboard/ViewModels/.gitkeep,
-				Features/Maintenance/Dashboard/Views/.gitkeep,
-				Features/Maintenance/Fleet/ViewModels/.gitkeep,
-				Features/Maintenance/Fleet/Views/.gitkeep,
-				Features/Maintenance/Maintenance/ViewModels/.gitkeep,
-				Features/Maintenance/Maintenance/Views/.gitkeep,
 			);
 			target = 84A866B62F8F44E700546587 /* FleetManagementSystem */;
 		};
@@ -123,6 +116,9 @@
 			);
 			mainGroup = 84A866AE2F8F44E700546587;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				18DD02712F90A78200A1BD1F /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 84A866B82F8F44E700546587 /* Products */;
 			projectDirPath = "";
@@ -361,6 +357,17 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		18DD02712F90A78200A1BD1F /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.5.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 	};
 	rootObject = 84A866AF2F8F44E700546587 /* Project object */;
 }
