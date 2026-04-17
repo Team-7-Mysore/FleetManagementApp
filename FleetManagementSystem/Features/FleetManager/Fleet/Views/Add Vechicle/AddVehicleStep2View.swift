@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AddVehicleStep2View: View {
+    @ObservedObject var fleetVM: FleetListViewModel
     @State private var showSourcePicker = false
     @State private var showDocumentPicker = false
     @State private var showImagePicker = false
@@ -105,7 +106,15 @@ struct AddVehicleStep2View: View {
 
         .onChange(of: vm.isSuccess) { success in
             if success {
-                dismiss()
+                Task {
+                    await fleetVM.fetchVehicles()   // 🔥 refresh first
+                    
+                    // then go back
+                    dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        dismiss()
+                    }
+                }
             }
         }
     }
@@ -113,7 +122,9 @@ struct AddVehicleStep2View: View {
 }
 
 #Preview {
-    AddVehicleStep2View(vm: AddVehicleViewModel())
+    AddVehicleStep2View(
+        fleetVM: FleetListViewModel(), vm: AddVehicleViewModel()
+      )
     }
 struct ErrorWrapper: Identifiable {
     var id: String { message }

@@ -50,11 +50,30 @@ class AddVehicleViewModel: ObservableObject {
         if registrationNumber.trimmingCharacters(in: .whitespaces).isEmpty {
             return "Registration number is required"
         }
-        // Added VIN validation
+        if !isValidPlate(registrationNumber) {
+               return "Enter valid number plate (e.g. KA01AB1234)"
+           }
         if vin.count != 17 {
             return "VIN must be exactly 17 characters"
         }
         return nil
+    }
+    func formatPlate(_ input: String) -> String {
+        let normalized = input
+            .uppercased()
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "-", with: "")
+        
+        var result = ""
+        
+        for (index, char) in normalized.enumerated() {
+            if index == 2 || index == 4 || index == 6 {
+                result.append("-")
+            }
+            result.append(char)
+        }
+        
+        return result
     }
 }
 
@@ -107,6 +126,17 @@ extension AddVehicleViewModel {
         }
     }
     
+    func isValidPlate(_ input: String) -> Bool {
+        let normalized = input
+            .uppercased()
+            .replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "-", with: "")
+        
+        let regex = "^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{3,4}$"
+        
+        return NSPredicate(format: "SELF MATCHES %@", regex)
+            .evaluate(with: normalized)
+    }
     func uploadFile(fileURL: URL, type: String) async {
         
         do {
@@ -178,7 +208,7 @@ extension AddVehicleViewModel {
             }
         }
         
-        // ✅ CLEAN DOCUMENT ARRAY (no empty URLs)
+      
         let documents = [
             rcURL != nil ? ["type": "RC", "url": rcURL!] : nil,
             insuranceURL != nil ? ["type": "INSURANCE", "url": insuranceURL!] : nil,

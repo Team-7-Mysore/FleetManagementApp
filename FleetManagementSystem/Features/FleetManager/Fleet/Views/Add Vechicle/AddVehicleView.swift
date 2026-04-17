@@ -3,6 +3,7 @@
 import SwiftUI
 
 struct AddVehicleView: View {
+    @ObservedObject var fleetVM: FleetListViewModel
     @State private var navigateToStep2 = false
     @State private var showImagePicker = false
     @StateObject var vm = AddVehicleViewModel()
@@ -88,7 +89,14 @@ struct AddVehicleView: View {
     private var vehicleInfoSection: some View {
         FormCard(title: "Vehicle Info", icon: "car.fill") {
             CustomTextField(title: "VEHICLE NAME", placeholder: "e.g. Silver Ghost V8", text: $vm.vehicleName)
-            CustomTextField(title: "REGISTRATION NUMBER", placeholder: "ABC-1234", text: $vm.registrationNumber)
+            CustomTextField(
+                title: "REGISTRATION NUMBER",
+                placeholder: "KA01AB1234",
+                text: Binding(
+                    get: { vm.registrationNumber },
+                    set: { vm.registrationNumber = vm.formatPlate($0) }
+                )
+            )
             HStack(spacing: 16) {
                 CustomDropdown(title: "VEHICLE TYPE", options: ["Truck", "Car", "Bike"], selection: $vm.vehicleType)
                 CustomDropdown(title: "FUEL TYPE", options: ["Diesel", "Petrol", "Electric"], selection: $vm.fuelType)
@@ -134,7 +142,10 @@ struct AddVehicleView: View {
     
     private var navigationAndActionButtons: some View {
         VStack {
-            NavigationLink(destination: AddVehicleStep2View(vm: vm), isActive: $navigateToStep2) {
+            NavigationLink(
+                destination: AddVehicleStep2View(fleetVM: fleetVM, vm: vm),
+                isActive: $navigateToStep2
+            ) {
                 EmptyView()
             }
             
@@ -153,6 +164,11 @@ struct AddVehicleView: View {
                     .cornerRadius(25)
             }
             .padding()
+        }
+        .onChange(of: vm.isSuccess) { success in
+            if success {
+                dismiss()
+            }
         }
     }
 }
