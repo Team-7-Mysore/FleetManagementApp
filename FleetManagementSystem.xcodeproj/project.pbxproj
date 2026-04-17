@@ -33,13 +33,6 @@
 				Features/FleetManager/Maintenance/Views/.gitkeep,
 				Features/FleetManager/Trips/ViewModels/.gitkeep,
 				Features/FleetManager/Trips/Views/.gitkeep,
-				Features/Maintenance/.gitkeep,
-				Features/Maintenance/Dashboard/ViewModels/.gitkeep,
-				Features/Maintenance/Dashboard/Views/.gitkeep,
-				Features/Maintenance/Fleet/ViewModels/.gitkeep,
-				Features/Maintenance/Fleet/Views/.gitkeep,
-				Features/Maintenance/Maintenance/ViewModels/.gitkeep,
-				Features/Maintenance/Maintenance/Views/.gitkeep,
 			);
 			target = 84A866B62F8F44E700546587 /* FleetManagementSystem */;
 		};
