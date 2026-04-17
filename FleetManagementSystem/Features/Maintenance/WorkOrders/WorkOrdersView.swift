@@ -4,6 +4,11 @@ struct WorkOrdersView: View {
     // Injecting the ViewModel to get real data silently
     @StateObject private var viewModel = WorkOrderViewModel()
     
+    // Modal Presentation States
+    @State private var selectedDetailOrder: WorkOrder?
+    @State private var selectedReportOrder: WorkOrder?
+    @State private var showingAddOrder: Bool = false
+    
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -58,9 +63,18 @@ struct WorkOrdersView: View {
                         } else {
                             VStack(spacing: 12) {
                                 ForEach(viewModel.inProgressOrders, id: \.workOrderId) { order in
-                                    NavigationLink(destination: WorkOrderDetailView(workOrder: order)) {
-                                        // showStatus is false to hide the dot, isLargeTitle is true
-                                        WorkOrderRowView(workOrder: order, showStatus: false, isLargeTitle: true)
+                                    // Open as Modal Sheet instead of pushing Navigation Link
+                                    Button(action: {
+                                        selectedDetailOrder = order
+                                    }) {
+                                        WorkOrderRowView(
+                                            workOrder: order,
+                                            showStatus: false,
+                                            isLargeTitle: true,
+                                            onViewReport: {
+                                                selectedReportOrder = order
+                                            }
+                                        )
                                     }
                                     .buttonStyle(PlainButtonStyle())
                                 }
@@ -82,18 +96,35 @@ struct WorkOrdersView: View {
             }
             // MARK: - Floating Action Button
             .overlay(alignment: .bottomTrailing) {
-                NavigationLink(destination: AddEditWorkOrderView()) {
+                Button(action: {
+                    showingAddOrder = true
+                }) {
                     Image(systemName: "plus")
                         .font(.title2)
                         .fontWeight(.bold)
                         .foregroundColor(.white)
                         .frame(width: 60, height: 60)
-                        .background(Color(hex: "#A3352A"))
+                        .background(Color(hex: "#A3352A")) // Deep Red
                         .clipShape(Circle())
                         .shadow(color: Color.black.opacity(0.2), radius: 6, x: 0, y: 4)
                 }
                 .padding(.trailing, 24)
                 .padding(.bottom, 24)
+            }
+            // MARK: - Modals (Sheets)
+            .sheet(item: $selectedDetailOrder) { order in
+                NavigationStack {
+                    WorkOrderDetailView(workOrder: order)
+                }
+            }
+            .sheet(item: $selectedReportOrder) { order in
+                WorkOrderCompletionReportView(workOrder: order)
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showingAddOrder) {
+                NavigationStack {
+                    AddEditWorkOrderView()
+                }
             }
         }
     }
@@ -104,6 +135,10 @@ struct FilteredWorkOrdersView: View {
     let title: String
     let workOrders: [WorkOrder]
     
+    // Modal Presentation States for the filtered lists
+    @State private var selectedDetailOrder: WorkOrder?
+    @State private var selectedReportOrder: WorkOrder?
+    
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
@@ -113,9 +148,17 @@ struct FilteredWorkOrdersView: View {
                         .padding(.top, 40)
                 } else {
                     ForEach(workOrders, id: \.workOrderId) { order in
-                        NavigationLink(destination: WorkOrderDetailView(workOrder: order)) {
-                            // Regular size titles for filtered lists, no status dot needed
-                            WorkOrderRowView(workOrder: order, showStatus: false, isLargeTitle: false)
+                        Button(action: {
+                            selectedDetailOrder = order
+                        }) {
+                            WorkOrderRowView(
+                                workOrder: order,
+                                showStatus: false,
+                                isLargeTitle: false,
+                                onViewReport: {
+                                    selectedReportOrder = order
+                                }
+                            )
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
@@ -126,6 +169,16 @@ struct FilteredWorkOrdersView: View {
         }
         .navigationTitle(title)
         .background(Color(uiColor: .systemGroupedBackground))
+        // Modals for the Filtered View
+        .sheet(item: $selectedDetailOrder) { order in
+            NavigationStack {
+                WorkOrderDetailView(workOrder: order)
+            }
+        }
+        .sheet(item: $selectedReportOrder) { order in
+            WorkOrderCompletionReportView(workOrder: order)
+                .presentationDragIndicator(.visible)
+        }
     }
 }
 
@@ -172,6 +225,7 @@ struct WorkOrderRowView: View {
     let workOrder: WorkOrder
     var showStatus: Bool
     var isLargeTitle: Bool
+    var onViewReport: (() -> Void)? = nil // NEW: Callback for the report button
     
     var body: some View {
         VStack(spacing: 0) {
@@ -203,9 +257,11 @@ struct WorkOrderRowView: View {
             .padding()
             
             if workOrder.status == .completed {
-                ViewReportButtonView()
-                    .padding(.horizontal)
-                    .padding(.bottom, 12)
+                ViewReportButtonView(action: {
+                    onViewReport?() // Trigger the callback
+                })
+                .padding(.horizontal)
+                .padding(.bottom, 12)
             }
         }
         .background(Color(UIColor.systemBackground))
@@ -246,7 +302,7 @@ struct RowTextLinesDefault: View {
             }
             
             // MIDDLE LINE: Fleet ID & Vehicle Name
-            Text("\(workOrder.fleetUnitId) • \(workOrder.vehicleName ?? "Fleet Vehicle")")
+            Text("\(workOrder.fleetUnitId ?? "Unit") • \(workOrder.vehicleName ?? "Fleet Vehicle")")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
@@ -318,10 +374,10 @@ struct RowTextLinesCompleted: View {
 
 // MARK: - View Report Button (Bottom of completed card)
 struct ViewReportButtonView: View {
+    var action: () -> Void // NEW: Action passed in from the card
+    
     var body: some View {
-        Button(action: {
-            // View report action
-        }) {
+        Button(action: action) {
             HStack(alignment: .center) {
                 Spacer()
                 Image(systemName: "doc.text.fill")

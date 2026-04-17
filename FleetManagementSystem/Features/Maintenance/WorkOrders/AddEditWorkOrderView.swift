@@ -1,13 +1,6 @@
 import SwiftUI
 import Supabase
 
-// MARK: - Helper Extension
-extension View {
-    func hideKeyboard() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-    }
-}
-
 // Lightweight UI model for parts while filling out the form
 struct PartSelectionUI: Identifiable {
     let id = UUID()
@@ -49,13 +42,10 @@ struct AddEditWorkOrderView: View {
     @State private var isSaving: Bool = false
     
     var body: some View {
+        // FIX 1: Wrapping in a ZStack so the background NEVER gets pushed up
         ZStack {
-            // Background color dismisses keyboard
             Color(uiColor: .systemGroupedBackground)
                 .ignoresSafeArea()
-                .onTapGesture {
-                    hideKeyboard()
-                }
             
             ScrollView {
                 VStack(spacing: 24) {
@@ -65,7 +55,7 @@ struct AddEditWorkOrderView: View {
                         SectionHeaderView(title: "VEHICLE IDENTIFICATION")
                         
                         CardView {
-                            VStack(spacing: 0) { // Changed spacing to 0 because text fields now have vertical padding
+                            VStack(spacing: 12) {
                                 HStack(alignment: .top, spacing: 16) {
                                     // Dynamic Vehicle Icon
                                     Image(systemName: vehicleType.sfSymbol)
@@ -74,30 +64,16 @@ struct AddEditWorkOrderView: View {
                                         .frame(width: 54, height: 54)
                                         .background(Color.blue.opacity(0.1))
                                         .cornerRadius(12)
-                                        .padding(.top, 10)
                                     
-                                    VStack(spacing: 0) {
-                                        // Expanded hit area for VIN
+                                    VStack(spacing: 12) {
                                         TextField("VIN", text: $vin)
                                             .font(.subheadline)
-                                            .padding(.vertical, 12)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                        
                                         Divider()
-                                        
-                                        // Expanded hit area for Fleet ID
                                         TextField("Fleet ID", text: $fleetId)
                                             .font(.subheadline)
-                                            .padding(.vertical, 12)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                        
                                         Divider()
-                                        
-                                        // Expanded hit area for Vehicle Name
                                         TextField("Vehicle Name", text: $vehicleName)
                                             .font(.subheadline)
-                                            .padding(.vertical, 12)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
                                     }
                                 }
                                 
@@ -116,7 +92,6 @@ struct AddEditWorkOrderView: View {
                                     .pickerStyle(.menu)
                                     .tint(.primary)
                                 }
-                                .padding(.vertical, 8)
                             }
                         }
                     }
@@ -126,18 +101,14 @@ struct AddEditWorkOrderView: View {
                         SectionHeaderView(title: "ISSUE SUMMARY")
                         
                         CardView {
-                            VStack(spacing: 0) {
+                            VStack(spacing: 12) {
                                 TextField("Short Description (e.g. Engine noise)", text: $issueTitle)
                                     .font(.subheadline)
-                                    .padding(.vertical, 12)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
                                 
                                 Divider()
                                 
                                 TextField("Detailed symptoms or notes...", text: $issueDescription, axis: .vertical)
                                     .font(.subheadline)
-                                    .padding(.vertical, 12)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
                                     .lineLimit(3...6)
                             }
                         }
@@ -148,7 +119,7 @@ struct AddEditWorkOrderView: View {
                         SectionHeaderView(title: "TASK CHECKLIST")
                         
                         CardView {
-                            VStack(alignment: .leading, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 16) {
                                 // Render added tasks
                                 ForEach(tasks, id: \.self) { task in
                                     HStack {
@@ -165,7 +136,6 @@ struct AddEditWorkOrderView: View {
                                                 .foregroundColor(.red.opacity(0.8))
                                         }
                                     }
-                                    .padding(.vertical, 8)
                                     Divider()
                                 }
                                 
@@ -176,8 +146,6 @@ struct AddEditWorkOrderView: View {
                                     
                                     TextField("Add Task...", text: $newTaskName)
                                         .font(.subheadline)
-                                        .padding(.vertical, 12)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
                                         .onSubmit {
                                             guard !newTaskName.isEmpty else { return }
                                             tasks.append(newTaskName)
@@ -193,7 +161,7 @@ struct AddEditWorkOrderView: View {
                         SectionHeaderView(title: "PARTS REQUIRED")
                         
                         CardView {
-                            VStack(alignment: .leading, spacing: 8) {
+                            VStack(alignment: .leading, spacing: 16) {
                                 // Render added parts
                                 ForEach($parts) { $part in
                                     HStack {
@@ -237,7 +205,6 @@ struct AddEditWorkOrderView: View {
                                         }
                                         .padding(.leading, 8)
                                     }
-                                    .padding(.vertical, 8)
                                     Divider()
                                 }
                                 
@@ -248,8 +215,6 @@ struct AddEditWorkOrderView: View {
                                     
                                     TextField("Add Part Name or SKU...", text: $newPartName)
                                         .font(.subheadline)
-                                        .padding(.vertical, 12)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
                                         .onSubmit {
                                             guard !newPartName.isEmpty else { return }
                                             parts.append(PartSelectionUI(inventoryId: UUID(), name: newPartName, quantity: 1))
@@ -324,7 +289,6 @@ struct AddEditWorkOrderView: View {
                                 .pickerStyle(.menu)
                                 .tint(.primary)
                             }
-                            .padding(.vertical, 4)
                         }
                     }
                     
@@ -335,8 +299,6 @@ struct AddEditWorkOrderView: View {
                         CardView {
                             TextField("Additional details only visible to mechanics...", text: $internalNotes, axis: .vertical)
                                 .font(.subheadline)
-                            // Added minHeight so the entire empty box is tappable
-                                .frame(maxWidth: .infinity, minHeight: 80, alignment: .topLeading)
                                 .lineLimit(4...8)
                         }
                     }
@@ -366,20 +328,48 @@ struct AddEditWorkOrderView: View {
                 }
                 .padding(.horizontal)
                 .padding(.top, 20)
-                
-                // This makes sure the VStack takes up the whole width,
-                // and any empty space inside the ScrollView routes to hideKeyboard.
-                .frame(maxWidth: .infinity)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    hideKeyboard()
-                }
             }
-            .scrollDismissesKeyboard(.interactively)
         }
         .navigationTitle("New Work Order")
         .navigationBarTitleDisplayMode(.inline)
-        // I have removed the '.toolbar' block here so there is no Done button anymore!
+        .scrollDismissesKeyboard(.interactively)
+        
+        .toolbar {
+            
+            // Leading Cancel Button (nice UX addition)
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button("Cancel") {
+                    dismiss()
+                }
+                .disabled(isSaving)
+            }
+            
+            // Trailing Save Button
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    saveWorkOrderToSupabase()
+                } label: {
+                    if isSaving {
+                        ProgressView()
+                    } else {
+                        Text("Save")
+                            .fontWeight(.semibold)
+                    }
+                }
+                .disabled(isSaving)
+            }
+        }
+        
+        // MARK: - Keyboard Done Toolbar
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer() // Pushes the Done button to the right side
+                Button("Done") {
+                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                }
+                .fontWeight(.bold)
+            }
+        }
     }
     
     // MARK: - ViewModel Saving Logic
@@ -446,6 +436,7 @@ struct AddEditWorkOrderView: View {
         }
     }
 }
+
 
 #Preview {
     NavigationStack {

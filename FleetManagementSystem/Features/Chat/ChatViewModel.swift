@@ -61,12 +61,12 @@ class ChatViewModel: ObservableObject {
                 .execute()
                 .value
 
-            var rooms = participants.map { $0.chatRoom }
+            let rooms = participants.map { $0.chatRoom }
             
             // 2. Fetch last message for each room to determine visibility and preview
             let fortyEightHoursAgo = Calendar.current.date(byAdding: .hour, value: -48, to: Date()) ?? Date()
             let isoFormatter = ISO8601DateFormatter()
-            let dateString = isoFormatter.string(from: fortyEightHoursAgo)
+            _ = isoFormatter.string(from: fortyEightHoursAgo)
             
             var filteredRooms: [ChatRoom] = []
             
