@@ -30,15 +30,18 @@ class ChatViewModel: ObservableObject {
         defer { isLoading = false }
         
         do {
+            print("Fetching users...")
             let fetchedUsers: [AppUser] = try await supabase
                 .from("users")
                 .select()
-                .neq("id", value: currentUserId)
+                .neq("user_id", value: currentUserId)
                 .execute()
                 .value
             
             self.users = fetchedUsers
             self.applyFilter()
+            
+            print("Fetched users count:", fetchedUsers.count)
         } catch {
             print("Error fetching users: \(error)")
         }
@@ -50,6 +53,7 @@ class ChatViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
+            // 1. Fetch participants and rooms
             let participants: [ChatParticipantWithRoom] = try await supabase
                 .from("chat_participants")
                 .select("chat_rooms(*)")
@@ -57,7 +61,43 @@ class ChatViewModel: ObservableObject {
                 .execute()
                 .value
 
-            self.chats = participants.map { $0.chatRoom }
+            var rooms = participants.map { $0.chatRoom }
+            
+            // 2. Fetch last message for each room to determine visibility and preview
+            let fortyEightHoursAgo = Calendar.current.date(byAdding: .hour, value: -48, to: Date()) ?? Date()
+            let isoFormatter = ISO8601DateFormatter()
+            let dateString = isoFormatter.string(from: fortyEightHoursAgo)
+            
+            var filteredRooms: [ChatRoom] = []
+            
+            for var room in rooms {
+                // Fetch the absolute latest message
+                let lastMessages: [ChatMessage] = try await supabase
+                    .from("chat_messages")
+                    .select()
+                    .eq("chat_room_id", value: room.id)
+                    .order("created_at", ascending: false)
+                    .limit(1)
+                    .execute()
+                    .value
+                
+                if let lastMsg = lastMessages.first {
+                    // Check if the message is within 48h
+                    if let createdAt = lastMsg.createdAt, createdAt > fortyEightHoursAgo {
+                        room.updatedAt = createdAt // Use message time for sorting
+                        room.lastMessage = lastMsg.content
+                        filteredRooms.append(room)
+                    }
+                } else {
+                    // Room with no messages - show only if created recently (last 48h)
+                    if let roomCreated = room.createdAt, roomCreated > fortyEightHoursAgo {
+                        room.lastMessage = "No messages yet"
+                        filteredRooms.append(room)
+                    }
+                }
+            }
+
+            self.chats = filteredRooms.sorted { ($0.updatedAt ?? Date.distantPast) > ($1.updatedAt ?? Date.distantPast) }
 
         } catch {
             print("Error fetching chat rooms:", error)
@@ -134,37 +174,69 @@ class ChatViewModel: ObservableObject {
     // MARK: - Chat Room Creation / Fetching
     func getOrCreateChatRoom(currentUserId: UUID, otherUserId: UUID) async -> ChatRoom? {
         do {
-            // Check if direct chat already exists between these two
-            // This usually requires a complex query or a specific schema.
-            // For simplicity, we check participants.
+            // 1. Fetch all room IDs where the current user is a participant
+            let myParticipants: [ChatParticipant] = try await supabase
+                .from("chat_participants")
+                .select("chat_room_id")
+                .eq("user_id", value: currentUserId)
+                .execute()
+                .value
             
-            let query = """
-            select chat_room_id from chat_participants 
-            where user_id in ('\(currentUserId.uuidString)', '\(otherUserId.uuidString)')
-            group by chat_room_id
-            having count(chat_room_id) = 2
-            """
+            let myRoomIds = myParticipants.map { $0.chatRoomId }
             
-            // Note: Direct SQL might be better via RPC, but let's try a simpler approach
-            // or assume we create a new one if not found in local 'chats' cache for simplicity.
+            // 2. Check if any of these rooms also have the other user
+            if !myRoomIds.isEmpty {
+                let existingParticipants: [ChatParticipant] = try await supabase
+                    .from("chat_participants")
+                    .select("*, chat_rooms!inner(*)")
+                    .in("chat_room_id", values: myRoomIds)
+                    .eq("user_id", value: otherUserId)
+                    .eq("chat_rooms.type", value: ChatRoomType.direct.rawValue)
+                    .execute()
+                    .value
+                
+                if let firstMatch = existingParticipants.first {
+                    // Find the room object again to ensure we have it (already fetched with !inner)
+                    // But for mapping simplicity, let's just fetch it once more or extract it
+                    let room: ChatRoom = try await supabase
+                        .from("chat_rooms")
+                        .select()
+                        .eq("id", value: firstMatch.chatRoomId)
+                        .single()
+                        .execute()
+                        .value
+                    return room
+                }
+            }
             
-            // Creating a new room
+            // 3. If no room exists, create a new one
             let newRoomId = UUID()
-            let newRoom: [String: AnyJSON] = [
-                "id": .string(newRoomId.uuidString),
-                "type": .string("Direct")
+            let newRoom = ChatRoom(
+                id: newRoomId,
+                type: .direct,
+                name: nil, // Direct chats use participant names in UI
+                workOrderId: nil,
+                createdAt: Date(),
+                updatedAt: Date()
+            )
+            
+            _ = try await supabase
+                .from("chat_rooms")
+                .insert(newRoom)
+                .execute()
+            
+            // 4. Add participants
+            let participants: [ChatParticipant] = [
+                ChatParticipant(chatRoomId: newRoomId, userId: currentUserId, joinedAt: Date(), lastReadAt: Date()),
+                ChatParticipant(chatRoomId: newRoomId, userId: otherUserId, joinedAt: Date(), lastReadAt: Date())
             ]
             
-            _ = try await supabase.from("chat_rooms").insert(newRoom).execute()
+            _ = try await supabase
+                .from("chat_participants")
+                .insert(participants)
+                .execute()
             
-            let participants: [[String: AnyJSON]] = [
-                ["chat_room_id": .string(newRoomId.uuidString), "user_id": .string(currentUserId.uuidString)],
-                ["chat_room_id": .string(newRoomId.uuidString), "user_id": .string(otherUserId.uuidString)]
-            ]
-            
-            _ = try await supabase.from("chat_participants").insert(participants).execute()
-            
-            return ChatRoom(id: newRoomId, type: .direct, name: nil, workOrderId: nil, createdAt: Date(), updatedAt: Date())
+            return newRoom
             
         } catch {
             print("Error in getOrCreateChatRoom: \(error)")

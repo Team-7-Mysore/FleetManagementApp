@@ -16,7 +16,7 @@ struct AppUser: Identifiable, Codable {
     var avatarUrl: String?
     
     enum CodingKeys: String, CodingKey {
-        case id
+        case id = "user_id"
         case name
         case email
         case role
@@ -163,13 +163,14 @@ struct WorkOrderPart: Codable {
 }
 
 // MARK: - 5. Chat Room
-struct ChatRoom: Identifiable, Codable {
+struct ChatRoom: Identifiable, Codable, Hashable {
     let id: UUID
     var type: ChatRoomType
     var name: String?            // Optional: Name for group chats (e.g., "Mechanics Team")
     var workOrderId: UUID?       // Optional: Links the chat directly to a Work Order
     let createdAt: Date?
     var updatedAt: Date?         // Useful for sorting the inbox by "most recently active"
+    var lastMessage: String?     // Local property for inbox preview
     
     enum CodingKeys: String, CodingKey {
         case id

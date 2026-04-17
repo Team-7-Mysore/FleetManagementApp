@@ -2,39 +2,27 @@ import SwiftUI
 
 struct ChatListView: View {
     @StateObject private var viewModel = ChatViewModel()
-    @State private var showingSearch = false
+    @State private var navigationPath = NavigationPath()
+    @State private var isShowingNewChat = false
+    @State private var accent = Color(hex: "#A3352A")
     
     // Placeholder current user ID
     let currentUserId = UUID(uuidString: "00000000-0000-0000-0000-000000000000")! 
     
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             ZStack(alignment: .bottom) {
                 VStack(spacing: 0) {
                     // Chat List
                     List {
-                        // We can show recent chats or users based on filter
-                        if viewModel.chats.isEmpty && viewModel.filteredUsers.isEmpty && !viewModel.isLoading {
+                        if viewModel.chats.isEmpty && !viewModel.isLoading {
                             ContentUnavailableView("No Messages", systemImage: "bubble.left.and.bubble.right", description: Text("Start a conversation with your team."))
+                                .listRowSeparator(.hidden)
                         } else {
-                            // If searching/filtering, show users list to start new chat
-                            if !viewModel.searchText.isEmpty || viewModel.selectedRoleFilter != "All" {
-                                Section("Team Members") {
-                                    ForEach(viewModel.filteredUsers) { user in
-                                        ContactRow(user: user) {
-                                            startChat(with: user)
-                                        }
-                                    }
-                                }
-                            } else {
-                                // Default inbox view
-                                Section {
-                                    ForEach(viewModel.chats) { chat in
-                                        NavigationLink {
-                                            DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel)
-                                        } label: {
-                                            ChatInboxRow(chat: chat)
-                                        }
+                            Section {
+                                ForEach(viewModel.chats) { chat in
+                                    NavigationLink(value: chat) {
+                                        ChatInboxRow(chat: chat)
                                     }
                                 }
                             }
@@ -49,9 +37,27 @@ struct ChatListView: View {
                     .padding(.horizontal, 20)
             }
             .navigationTitle("Chat")
+            .navigationDestination(for: ChatRoom.self) { chat in
+                DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel)
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    filterMenu
+                    HStack(spacing: 16) {
+                        filterMenu
+                        
+                        Button {
+                            isShowingNewChat = true
+                        } label: {
+                            Image(systemName: "square.and.pencil")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(accent)
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $isShowingNewChat) {
+                NewChatView(viewModel: viewModel, currentUserId: currentUserId) { room in
+                    navigationPath.append(room)
                 }
             }
             .task {
@@ -108,43 +114,56 @@ struct ChatListView: View {
 
 struct ChatInboxRow: View {
     let chat: ChatRoom
+    let accent = Color(hex: "#A3352A")
     
     var body: some View {
         HStack(spacing: 12) {
             // Unread indicator (dot)
             Circle()
-                .fill(chat.updatedAt != nil ? (Color(hex: "#A3352A")) : .clear) // Simple unread logic
+                .fill(chat.updatedAt != nil ? accent : .clear) // Simple unread logic
                 .frame(width: 10, height: 10)
             
             // Avatar
-            Circle()
-                .fill(Color(.systemGray6))
-                .frame(width: 50, height: 50)
-                .overlay {
-                    Text(chat.name?.prefix(1).uppercased() ?? "C")
-                        .foregroundColor((Color(hex: "#A3352A")))
-                        .fontWeight(.bold)
-                }
+            ZStack {
+                Circle()
+                    .fill(Color(.systemGray6))
+                    .frame(width: 55, height: 55)
+                
+                Text(chat.name?.prefix(1).uppercased() ?? "C")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                    .foregroundColor(accent)
+            }
             
             VStack(alignment: .leading, spacing: 4) {
-                HStack {
+                HStack(alignment: .top) {
                     Text(chat.name ?? "Direct Chat")
                         .font(.headline)
+                        .foregroundColor(.primary)
+                    
                     Spacer()
+                    
                     if let date = chat.updatedAt {
-                        Text(date, style: .time)
+                        Text(formatDate(date))
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
                 }
                 
-                Text(chat.type.rawValue)
+                Text(chat.lastMessage ?? "Tap to start messaging...")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .padding(.trailing, 20)
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 10)
+    }
+    
+    private func formatDate(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 }
 
