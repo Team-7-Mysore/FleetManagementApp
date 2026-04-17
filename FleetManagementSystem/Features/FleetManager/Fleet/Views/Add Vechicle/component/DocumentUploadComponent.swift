@@ -13,8 +13,11 @@ struct DocumentUploadComponent: View {
             Spacer()
             
             if isUploaded {
-                Image(systemName: "doc.fill")
-                    .foregroundColor(.secondary)
+                HStack(spacing: 4) {
+                    Text("Replace")
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                }
+                .foregroundColor(.blue)
             } else {
                 HStack(spacing: 4) {
                     Text("Upload")

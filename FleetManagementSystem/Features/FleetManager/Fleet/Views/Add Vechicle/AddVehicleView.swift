@@ -4,6 +4,7 @@ import SwiftUI
 
 struct AddVehicleView: View {
     @State private var navigateToStep2 = false
+    @State private var showImagePicker = false
     @StateObject var vm = AddVehicleViewModel()
     @Environment(\.dismiss) var dismiss
     
@@ -12,6 +13,7 @@ struct AddVehicleView: View {
             VStack(spacing: 20) {
                 // By calling these variables, the compiler only has to
                 // check one "expression" at a time.
+                imageUploadSection
                 vehicleInfoSection
                 manufacturerSection
                 identificationSection
@@ -39,9 +41,49 @@ struct AddVehicleView: View {
         )) { wrapper in
             Alert(title: Text("Error"), message: Text(wrapper.message))
         }
+        .sheet(isPresented: $showImagePicker) {
+            ImagePicker { image in
+                vm.localVehicleImage = image
+                Task {
+                    await vm.uploadImage(image: image, type: "VEHICLE")
+                }
+            }
+        }
     }
     
     // MARK: - Sub-Views
+    
+    private var imageUploadSection: some View {
+        VStack {
+            Button {
+                showImagePicker = true
+            } label: {
+                if let image = vm.localVehicleImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 120, height: 120)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.TechBlue, lineWidth: 2))
+                } else {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color(.systemGray5))
+                            .frame(width: 120, height: 120)
+                        
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 34))
+                            .foregroundColor(.gray)
+                    }
+                }
+            }
+            .padding(.top, 10)
+            
+            Text("Upload Vehicle Image")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
     
     private var vehicleInfoSection: some View {
         FormCard(title: "Vehicle Info", icon: "car.fill") {

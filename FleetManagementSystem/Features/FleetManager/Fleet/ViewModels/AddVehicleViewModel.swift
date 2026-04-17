@@ -24,6 +24,8 @@ class AddVehicleViewModel: ObservableObject {
     @Published var insuranceURL: String?
     @Published var pucURL: String?
     
+    @Published var vehicleImageURL: String?
+    @Published var localVehicleImage: UIImage?
     
     func validate() -> String? {
         
@@ -60,12 +62,15 @@ class AddVehicleViewModel: ObservableObject {
 
 extension AddVehicleViewModel {
     func uploadImage(image: UIImage, type: String) async {
-        
+        // Convert image to data
         guard let data = image.jpegData(compressionQuality: 0.7) else { return }
         
         let fileName = UUID().uuidString + ".jpg"
         
-        let storageURL = "\(SUPABASE_URL)/storage/v1/object/vehicle-documents/\(fileName)"
+        let bucketName = (type == "VEHICLE") ? "vehicle-images" : "vehicle-documents"
+        
+        
+        let storageURL = "\(SUPABASE_URL)/storage/v1/object/\(bucketName)/\(fileName)"
         
         guard let url = URL(string: storageURL) else { return }
         
@@ -75,10 +80,13 @@ extension AddVehicleViewModel {
         request.addValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
         
         do {
+            
             _ = try await URLSession.shared.upload(for: request, from: data)
             
-            let publicURL = "\(SUPABASE_URL)/storage/v1/object/public/vehicle-documents/\(fileName)"
             
+            let publicURL = "\(SUPABASE_URL)/storage/v1/object/public/\(bucketName)/\(fileName)"
+            
+         
             DispatchQueue.main.async {
                 switch type {
                 case "RC":
@@ -87,13 +95,15 @@ extension AddVehicleViewModel {
                     self.insuranceURL = publicURL
                 case "PUC":
                     self.pucURL = publicURL
+                case "VEHICLE":
+                    self.vehicleImageURL = publicURL
                 default:
                     break
                 }
             }
             
         } catch {
-            print("Upload failed:", error)
+            print("Upload failed for \(type):", error)
         }
     }
     
@@ -176,6 +186,7 @@ extension AddVehicleViewModel {
         ].compactMap { $0 }
         
         let payload: [String: Any] = [
+            "image_url": vehicleImageURL ?? "",
             "vehicleName": vehicleName,
             "registrationNumber": registrationNumber, // Maps to number_plate in DB
             "vin": vin.uppercased(),
