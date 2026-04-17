@@ -102,17 +102,7 @@ struct AddVehicleStep2View: View {
                 }
             }
         }
-        .alert(item: Binding(
-            get: {
-                vm.errorMessage.map { ErrorWrapper(message: $0) }
-            },
-            set: { _ in vm.errorMessage = nil }
-        )) { wrapper in
-            Alert(
-                title: Text("Error"),
-                message: Text(wrapper.message)
-            )
-        }
+
         .onChange(of: vm.isSuccess) { success in
             if success {
                 dismiss()
@@ -126,6 +116,6 @@ struct AddVehicleStep2View: View {
     AddVehicleStep2View(vm: AddVehicleViewModel())
     }
 struct ErrorWrapper: Identifiable {
-    let id = UUID()
+    var id: String { message }
     let message: String
 }
