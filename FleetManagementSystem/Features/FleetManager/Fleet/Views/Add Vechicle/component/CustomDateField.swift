@@ -9,26 +9,18 @@ import SwiftUI
 struct CustomDateField: View {
     
     let title: String
-    
+    @Binding var date: Date
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             
             Text(title)
                 .font(.caption2)
-                .foregroundColor(.gray)
+                .foregroundColor(Color(.systemGray))
             
-            HStack {
-                Text("dd/mm/yyyy")
-                    .foregroundColor(.gray)
-                
-                Spacer()
-                
-                Image(systemName: "calendar")
-                    .foregroundColor(.gray)
-            }
-            .padding()
-            .background(Color.gray.opacity(0.1))
-            .cornerRadius(10)
+            DatePicker("", selection: $date, displayedComponents: .date)
+                .labelsHidden()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 2)
         }
     }
 }

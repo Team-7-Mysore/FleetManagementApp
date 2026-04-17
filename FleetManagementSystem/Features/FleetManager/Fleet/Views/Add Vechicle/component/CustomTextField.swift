@@ -10,18 +10,16 @@ struct CustomTextField: View {
     
     let title: String
     let placeholder: String
-    
+    @Binding var text: String
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             
             Text(title)
                 .font(.caption2)
-                .foregroundColor(.gray)
+                .foregroundColor(Color(.systemGray))
             
-            TextField(placeholder, text: .constant(""))
-                .padding()
-                .background(Color.gray.opacity(0.1))
-                .cornerRadius(10)
+            TextField(placeholder, text: $text)
+                .textFieldStyle(.roundedBorder)
         }
     }
 }
