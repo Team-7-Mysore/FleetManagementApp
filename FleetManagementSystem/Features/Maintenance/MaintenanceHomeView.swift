@@ -14,7 +14,7 @@ struct MaintenanceHomeView: View {
                     Label("Inventory", systemImage: "cube.box")
                 }
             
-            ChatView()
+            ChatListView()
                 .tabItem {
                     Label("Chat", systemImage: "message")
                 }

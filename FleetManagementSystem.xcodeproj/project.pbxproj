@@ -13,6 +13,7 @@
 		186BD06A2F90B98F00896A45 /* Functions in Frameworks */ = {isa = PBXBuildFile; productRef = 186BD0692F90B98F00896A45 /* Functions */; };
 		186BD06C2F90B99200896A45 /* PostgREST in Frameworks */ = {isa = PBXBuildFile; productRef = 186BD06B2F90B99200896A45 /* PostgREST */; };
 		186BD06E2F90B99500896A45 /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = 186BD06D2F90B99500896A45 /* Realtime */; };
+		2376FD3E2F92262B007EA359 /* MessageKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2376FD3D2F92262B007EA359 /* MessageKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -57,6 +58,7 @@
 				186BD0682F90B98B00896A45 /* Storage in Frameworks */,
 				186BD0662F90B98800896A45 /* Auth in Frameworks */,
 				186BD06A2F90B98F00896A45 /* Functions in Frameworks */,
+				2376FD3E2F92262B007EA359 /* MessageKit in Frameworks */,
 				186BD06E2F90B99500896A45 /* Realtime in Frameworks */,
 				186BD0642F90B98200896A45 /* Supabase in Frameworks */,
 				186BD06C2F90B99200896A45 /* PostgREST in Frameworks */,
@@ -116,6 +118,7 @@
 				186BD0692F90B98F00896A45 /* Functions */,
 				186BD06B2F90B99200896A45 /* PostgREST */,
 				186BD06D2F90B99500896A45 /* Realtime */,
+				2376FD3D2F92262B007EA359 /* MessageKit */,
 			);
 			productName = FleetManagementSystem;
 			productReference = 84A866B72F8F44E700546587 /* FleetManagementSystem.app */;
@@ -147,6 +150,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				186BD05D2F90B1A000896A45 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				2376FD3C2F92262B007EA359 /* XCRemoteSwiftPackageReference "MessageKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 84A866B82F8F44E700546587 /* Products */;
@@ -396,6 +400,14 @@
 				minimumVersion = 2.5.1;
 			};
 		};
+		2376FD3C2F92262B007EA359 /* XCRemoteSwiftPackageReference "MessageKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/MessageKit/MessageKit.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.0.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -428,6 +440,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 186BD05D2F90B1A000896A45 /* XCRemoteSwiftPackageReference "supabase-swift" */;
 			productName = Realtime;
+		};
+		2376FD3D2F92262B007EA359 /* MessageKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2376FD3C2F92262B007EA359 /* XCRemoteSwiftPackageReference "MessageKit" */;
+			productName = MessageKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
