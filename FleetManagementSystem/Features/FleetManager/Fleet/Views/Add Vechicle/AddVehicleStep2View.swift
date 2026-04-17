@@ -1,11 +1,16 @@
 import SwiftUI
 
 struct AddVehicleStep2View: View {
+    @ObservedObject var fleetVM: FleetListViewModel
+    @State private var showSourcePicker = false
+    @State private var showDocumentPicker = false
+    @State private var showImagePicker = false
     @Environment(\.dismiss) var dismiss
     @ObservedObject var vm: AddVehicleViewModel
-    @State private var showPicker = false
+
     @State private var selectedType: String = ""
     var body: some View {
+
         ScrollView {
             VStack(spacing: 20) {
                 
@@ -36,34 +41,38 @@ struct AddVehicleStep2View: View {
                 
                 VStack(spacing: 24) {
                     
+
                     DocumentUploadComponent(
-                        title: "RC DOCUMENT",
+                        title: "RC Document",
                         isUploaded: vm.rcURL != nil,
                         fileName: vm.rcURL
                     )
-                    .onTapGesture {
-                        selectedType = "RC"
-                        showPicker = true
-                    }
-                    
+                }
+                .buttonStyle(.plain)
+                
+                Button(action: {
+                    selectedType = "INSURANCE"
+                    showSourcePicker = true
+                }) {
                     DocumentUploadComponent(
-                        title: "INSURANCE DOCUMENT",
+                        title: "Insurance Document",
                         isUploaded: vm.insuranceURL != nil,
                         fileName: vm.insuranceURL
-                    ).onTapGesture {
-                        selectedType = "INSURANCE"
-                        showPicker = true
-                    }
-                    
+                    )
+                }
+                .buttonStyle(.plain)
+                
+                Button(action: {
+                    selectedType = "PUC"
+                    showSourcePicker = true
+                }) {
                     DocumentUploadComponent(
-                        title: "PUC CERTIFICATE (OPTIONAL)",
+                        title: "PUC Certificate (Optional)",
                         isUploaded: vm.pucURL != nil,
                         fileName: vm.pucURL
-                    ).onTapGesture {
-                        selectedType = "PUC"
-                        showPicker = true
-                    }
+                    )
                 }
+
                 .padding()
                 .background(Color.white)
                 .cornerRadius(20)
@@ -88,38 +97,87 @@ struct AddVehicleStep2View: View {
                 .padding(.top, 10)
                 
                 Spacer(minLength: 40)
+
             }
-        }
-        .background(Color(.systemGray6))
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                Text("Add Vehicle")
-                    .font(.headline)
-            }
-            ToolbarItem(placement: .navigationBarLeading) {
+            
+            Section {
                 Button(action: {
                     Task {
-                            await vm.saveVehicle()
-                        }
+                        await vm.saveVehicle()
+                    }
+                }) {
+                    Text("Save Vehicle")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                }
+                .listRowBackground(Color.TechBlue)
+                .foregroundColor(.white)
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("Add Vehicle")
+        .navigationBarTitleDisplayMode(.large)
+        .navigationBarBackButtonHidden(true)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: {
+                    dismiss()
                 }) {
                     Image(systemName: "chevron.left")
                         .foregroundColor(Color(.label))
                 }
             }
         }
-        .sheet(isPresented: $showPicker) {
-        DocumentPicker { url in
-            Task {
-                await vm.uploadFile(fileURL: url, type: selectedType)
+        .confirmationDialog("Select Source", isPresented: $showSourcePicker) {
+            
+            Button("Choose File") {
+                showDocumentPicker = true
+            }
+            
+            Button("Choose Photo") {
+                showImagePicker = true
+            }
+            
+            Button("Cancel", role: .cancel) { }
+        }
+        .sheet(isPresented: $showDocumentPicker) {
+            DocumentPicker { url in
+                Task {
+                    await vm.uploadFile(fileURL: url, type: selectedType)
+                }
             }
         }
-    }
+        .sheet(isPresented: $showImagePicker) {
+            ImagePicker { image in
+                Task {
+                    await vm.uploadImage(image: image, type: selectedType)
+                }
+            }
+        }
+
+        .onChange(of: vm.isSuccess) { success in
+            if success {
+                Task {
+                    await fleetVM.fetchVehicles()   // 🔥 refresh first
+                    
+                    // then go back
+                    dismiss()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        dismiss()
+                    }
+                }
+            }
+        }
     }
        
 }
 
 #Preview {
-    AddVehicleStep2View(vm: AddVehicleViewModel())
+    AddVehicleStep2View(
+        fleetVM: FleetListViewModel(), vm: AddVehicleViewModel()
+      )
     }
+struct ErrorWrapper: Identifiable {
+    var id: String { message }
+    let message: String
+}

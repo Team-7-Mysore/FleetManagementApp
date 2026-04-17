@@ -1,14 +1,26 @@
+
+
 import SwiftUI
 
 struct AddVehicleView: View {
+    @ObservedObject var fleetVM: FleetListViewModel
+    @State private var navigateToStep2 = false
+    @State private var showImagePicker = false
     @StateObject var vm = AddVehicleViewModel()
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
-       
         ScrollView {
             VStack(spacing: 20) {
+                // By calling these variables, the compiler only has to
+                // check one "expression" at a time.
+                imageUploadSection
+                vehicleInfoSection
+                manufacturerSection
+                identificationSection
+                validitySection
                 
+
              
                 VStack(spacing: 8) {
 
@@ -108,6 +120,7 @@ struct AddVehicleView: View {
                         .cornerRadius(25)
                 }
                 .padding()
+
             }
         }
         .background(Color(.systemGray6))
@@ -115,58 +128,147 @@ struct AddVehicleView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                Text("Add Vehicle")
-                    .font(.headline)
+                Text("Add Vehicle").font(.headline)
             }
             ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: {
-                    dismiss()
-                }) {
-                    Image(systemName: "chevron.left")
-                        .foregroundColor(Color(.label))
+                Button(action: { dismiss() }) {
+                    Image(systemName: "chevron.left").foregroundColor(Color(.label))
                 }
             }
         }
-      
-    }
-}
-extension AddVehicleViewModel {
-    
-    func saveVehicle() async {
-        
-        guard let url = URL(string: "\(SUPABASE_URL)/functions/v1/create-vehicle-with-documents") else {
-            return
+        .alert(item: Binding(
+            get: { vm.errorMessage.map { ErrorWrapper(message: $0) } },
+            set: { _ in vm.errorMessage = nil }
+        )) { wrapper in
+            Alert(title: Text("Error"), message: Text(wrapper.message))
         }
-        
-        let payload: [String: Any] = [
-            "vehicleName": vehicleName,
-            "registrationNumber": registrationNumber,
-            "vehicleType": vehicleType,
-            "fuelType": fuelType,
-            "manufacturer": manufacturer,
-            "model": model,
-            "registrationDate": ISO8601DateFormatter().string(from: registrationDate),
-            "pucExpiry": ISO8601DateFormatter().string(from: pucExpiry),
-            "rcExpiry": ISO8601DateFormatter().string(from: rcExpiry),
-            "documents": [
-                ["type": "RC", "url": rcURL ?? ""],
-                ["type": "INSURANCE", "url": insuranceURL ?? ""],
-                ["type": "PUC", "url": pucURL ?? ""]
-            ]
-        ]
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
-        request.addValue("Content-Type", forHTTPHeaderField: "application/json")
-        
-        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
-        
-        do {
-            let (_, response) = try await URLSession.shared.data(for: request)
-            print("Saved:", response)
-        } catch {
-            print("Error saving vehicle:", error)
+        .sheet(isPresented: $showImagePicker) {
+            ImagePicker { image in
+                vm.localVehicleImage = image
+                Task {
+                    await vm.uploadImage(image: image, type: "VEHICLE")
+                }
+            }
+        }
+    }
+    
+    // MARK: - Sub-Views
+    
+    private var imageUploadSection: some View {
+        VStack {
+            Button {
+                showImagePicker = true
+            } label: {
+                if let image = vm.localVehicleImage {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 120, height: 120)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.TechBlue, lineWidth: 2))
+                } else {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color(.systemGray5))
+                            .frame(width: 120, height: 120)
+                        
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 34))
+                            .foregroundColor(.gray)
+                    }
+                }
+            }
+            .padding(.top, 10)
+            
+            Text("Upload Vehicle Image")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+    
+    private var vehicleInfoSection: some View {
+        FormCard(title: "Vehicle Info", icon: "car.fill") {
+            CustomTextField(title: "VEHICLE NAME", placeholder: "e.g. Silver Ghost V8", text: $vm.vehicleName)
+            CustomTextField(
+                title: "REGISTRATION NUMBER",
+                placeholder: "KA01AB1234",
+                text: Binding(
+                    get: { vm.registrationNumber },
+                    set: { vm.registrationNumber = vm.formatPlate($0) }
+                )
+            )
+            HStack(spacing: 16) {
+                CustomDropdown(title: "VEHICLE TYPE", options: ["Truck", "Car", "Bike"], selection: $vm.vehicleType)
+                CustomDropdown(title: "FUEL TYPE", options: ["Diesel", "Petrol", "Electric"], selection: $vm.fuelType)
+            }
+        }
+    }
+    
+    private var manufacturerSection: some View {
+        // Consolidating the two "Basic Details" cards into one
+        FormCard(title: "Manufacturer & Brand", icon: "gearshape.fill") {
+            HStack {
+                CustomTextField(title: "BRAND", placeholder: "e.g. Toyota", text: $vm.brand)
+                CustomTextField(title: "MANUFACTURER", placeholder: "Rolls Royce Heritage", text: $vm.manufacturer)
+            }
+            HStack {
+                CustomTextField(title: "MODEL", placeholder: "Phantom Edition", text: $vm.model)
+                CustomTextField(title: "MODEL YEAR", placeholder: "2024", text: $vm.modelYear)
+                    .keyboardType(.numberPad)
+            }
+            CustomDateField(title: "REGISTRATION DATE", date: $vm.registrationDate)
+        }
+    }
+    
+    private var identificationSection: some View {
+        // This is where the VIN (17-digit number) lives
+        FormCard(title: "Vehicle Identification", icon: "barcode.viewfinder") {
+            CustomTextField(
+                title: "VIN (VEHICLE ID NUMBER)",
+                placeholder: "17-digit number",
+                text: $vm.vin
+            )
+        }
+    }
+    
+    private var validitySection: some View {
+        FormCard(title: "Validity", icon: "shield.fill") {
+            HStack(spacing: 16) {
+                CustomDateField(title: "PUC EXPIRY DATE", date: $vm.pucExpiry)
+                CustomDateField(title: "RC EXPIRY DATE", date: $vm.rcExpiry)
+            }
+        }
+    }
+    
+    private var navigationAndActionButtons: some View {
+        VStack {
+            NavigationLink(
+                destination: AddVehicleStep2View(fleetVM: fleetVM, vm: vm),
+                isActive: $navigateToStep2
+            ) {
+                EmptyView()
+            }
+            
+            Button {
+                if let error = vm.validateStep1() {
+                    vm.errorMessage = error
+                } else {
+                    navigateToStep2 = true
+                }
+            } label: {
+                Text("Next Step →")
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(Color.TechBlue)
+                    .cornerRadius(25)
+            }
+            .padding()
+        }
+        .onChange(of: vm.isSuccess) { success in
+            if success {
+                dismiss()
+            }
         }
     }
 }

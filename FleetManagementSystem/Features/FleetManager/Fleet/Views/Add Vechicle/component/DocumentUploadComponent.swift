@@ -6,13 +6,14 @@ struct DocumentUploadComponent: View {
     var fileName: String? = nil
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.caption)
-                .fontWeight(.bold)
-                .foregroundColor(Color(.systemGray))
+        HStack {
+            Text(title.capitalized)
+                .foregroundColor(.primary)
+            
+            Spacer()
             
             if isUploaded {
+
                 // Uploaded State
                 HStack(spacing: 12) {
                     ZStack {
@@ -51,35 +52,18 @@ struct DocumentUploadComponent: View {
                             .cornerRadius(6)
                             .shadow(color: .black.opacity(0.05), radius: 2)
                     }
+
                 }
-                .padding(12)
-                .background(Color.white)
-                .cornerRadius(12)
+                .foregroundColor(.blue)
             } else {
-                // Empty State
-                VStack(spacing: 8) {
-                    ZStack {
-                        Circle()
-                            .fill(Color.white)
-                            .frame(width: 40, height: 40)
-                            .shadow(color: .black.opacity(0.05), radius: 2, y: 1)
-                        Image(systemName: "arrow.up.circle")
-                            .foregroundColor(Color(.systemGray))
-                    }
-                    
-                    Text("Tap to upload")
-                        .font(.footnote)
-                        .fontWeight(.bold)
-                    
-                    Text("JPG, PNG or PDF")
-                        .font(.caption2)
-                        .foregroundColor(Color(.systemGray).opacity(0.7))
+                HStack(spacing: 4) {
+                    Text("Upload")
+                    Image(systemName: "square.and.arrow.up")
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 32)
-                .background(Color(.systemGray5))
-                .cornerRadius(12)
+                .foregroundColor(.blue)
             }
         }
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
     }
 }
