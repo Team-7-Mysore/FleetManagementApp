@@ -12,182 +12,157 @@ struct AllTripCardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(trip.tripNameText)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
 
-            // MARK: - Trip ID & Status
-            HStack(alignment: .top) {
-                Text(trip.displayTripID)
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundColor(Color(hex: "1A1A2E"))
+                    Text(trip.displayTripID)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
 
                 Spacer()
 
-                Text(statusLabel)
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(statusColor)
-                    .clipShape(Capsule())
+                Text(trip.normalisedStatus.displayTitle)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(statusTint)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(statusTint.opacity(0.14), in: Capsule())
             }
 
-            // MARK: - From / To
-            HStack(alignment: .top, spacing: 20) {
-                // From
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("From")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(Color(hex: "9CA3AF"))
-
-                    Text(trip.origin ?? "Origin")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(Color(hex: "1A1A2E"))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                // To
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("To")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(Color(hex: "9CA3AF"))
-
-                    Text(trip.destination ?? "Destination")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(Color(hex: "1A1A2E"))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            routeBlock
 
             Divider()
-                .background(Color(hex: "E5E7EB"))
 
-            // MARK: - Dates
-            HStack(alignment: .top, spacing: 20) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Placed by")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(Color(hex: "9CA3AF"))
-
-                    Text(trip.formattedPlacedDate)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(Color(hex: "1A1A2E"))
+            VStack(spacing: 10) {
+                LabeledContent("Pickup") {
+                    Text(trip.formattedPickupTime)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Estimated Date")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(Color(hex: "9CA3AF"))
-
+                LabeledContent("Estimated Delivery") {
                     Text(trip.formattedEstimatedDate)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(Color(hex: "1A1A2E"))
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+
+                LabeledContent("Status") {
+                    Text(trip.normalisedStatus.displayTitle)
+                        .foregroundStyle(statusTint)
+                }
             }
+            .font(.subheadline)
 
-            // MARK: - Progress Tracker
-            progressTracker
+            progressSummary
         }
-        .padding(20)
-        .background(Color.white)
-        .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.04), radius: 6, x: 0, y: 2)
+        .padding(18)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        )
+        .accessibilityElement(children: .combine)
     }
 
-    // MARK: - Status Helpers
-    private var statusLabel: String {
-        switch trip.normalisedStatus {
-        case .inTransit, .inProgress: return "Progress"
-        case .completed:              return "Delivered"
-        case .scheduled:              return "Scheduled"
-        case .cancelled:              return "Returned"
-        case .unknown:                return "Unknown"
+    private var routeBlock: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Route", systemImage: "point.bottomleft.forward.to.point.topright.scurvepath")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            HStack(alignment: .center, spacing: 12) {
+                routeNode(title: "From", value: trip.originText)
+
+                Image(systemName: "arrow.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+
+                routeNode(title: "To", value: trip.destinationText)
+            }
         }
     }
 
-    private var statusColor: Color {
-        switch trip.normalisedStatus {
-        case .inTransit, .inProgress: return Color(hex: "E8791D")
-        case .completed:              return Color(hex: "2E7D32")
-        case .scheduled:              return Color(hex: "1565C0")
-        case .cancelled:              return Color(hex: "D32F2F")
-        case .unknown:                return Color(hex: "757575")
+    private func routeNode(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Text(value)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var progressSummary: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Progress")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            stepProgressView
+
+            Text(progressLabel)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 
-    // MARK: - Progress Tracker
-    private var progressTracker: some View {
+    private var stepProgressView: some View {
         let steps = progressSteps
-        let activeCount = steps.filter { $0.isActive }.count
+        let activeCount = steps.filter(\.isActive).count
 
-        return VStack(spacing: 6) {
-            // Dots and lines row
+        return VStack(spacing: 8) {
             HStack(spacing: 0) {
                 ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
-                    // Dot
-                    ZStack {
-                        Circle()
-                            .fill(step.isActive ? Color(hex: "2D4A2D") : Color.white)
-                            .frame(width: 18, height: 18)
-                            .overlay(
-                                Circle()
-                                    .stroke(step.isActive ? Color(hex: "2D4A2D") : Color(hex: "C4C4C4"), lineWidth: 2.5)
-                            )
-
-                        if step.isActive {
+                    Circle()
+                        .fill(step.isActive ? stepTint : Color(.systemBackground))
+                        .frame(width: 16, height: 16)
+                        .overlay(
                             Circle()
-                                .fill(Color.white)
-                                .frame(width: 6, height: 6)
-                        }
-                    }
+                                .stroke(step.isActive ? stepTint : Color(.systemGray4), lineWidth: 3)
+                        )
 
-                    // Line between dots (not after the last dot)
                     if index < steps.count - 1 {
-                        let isLineActive = index + 1 < activeCount
-                        
-                        GeometryReader { geo in
-                            let lineY = geo.size.height / 2
-
-                            if isLineActive {
-                                // Solid active line
-                                Path { path in
-                                    path.move(to: CGPoint(x: 0, y: lineY))
-                                    path.addLine(to: CGPoint(x: geo.size.width, y: lineY))
-                                }
-                                .stroke(Color(hex: "2D4A2D"), lineWidth: 2.5)
-                            } else {
-                                // Dashed inactive line
-                                Path { path in
-                                    path.move(to: CGPoint(x: 0, y: lineY))
-                                    path.addLine(to: CGPoint(x: geo.size.width, y: lineY))
-                                }
-                                .stroke(
-                                    Color(hex: "C4C4C4"),
-                                    style: StrokeStyle(lineWidth: 2.5, dash: [6, 4])
-                                )
+                        Rectangle()
+                            .fill(Color(.systemGray4))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 2)
+                            .overlay(alignment: .leading) {
+                                Rectangle()
+                                    .fill(index + 1 < activeCount ? stepTint : Color.clear)
+                                    .frame(maxWidth: .infinity)
                             }
-                        }
-                        .frame(height: 18)
+                            .overlay {
+                                dashedConnector(isActive: index + 1 < activeCount)
+                            }
                     }
                 }
             }
 
-            // Labels row
             HStack(spacing: 0) {
                 ForEach(Array(steps.enumerated()), id: \.offset) { index, step in
                     Text(step.label)
-                        .font(.system(size: 11, weight: step.isActive ? .semibold : .regular))
-                        .foregroundColor(step.isActive ? Color(hex: "2D4A2D") : Color(hex: "9CA3AF"))
-                        .frame(maxWidth: index == 0 ? nil : .infinity,
-                               alignment: index == 0 ? .leading : (index == steps.count - 1 ? .trailing : .center))
-
-                    if index == 0 {
-                        Spacer()
-                    }
+                        .font(.caption2.weight(step.isActive ? .semibold : .regular))
+                        .foregroundStyle(step.isActive ? .primary : .secondary)
+                        .frame(maxWidth: .infinity, alignment: index == 0 ? .leading : (index == steps.count - 1 ? .trailing : .center))
                 }
             }
+        }
+    }
+
+    private var progressLabel: String {
+        switch trip.normalisedStatus {
+        case .scheduled:
+            return "Trip is scheduled and waiting to start."
+        case .inTransit, .inProgress:
+            return "Trip is currently active."
+        case .completed:
+            return "Trip has been delivered successfully."
+        case .cancelled:
+            return "Trip was returned or cancelled."
+        case .unknown:
+            return "Status information is unavailable."
         }
     }
 
@@ -215,7 +190,7 @@ struct AllTripCardView: View {
             return [
                 ProgressStep(label: "Packed", isActive: true),
                 ProgressStep(label: "Returned", isActive: true),
-                ProgressStep(label: "Refunded", isActive: false)
+                ProgressStep(label: "Closed", isActive: false)
             ]
         case .unknown:
             return [
@@ -225,9 +200,51 @@ struct AllTripCardView: View {
             ]
         }
     }
+
+    private func dashedConnector(isActive: Bool) -> some View {
+        GeometryReader { geometry in
+            Path { path in
+                let y = geometry.size.height / 2
+                path.move(to: CGPoint(x: 0, y: y))
+                path.addLine(to: CGPoint(x: geometry.size.width, y: y))
+            }
+            .stroke(
+                isActive ? stepTint : Color(.systemGray4),
+                style: StrokeStyle(lineWidth: 2, dash: isActive ? [] : [4, 4])
+            )
+        }
+    }
+
+    private var stepTint: Color {
+        switch trip.normalisedStatus {
+        case .inTransit, .inProgress, .completed:
+            return .green
+        case .scheduled:
+            return .blue
+        case .cancelled:
+            return .red
+        case .unknown:
+            return .secondary
+        }
+    }
+
+    private var statusTint: Color {
+        switch trip.normalisedStatus {
+        case .inTransit, .inProgress:
+            return .orange
+        case .completed:
+            return .green
+        case .scheduled:
+            return .blue
+        case .cancelled:
+            return .red
+        case .unknown:
+            return .secondary
+        }
+    }
 }
 
-struct ProgressStep {
+private struct ProgressStep {
     let label: String
     let isActive: Bool
 }

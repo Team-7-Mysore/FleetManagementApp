@@ -36,6 +36,25 @@ struct Trip: Codable, Identifiable {
         return "#TR-\(short)"
     }
 
+    var tripNameText: String {
+        let trimmedValue = trip_name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedValue?.isEmpty == false ? trimmedValue! : "Untitled Trip"
+    }
+
+    var originText: String {
+        let trimmedValue = origin?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedValue?.isEmpty == false ? trimmedValue! : "Origin"
+    }
+
+    var destinationText: String {
+        let trimmedValue = destination?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedValue?.isEmpty == false ? trimmedValue! : "Destination"
+    }
+
+    var routeText: String {
+        "\(originText) to \(destinationText)"
+    }
+
     /// Formatted pickup time for display
     var formattedPickupTime: String {
         guard let pickup = pickup_time else { return "" }
@@ -144,6 +163,25 @@ struct Trip: Codable, Identifiable {
             return .unknown
         }
     }
+
+    func matchesSearch(_ query: String) -> Bool {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else { return true }
+
+        let normalizedQuery = trimmedQuery.lowercased()
+        let searchableValues = [
+            tripNameText,
+            originText,
+            destinationText,
+            status ?? "",
+            displayTripID,
+            routeText
+        ]
+
+        return searchableValues.contains { value in
+            value.lowercased().contains(normalizedQuery)
+        }
+    }
 }
 
 enum TripStatus {
@@ -157,6 +195,17 @@ enum TripStatus {
         case .scheduled:  return "SCHEDULED"
         case .cancelled:  return "CANCELLED"
         case .unknown:    return "UNKNOWN"
+        }
+    }
+
+    var displayTitle: String {
+        switch self {
+        case .inTransit:  return "In Transit"
+        case .inProgress: return "In Progress"
+        case .completed:  return "Delivered"
+        case .scheduled:  return "Scheduled"
+        case .cancelled:  return "Returned"
+        case .unknown:    return "Unknown"
         }
     }
 

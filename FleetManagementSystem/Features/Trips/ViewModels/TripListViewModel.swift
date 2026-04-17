@@ -27,16 +27,32 @@ final class TripListViewModel: ObservableObject {
 
     /// Filtered trips based on search text
     var filteredTrips: [Trip] {
-        let base = activeTrips
-        guard !searchText.isEmpty else { return base }
-        let query = searchText.lowercased()
-        return base.filter { trip in
-            (trip.trip_name?.lowercased().contains(query) ?? false) ||
-            (trip.origin?.lowercased().contains(query) ?? false) ||
-            (trip.destination?.lowercased().contains(query) ?? false) ||
-            (trip.status?.lowercased().contains(query) ?? false) ||
-            trip.displayTripID.lowercased().contains(query)
+        activeTrips.filter { $0.matchesSearch(searchText) }
+    }
+
+    var searchSuggestions: [String] {
+        let candidates = trips.flatMap { trip in
+            [
+                trip.displayTripID,
+                trip.tripNameText,
+                trip.originText,
+                trip.destinationText
+            ]
         }
+
+        let filteredCandidates = candidates.filter { candidate in
+            searchText.isEmpty || candidate.localizedCaseInsensitiveContains(searchText)
+        }
+
+        var orderedSuggestions: [String] = []
+        for candidate in filteredCandidates where !orderedSuggestions.contains(candidate) {
+            orderedSuggestions.append(candidate)
+            if orderedSuggestions.count == 6 {
+                break
+            }
+        }
+
+        return orderedSuggestions
     }
 
     func fetchTrips() async {

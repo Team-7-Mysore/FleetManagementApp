@@ -8,9 +8,7 @@
 import SwiftUI
 
 struct AllTripsView: View {
-    @Environment(\.dismiss) var dismiss
     @StateObject private var vm = TripListViewModel()
-
     @State private var selectedFilter: TripFilter = .all
 
     enum TripFilter: String, CaseIterable {
@@ -21,155 +19,129 @@ struct AllTripsView: View {
         case scheduled = "Scheduled"
     }
 
-    var filteredTrips: [Trip] {
-        switch selectedFilter {
-        case .all:
-            return vm.trips
-        case .inProgress:
-            return vm.trips.filter {
-                $0.normalisedStatus == .inTransit || $0.normalisedStatus == .inProgress
+    private var filteredTrips: [Trip] {
+        let statusFilteredTrips = vm.trips.filter { trip in
+            switch selectedFilter {
+            case .all:
+                return true
+            case .inProgress:
+                return trip.normalisedStatus == .inTransit || trip.normalisedStatus == .inProgress
+            case .delivered:
+                return trip.normalisedStatus == .completed
+            case .returned:
+                return trip.normalisedStatus == .cancelled
+            case .scheduled:
+                return trip.normalisedStatus == .scheduled
             }
-        case .delivered:
-            return vm.trips.filter { $0.normalisedStatus == .completed }
-        case .returned:
-            return vm.trips.filter { $0.normalisedStatus == .cancelled }
-        case .scheduled:
-            return vm.trips.filter { $0.normalisedStatus == .scheduled }
         }
+
+        return statusFilteredTrips.filter { $0.matchesSearch(vm.searchText) }
+    }
+
+    private var filterTitle: String {
+        selectedFilter == .all ? "All Statuses" : selectedFilter.rawValue
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // MARK: - Navigation Bar
-            navBar
+        List {
+            Section {
+                HStack {
+                    Label(filterTitle, systemImage: "line.3.horizontal.decrease.circle")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(filteredTrips.count)")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            }
 
-            // MARK: - Filter Chips
-            filterChips
-
-            // MARK: - Trip List
-            if vm.isLoading {
-                Spacer()
-                ProgressView()
-                    .scaleEffect(1.3)
-                Spacer()
-            } else if filteredTrips.isEmpty {
-                Spacer()
-                emptyState
-                Spacer()
-            } else {
-                ScrollView(.vertical, showsIndicators: false) {
-                    LazyVStack(spacing: 16) {
-                        ForEach(filteredTrips) { trip in
-                            AllTripCardView(trip: trip)
-                        }
+            Section {
+                if vm.isLoading {
+                    HStack(spacing: 12) {
+                        ProgressView()
+                        Text("Loading trips…")
+                            .foregroundStyle(.secondary)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 40)
-                }
-            }
-        }
-        .background(Color(hex: "EFEFEF"))
-        .navigationBarHidden(true)
-        .onAppear {
-            Task { await vm.fetchTrips() }
-        }
-    }
-
-    // MARK: - Nav Bar
-    private var navBar: some View {
-        ZStack {
-            Color(hex: "E8E8E8")
-
-            HStack {
-                Button(action: { dismiss() }) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(Color(hex: "1A1A2E"))
-                        .frame(width: 40, height: 40)
-                        .background(Color.white.opacity(0.6))
-                        .clipShape(Circle())
-                }
-
-                Spacer()
-
-                Text("My Deliveries")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(Color(hex: "1A1A2E"))
-
-                Spacer()
-
-                Button(action: {}) {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(Color(hex: "1A1A2E"))
-                        .frame(width: 40, height: 40)
-                        .background(Color.white.opacity(0.6))
-                        .clipShape(Circle())
-                }
-            }
-            .padding(.horizontal, 16)
-        }
-        .frame(height: 56)
-    }
-
-    // MARK: - Filter Chips
-    private var filterChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                ForEach(TripFilter.allCases, id: \.self) { filter in
-                    Button(action: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            selectedFilter = filter
-                        }
-                    }) {
-                        Text(filter.rawValue)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(selectedFilter == filter ? .white : Color(hex: "1A1A2E"))
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 10)
-                            .background(
-                                selectedFilter == filter
-                                    ? Color(hex: "2D4A2D")
-                                    : Color.white
-                            )
-                            .clipShape(Capsule())
-                            .overlay(
-                                Capsule()
-                                    .stroke(
-                                        selectedFilter == filter
-                                            ? Color.clear
-                                            : Color(hex: "D1D5DB"),
-                                        lineWidth: 1
-                                    )
-                            )
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 24)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                } else if filteredTrips.isEmpty {
+                    emptyState
+                } else {
+                    ForEach(filteredTrips) { trip in
+                        AllTripCardView(trip: trip)
+                            .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
                     }
                 }
+            } header: {
+                Text("Trip History")
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
         }
-        .background(Color(hex: "E8E8E8"))
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle("All Trips")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(
+            text: $vm.searchText,
+            placement: .navigationBarDrawer(displayMode: .automatic),
+            prompt: "Search all trips"
+        )
+        .searchSuggestions {
+            ForEach(vm.searchSuggestions, id: \.self) { suggestion in
+                Text(suggestion)
+                    .searchCompletion(suggestion)
+            }
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Picker("Status", selection: $selectedFilter) {
+                        ForEach(TripFilter.allCases, id: \.self) { filter in
+                            Text(filter.rawValue).tag(filter)
+                        }
+                    }
+                } label: {
+                    Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
+                }
+            }
+        }
+        .task {
+            guard vm.trips.isEmpty else { return }
+            await vm.fetchTrips()
+        }
+        .refreshable {
+            await vm.fetchTrips()
+        }
     }
 
-    // MARK: - Empty State
+    @ViewBuilder
     private var emptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "shippingbox")
-                .font(.system(size: 44))
-                .foregroundColor(Color(hex: "C4C4C4"))
-
-            Text("No trips found")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(Color(hex: "6B7280"))
-
-            Text("Try selecting a different filter")
-                .font(.system(size: 13))
-                .foregroundColor(Color(hex: "9CA3AF"))
+        if !vm.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            ContentUnavailableView.search(text: vm.searchText)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+        } else {
+            ContentUnavailableView(
+                "No Trips Found",
+                systemImage: "shippingbox",
+                description: Text("Try a different status filter or refresh to load recent trips.")
+            )
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
         }
     }
 }
 
 #Preview {
-    AllTripsView()
+    NavigationStack {
+        AllTripsView()
+    }
 }

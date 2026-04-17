@@ -11,71 +11,86 @@ struct TripCardView: View {
     let trip: Trip
 
     var body: some View {
-        HStack(spacing: 14) {
-            // Truck icon circle
-            ZStack {
-                Circle()
-                    .fill(Color(hex: "E8F5E9"))
-                    .frame(width: 48, height: 48)
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: iconName)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(statusTint)
+                .frame(width: 44, height: 44)
+                .background(statusTint.opacity(0.14), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-                Image(systemName: "truck.box.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(Color(hex: "2E7D32"))
-            }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(trip.tripNameText)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(trip.displayTripID)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(Color(hex: "1A1A2E"))
+                        Text(trip.displayTripID)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
 
                     Spacer()
 
-                    // Status badge
-                    Text(trip.normalisedStatus.label)
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(statusForeground)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(statusBackground)
-                        .clipShape(Capsule())
+                    statusBadge
                 }
 
-                Text("\(trip.origin ?? "Origin") → \(trip.destination ?? "Destination")")
-                    .font(.system(size: 13))
-                    .foregroundColor(Color(hex: "6B7280"))
+                Text(trip.routeText)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
 
-                Text(trip.formattedPickupTime)
-                    .font(.system(size: 12))
-                    .foregroundColor(Color(hex: "9CA3AF"))
+                HStack(spacing: 12) {
+                    Label(trip.formattedPickupTime, systemImage: "calendar")
+                    Label(trip.normalisedStatus.displayTitle, systemImage: "circle.fill")
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
             }
         }
         .padding(16)
-        .background(Color.white)
-        .cornerRadius(16)
-        .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 2)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        )
+        .accessibilityElement(children: .combine)
     }
 
-    // MARK: - Status Colors
-    private var statusForeground: Color {
+    private var statusBadge: some View {
+        Text(trip.normalisedStatus.displayTitle)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(statusTint)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(statusTint.opacity(0.14), in: Capsule())
+    }
+
+    private var iconName: String {
         switch trip.normalisedStatus {
-        case .inTransit:  return Color(hex: "D32F2F")
-        case .inProgress: return Color(hex: "1565C0")
-        case .completed:  return Color(hex: "2E7D32")
-        case .scheduled:  return Color(hex: "F57F17")
-        case .cancelled:  return Color(hex: "757575")
-        case .unknown:    return Color(hex: "757575")
+        case .completed:
+            return "checkmark.circle.fill"
+        case .cancelled:
+            return "arrow.uturn.backward.circle.fill"
+        case .scheduled:
+            return "calendar.circle.fill"
+        case .inTransit, .inProgress:
+            return "truck.box.fill"
+        case .unknown:
+            return "questionmark.circle.fill"
         }
     }
 
-    private var statusBackground: Color {
+    private var statusTint: Color {
         switch trip.normalisedStatus {
-        case .inTransit:  return Color(hex: "FFEBEE")
-        case .inProgress: return Color(hex: "E3F2FD")
-        case .completed:  return Color(hex: "E8F5E9")
-        case .scheduled:  return Color(hex: "FFF8E1")
-        case .cancelled:  return Color(hex: "F5F5F5")
-        case .unknown:    return Color(hex: "F5F5F5")
+        case .inTransit, .inProgress:
+            return .orange
+        case .completed:
+            return .green
+        case .scheduled:
+            return .blue
+        case .cancelled:
+            return .red
+        case .unknown:
+            return .secondary
         }
     }
 }
