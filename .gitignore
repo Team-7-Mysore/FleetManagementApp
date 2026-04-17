@@ -5,6 +5,7 @@
 xcuserdata/
 *.xcuserdatad/
 *.xcuserstate
+Package.resolved
 
 # Xcode workspace user data
 *.xcworkspace/xcuserdata/

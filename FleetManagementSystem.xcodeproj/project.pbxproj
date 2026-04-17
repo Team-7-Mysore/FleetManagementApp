@@ -40,6 +40,7 @@
 				Features/Maintenance/Fleet/Views/.gitkeep,
 				Features/Maintenance/Maintenance/ViewModels/.gitkeep,
 				Features/Maintenance/Maintenance/Views/.gitkeep,
+				Info.plist,
 			);
 			target = 84A866B62F8F44E700546587 /* FleetManagementSystem */;
 		};
@@ -317,6 +318,7 @@
 				DEVELOPMENT_TEAM = 6CP4H6BAQW;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = FleetManagementSystem/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -349,6 +351,7 @@
 				DEVELOPMENT_TEAM = 6CP4H6BAQW;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = FleetManagementSystem/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

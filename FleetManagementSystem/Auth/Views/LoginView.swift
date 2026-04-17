@@ -1,15 +1,14 @@
+import Foundation
 import SwiftUI
 
 struct LoginView: View {
-    @State private var emailOrUsername = ""
-    @State private var password = ""
     @State private var isPasswordVisible = false
-    @State private var isSigningIn = false
+    @ObservedObject var viewModel: AuthViewModel
 
     private var canSubmit: Bool {
-        !emailOrUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !password.isEmpty &&
-        !isSigningIn
+        !viewModel.email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        !viewModel.password.isEmpty &&
+        !viewModel.isSigningIn
     }
 
     var body: some View {
@@ -54,19 +53,22 @@ struct LoginView: View {
 
                 VStack(spacing: 16) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Email or Username")
+                        Text("Email")
                             .font(.headline)
 
                         ZStack(alignment: .leading) {
-                            if emailOrUsername.isEmpty {
-                                Text("john.doe@precision.com")
+                            if viewModel.email.isEmpty {
+                                Text("Enter your email")
                                     .foregroundStyle(.gray)
                                     .padding(.horizontal, 16)
                             }
 
-                            TextField("", text: $emailOrUsername)
+                            TextField("", text: $viewModel.email)
                                 .foregroundStyle(.primary)
                                 .padding(.horizontal, 16)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .keyboardType(.emailAddress)
                         }
                         .frame(height: 54)
                         .background(Color(red: 0.93, green: 0.94, blue: 0.97))
@@ -75,10 +77,8 @@ struct LoginView: View {
 
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
-                            Text("PASSWORD")
-                                .font(.footnote.weight(.semibold))
-                                .tracking(1)
-                                .foregroundStyle(.secondary)
+                            Text("Password")
+                                .font(.headline)
 
                             Spacer()
 
@@ -89,16 +89,16 @@ struct LoginView: View {
 
                         HStack(spacing: 10) {
                             ZStack(alignment: .leading) {
-                                if password.isEmpty {
+                                if viewModel.password.isEmpty {
                                     Text("Password")
                                         .foregroundStyle(.gray)
                                 }
 
                                 if isPasswordVisible {
-                                    TextField("", text: $password)
+                                    TextField("", text: $viewModel.password)
                                         .foregroundStyle(.primary)
                                 } else {
-                                    SecureField("", text: $password)
+                                    SecureField("", text: $viewModel.password)
                                         .foregroundStyle(.primary)
                                 }
                             }
@@ -119,7 +119,7 @@ struct LoginView: View {
                     }
 
                     Button {
-                        Task { await signIn() }
+                        Task { await viewModel.signIn() }
                     } label: {
                         ZStack {
                             RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -131,7 +131,7 @@ struct LoginView: View {
                                     )
                                 )
 
-                            if isSigningIn {
+                            if viewModel.isSigningIn {
                                 ProgressView()
                                     .tint(.white)
                             } else {
@@ -146,6 +146,13 @@ struct LoginView: View {
                     .buttonStyle(.plain)
                     .disabled(!canSubmit)
                     .opacity(canSubmit ? 1 : 0.65)
+
+                    if let errorMessage = viewModel.errorMessage {
+                        Text(errorMessage)
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
                 .padding(20)
                 .background(.thinMaterial)
@@ -162,16 +169,11 @@ struct LoginView: View {
             .padding(.vertical, 16)
         }
     }
-
-    private func signIn() async {
-        isSigningIn = true
-        defer { isSigningIn = false }
-        try? await Task.sleep(for: .milliseconds(700))
-    }
 }
 
 struct LoginView_Previews: PreviewProvider {
     static var previews: some View {
-        LoginView()
+        let appSession = AppSession()
+        LoginView(viewModel: AuthViewModel(appSession: appSession))
     }
 }
