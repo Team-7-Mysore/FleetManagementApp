@@ -9,31 +9,7 @@ struct AddVehicleView: View {
        
         ScrollView {
             VStack(spacing: 20) {
-                
-             
-                VStack(spacing: 8) {
 
-                    Text("1 of 2")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(Color(.label))
-                        
-                  
-                    GeometryReader { geometry in
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(Color(.systemGray5))
-                                .frame(height: 3)
-                            
-                            Capsule()
-                                .fill(Color.primaryBrown)
-                                .frame(width: geometry.size.width * 0.5, height: 3)
-                        }
-                    }
-                    .frame(height: 3)
-                }
-                .padding(.horizontal)
-                
                 
                 FormCard(title: "Vehicle Info", icon: "car.fill") {
                     

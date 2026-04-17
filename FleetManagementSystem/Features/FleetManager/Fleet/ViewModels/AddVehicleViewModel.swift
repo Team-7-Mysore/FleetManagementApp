@@ -96,37 +96,45 @@ extension AddVehicleViewModel {
     
     func uploadFile(fileURL: URL, type: String) async {
         
-        let fileExtension = fileURL.pathExtension
-        let fileName = UUID().uuidString + "." + fileExtension
-        let storageURL = "\(SUPABASE_URL)/storage/v1/object/vehicle-documents/\(fileName)"
-        
-        guard let url = URL(string: storageURL) else { return }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
-        
         do {
             let data = try Data(contentsOf: fileURL)
-            _ = try await URLSession.shared.upload(for: request, from: data)
+            print("File size:", data.count)
+            
+            let fileExtension = fileURL.pathExtension
+            let fileName = UUID().uuidString + "." + fileExtension
+            
+            let storageURL = "\(SUPABASE_URL)/storage/v1/object/vehicle-documents/\(fileName)"
+            
+            guard let url = URL(string: storageURL) else { return }
+            
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
+            request.addValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+            
+            let (responseData, response) = try await URLSession.shared.upload(for: request, from: data)
+            
+            if let httpResponse = response as? HTTPURLResponse {
+                print("UPLOAD STATUS:", httpResponse.statusCode)
+            }
+            
+            if let responseString = String(data: responseData, encoding: .utf8) {
+                print("UPLOAD RESPONSE:", responseString)
+            }
             
             let publicURL = "\(SUPABASE_URL)/storage/v1/object/public/vehicle-documents/\(fileName)"
             
             DispatchQueue.main.async {
                 switch type {
-                case "RC":
-                    self.rcURL = publicURL
-                case "INSURANCE":
-                    self.insuranceURL = publicURL
-                case "PUC":
-                    self.pucURL = publicURL
-                default:
-                    break
+                case "RC": self.rcURL = publicURL
+                case "INSURANCE": self.insuranceURL = publicURL
+                case "PUC": self.pucURL = publicURL
+                default: break
                 }
             }
             
         } catch {
-            print("Upload failed:", error)
+            print("❌ FILE READ ERROR:", error)
         }
     }
 }
