@@ -10,8 +10,6 @@ struct VehicleDetailView: View {
     let vehicleId: UUID
     @StateObject var vm = VehicleDetailViewModel()
     @State private var isEditing = false
-    @State private var editableVehicle: Vehicle?
-    @State private var isSaving = false
 
     var body: some View {
         ScrollView {
@@ -20,9 +18,9 @@ struct VehicleDetailView: View {
                     .padding(.top, 60)
             } else if let vehicle = vm.vehicle {
                 VStack(alignment: .leading, spacing: 22) {
-                    vehicleImage(currentVehicle(for: vehicle))
-                    vehicleHeader(currentVehicle(for: vehicle))
-                    infoSection(currentVehicle(for: vehicle))
+                    vehicleImage(vehicle)
+                    vehicleHeader(vehicle)
+                    infoSection(vehicle)
                     documentsSection
                 }
                 .padding()
@@ -34,34 +32,34 @@ struct VehicleDetailView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle("Vehicle")
         .navigationBarTitleDisplayMode(.inline)
+        .alert(
+            "Update Failed",
+            isPresented: Binding(
+                get: { vm.errorMessage != nil && vm.vehicle != nil },
+                set: { if !$0 { vm.errorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(vm.errorMessage ?? "")
+        }
         .toolbar {
-            ToolbarItem(placement: .navigationBarLeading) {
-                if isEditing {
-                    Button("Cancel") {
-                        editableVehicle = vm.vehicle
-                        isEditing = false
-                    }
-                }
-            }
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button(isEditing ? "Save" : "Edit") {
-                    if isEditing {
-                        Task {
-                            await saveChanges()
-                        }
-                    } else {
-                        editableVehicle = vm.vehicle
-                        isEditing = true
-                    }
+                Button("Edit") {
+                    isEditing = true
                 }
                 .fontWeight(.semibold)
-                .disabled(vm.vehicle == nil || isSaving)
+                .disabled(vm.vehicle == nil)
             }
         }
         .onAppear {
             Task {
                 await vm.fetchVehicle(vehicleId: vehicleId)
-                editableVehicle = vm.vehicle
+            }
+        }
+        .sheet(isPresented: $isEditing) {
+            NavigationStack {
+                EditVehicleView(vm: vm)
             }
         }
     }
@@ -75,10 +73,10 @@ struct VehicleDetailView: View {
                         .resizable()
                         .scaledToFill()
                 } placeholder: {
-                    placeholderImage
+                    placeholderImage(vehicle.vehicleType)
                 }
             } else {
-                placeholderImage
+                placeholderImage(vehicle.vehicleType)
             }
         }
         .frame(height: 210)
@@ -87,43 +85,24 @@ struct VehicleDetailView: View {
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
     }
 
-    private var placeholderImage: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
-
-            Image(systemName: "car.side.fill")
-                .font(.system(size: 52))
-                .foregroundColor(.secondary)
-        }
+    private func placeholderImage(_ vehicleType: String?) -> some View {
+        VehicleFallbackArtwork(vehicleType: vehicleType)
     }
 
     private func vehicleHeader(_ vehicle: Vehicle) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            if isEditing {
-                VStack(alignment: .leading, spacing: 10) {
-                    TextField("Registration Number", text: binding(\.registrationNumber))
-                        .font(.system(size: 32, weight: .bold))
-                        .textInputAutocapitalization(.characters)
+            Text(vehicle.registrationNumber)
+                .font(.system(size: 34, weight: .bold))
 
-                    TextField("Vehicle Name", text: binding(\.name))
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
+            Text([vehicle.vehicleType, vehicle.fuelType]
+                .compactMap { value in
+                    guard let value else { return nil }
+                    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return trimmed.isEmpty ? nil : trimmed
                 }
-            } else {
-                Text(vehicle.registrationNumber)
-                    .font(.system(size: 34, weight: .bold))
-
-                Text([vehicle.vehicleType, vehicle.fuelType]
-                    .compactMap { value in
-                        guard let value else { return nil }
-                        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                        return trimmed.isEmpty ? nil : trimmed
-                    }
-                    .joined(separator: " • "))
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
+                .joined(separator: " • "))
+                .font(.subheadline)
+                .foregroundColor(.secondary)
         }
     }
 
@@ -134,21 +113,12 @@ struct VehicleDetailView: View {
                 .foregroundColor(.secondary)
 
             VStack(spacing: 0) {
-                if isEditing {
-                    EditableInfoRow(title: "Brand", text: binding(\.brand))
-                    EditableInfoRow(title: "Vehicle Type", text: binding(\.vehicleType))
-                    EditableInfoRow(title: "Fuel Type", text: binding(\.fuelType))
-                    EditableInfoRow(title: "Registration Number", text: binding(\.registrationNumber))
-                    EditableInfoRow(title: "Model", text: binding(\.model))
-                    EditableInfoRow(title: "Model Year", text: binding(\.modelYear))
-                } else {
-                    InfoRow(title: "Brand", value: vehicle.brand ?? "Not added")
-                    InfoRow(title: "Vehicle Type", value: vehicle.vehicleType)
-                    InfoRow(title: "Fuel Type", value: vehicle.fuelType ?? "Not added")
-                    InfoRow(title: "Registration Number", value: vehicle.registrationNumber)
-                    InfoRow(title: "Model", value: vehicle.model ?? "Not added")
-                    InfoRow(title: "Model Year", value: vehicle.modelYear ?? "Not added")
-                }
+                InfoRow(title: "Brand", value: vehicle.brand ?? "Not added")
+                InfoRow(title: "Vehicle Type", value: vehicle.vehicleType)
+                InfoRow(title: "Fuel Type", value: vehicle.fuelType ?? "Not added")
+                InfoRow(title: "Registration Number", value: vehicle.registrationNumber)
+                InfoRow(title: "Model", value: vehicle.model ?? "Not added")
+                InfoRow(title: "Model Year", value: vehicle.modelYear ?? "Not added")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
@@ -164,7 +134,13 @@ struct VehicleDetailView: View {
                 .foregroundColor(.secondary)
 
             VStack(spacing: 0) {
-                if vm.documents.isEmpty {
+                if let documentsErrorMessage = vm.documentsErrorMessage {
+                    Text(documentsErrorMessage)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+                } else if vm.documents.isEmpty {
                     Text("No documents uploaded yet.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
@@ -185,52 +161,6 @@ struct VehicleDetailView: View {
             }
             .background(Color.white)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        }
-    }
-
-    private func currentVehicle(for vehicle: Vehicle) -> Vehicle {
-        isEditing ? (editableVehicle ?? vehicle) : vehicle
-    }
-
-    private func binding(_ keyPath: WritableKeyPath<Vehicle, String>) -> Binding<String> {
-        Binding(
-            get: { editableVehicle?[keyPath: keyPath] ?? vm.vehicle?[keyPath: keyPath] ?? "" },
-            set: {
-                if editableVehicle == nil {
-                    editableVehicle = vm.vehicle
-                }
-                guard editableVehicle != nil else {
-                    return
-                }
-                editableVehicle?[keyPath: keyPath] = $0
-            }
-        )
-    }
-
-    private func binding(_ keyPath: WritableKeyPath<Vehicle, String?>) -> Binding<String> {
-        Binding(
-            get: { editableVehicle?[keyPath: keyPath] ?? vm.vehicle?[keyPath: keyPath] ?? "" },
-            set: {
-                if editableVehicle == nil {
-                    editableVehicle = vm.vehicle
-                }
-                guard editableVehicle != nil else {
-                    return
-                }
-                editableVehicle?[keyPath: keyPath] = $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0
-            }
-        )
-    }
-
-    private func saveChanges() async {
-        guard let editedVehicle = editableVehicle else { return }
-        isSaving = true
-        vm.vehicle = editedVehicle
-        let didSave = await vm.updateVehicle()
-        isSaving = false
-        if didSave {
-            editableVehicle = vm.vehicle
-            isEditing = false
         }
     }
 }
@@ -255,39 +185,34 @@ struct InfoRow: View {
     }
 }
 
-struct EditableInfoRow: View {
-    let title: String
-    @Binding var text: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .foregroundColor(.secondary)
-                .font(.subheadline)
-
-            TextField(title, text: $text)
-                .font(.body.weight(.medium))
-                .textFieldStyle(.roundedBorder)
-        }
-        .padding(.vertical, 10)
-    }
-}
-
 struct DocumentRow: View {
     let document: VehicleDocument
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: iconName)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(iconColor)
-                .frame(width: 30, height: 30)
-                .background(iconColor.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            if isImageDocument, let url = URL(string: document.fileURL) {
+                AsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } placeholder: {
+                    iconBadge
+                }
+                .frame(width: 54, height: 54)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else {
+                iconBadge
+            }
 
-            Text(document.title)
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(.primary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(document.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.primary)
+
+                Text(isImageDocument ? "Image Document" : "Open Document")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
 
             Spacer()
 
@@ -301,6 +226,21 @@ struct DocumentRow: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
+    }
+
+    private var isImageDocument: Bool {
+        guard let url = URL(string: document.fileURL) else { return false }
+        let ext = url.pathExtension.lowercased()
+        return ["jpg", "jpeg", "png", "webp", "heic"].contains(ext)
+    }
+
+    private var iconBadge: some View {
+        Image(systemName: iconName)
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundColor(iconColor)
+            .frame(width: 30, height: 30)
+            .background(iconColor.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var iconName: String {

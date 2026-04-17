@@ -15,6 +15,9 @@ struct FleetListView: View {
                         Text("Fleet")
                             .font(.system(size: 34, weight: .bold))
                             .foregroundColor(.primary)
+                        Text("Manage your premium vehicle assets")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundColor(.secondary)
                     }
                     .padding(.horizontal)
                     .padding(.top, 10)
@@ -159,102 +162,107 @@ struct VehicleCardView: View {
     let vehicle: Vehicle
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Vehicle Image (Placeholder)
-            ZStack {
-                if let urlString = vehicle.imageURL,
-                   let url = URL(string: urlString) {
-                    
-                    AsyncImage(url: url) { image in
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    } placeholder: {
-                        ZStack {
-                            Rectangle()
-                                .fill(Color(.systemGray5))
-                                .frame(height: 180)
-                            
-                            ProgressView()
+        VStack(alignment: .leading, spacing: 18) {
+            ZStack(alignment: .topLeading) {
+                Group {
+                    if let urlString = vehicle.imageURL,
+                       let url = URL(string: urlString) {
+                        AsyncImage(url: url) { image in
+                            image
+                                .resizable()
+                                .scaledToFill()
+                        } placeholder: {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                    .fill(Color(.systemGray5))
+                                ProgressView()
+                            }
                         }
+                    } else {
+                        VehicleFallbackArtwork(vehicleType: vehicle.vehicleType)
                     }
-                    .frame(height: 180)
-                    .clipped()
-                    
-                } else {
+                }
+                .frame(height: 196)
+                .frame(maxWidth: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
 
-                    ZStack {
-                        Rectangle()
-                            .fill(Color(.systemGray5))
-                            .frame(height: 180)
-                        
-                        Image(systemName: "truck.box.fill")
-                            .font(.system(size: 60))
-                            .foregroundColor(.white)
-                    }
-                }
+                Text(vehicle.vehicleType.uppercased())
+                    .font(.system(size: 11, weight: .bold))
+                    .tracking(1.1)
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.black.opacity(0.42))
+                    .clipShape(Capsule())
+                    .padding(14)
             }
-            .cornerRadius(20)
-            
-            VStack(alignment: .leading, spacing: 16) {
-                // Asset ID
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("ASSET ID")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.secondary)
-                    Text(vehicle.registrationNumber)
-                        .font(.system(size: 16, weight: .bold))
-                }
-                
-                // Name, Model, Brand
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(vehicle.name)
-                        .font(.system(size: 18, weight: .bold))
-                    
-                    let details = [vehicle.brand, vehicle.model]
-                        .compactMap { $0 }
-                        .filter { !$0.isEmpty }
-                        .joined(separator: " ")
-                    
-                    if !details.isEmpty {
-                        Text(details)
-                            .font(.system(size: 14))
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
-                
-                // Buttons
-                HStack(spacing: 12) {
-                    NavigationLink(destination: VehicleDetailView(vehicleId: vehicle.id)) {
-                        Text("Details")
-                            .font(.system(size: 14, weight: .bold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .background(Color.white)
-                            .cornerRadius(20)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 20)
-                                    .stroke(Color(.systemGray4), lineWidth: 1)
-                            )
-                    }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(vehicle.registrationNumber)
+                    .font(.system(size: 19, weight: .black, design: .rounded))
+                    .tracking(-0.2)
                     .foregroundColor(.primary)
-                    
-                    Button(action: {}) {
-                        Image(systemName: "map.fill")
-                            .font(.system(size: 18))
-                            .foregroundColor(.white)
-                            .frame(width: 44, height: 44)
-                            .background(Color.TechBlue)
-                            .clipShape(Circle())
+                    .lineLimit(1)
+
+                let details = [vehicle.brand, vehicle.model]
+                    .compactMap { value in
+                        guard let value else { return nil }
+                        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                        return trimmed.isEmpty ? nil : trimmed
                     }
+                    .joined(separator: " • ")
+
+                Text(cardSubtitle(details: details))
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+
+            HStack(spacing: 12) {
+                NavigationLink(destination: VehicleDetailView(vehicleId: vehicle.id)) {
+                    Text("Details")
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(Color.TechBlue)
+                        .clipShape(Capsule())
+                }
+                
+                Button(action: {}) {
+                    Image(systemName: "map")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(Color.TechBlue)
+                        .frame(width: 50, height: 50)
+                        .background(
+                            Circle()
+                                .fill(Color(.systemGray6))
+                        )
+                        .clipShape(Circle())
                 }
             }
-            .padding(20)
         }
+        .padding(16)
         .background(Color.white)
-        .cornerRadius(30)
-        .shadow(color: Color.black.opacity(0.05), radius: 10, x: 0, y: 5)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(Color.black.opacity(0.04), lineWidth: 1)
+        )
+        .shadow(color: Color.black.opacity(0.05), radius: 18, x: 0, y: 10)
+    }
+
+    private func cardSubtitle(details: String) -> String {
+        if !details.isEmpty {
+            return details
+        }
+
+        let trimmedName = vehicle.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedName.isEmpty && trimmedName != vehicle.registrationNumber {
+            return trimmedName
+        }
+
+        return "Fleet vehicle"
     }
 }
 
