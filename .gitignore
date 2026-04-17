@@ -40,4 +40,4 @@ fastlane/screenshots/
 *.tmp
 
 # App-specific (optional)
-# Add your own here if needed
+# Add your own here if needed*.xcworkspace/xcshareddata/
