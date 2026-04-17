@@ -5,4 +5,5 @@ struct DriverInspectionItem: Identifiable, Equatable {
     let title: String
     let detail: String
     var isCompleted: Bool
+    let symbolName: String
 }

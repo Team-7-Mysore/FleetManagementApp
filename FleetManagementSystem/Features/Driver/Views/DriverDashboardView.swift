@@ -465,15 +465,13 @@ struct DriverInspectionView: View {
             VStack {
                 Spacer()
                 
-                let progress = showingSlider ? 1.0 : Double(currentIndex) / Double(max(1, viewModel.inspectionItems.count))
-                let truckOffset = -300.0 * (1.0 - progress)
+                let currentSymbol = showingSlider ? "checkmark.seal.fill" : (currentIndex < viewModel.inspectionItems.count ? viewModel.inspectionItems[currentIndex].symbolName : "box.truck.fill")
                 
-                Image(systemName: "box.truck.fill")
+                Image(systemName: currentSymbol)
                     .resizable()
                     .scaledToFit()
                     .frame(height: 180)
                     .foregroundStyle(DriverTheme.primaryText)
-                    .offset(x: truckOffset)
                     .padding()
                 
                 Spacer()
@@ -571,12 +569,10 @@ struct DriverInspectionView: View {
         if !item.isCompleted {
             viewModel.toggleInspectionItem(item)
         }
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-            if currentIndex < viewModel.inspectionItems.count - 1 {
-                currentIndex += 1
-            } else {
-                showingSlider = true
-            }
+        if currentIndex < viewModel.inspectionItems.count - 1 {
+            currentIndex += 1
+        } else {
+            showingSlider = true
         }
     }
 }

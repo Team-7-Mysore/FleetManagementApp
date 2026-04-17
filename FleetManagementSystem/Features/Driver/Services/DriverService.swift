@@ -51,10 +51,10 @@ struct DriverService {
                 )
             ],
             inspectionItems: [
-                DriverInspectionItem(id: UUID(), title: "Brake check", detail: "Pedal response and parking brake", isCompleted: true),
-                DriverInspectionItem(id: UUID(), title: "Tire pressure", detail: "All four tires within safe range", isCompleted: true),
-                DriverInspectionItem(id: UUID(), title: "Lights and indicators", detail: "Headlamps, brakes, hazard, turn signals", isCompleted: false),
-                DriverInspectionItem(id: UUID(), title: "Cargo seal", detail: "Verify rear compartment is locked", isCompleted: false)
+                DriverInspectionItem(id: UUID(), title: "Brake check", detail: "Pedal response and parking brake", isCompleted: true, symbolName: "exclamationmark.octagon.fill"),
+                DriverInspectionItem(id: UUID(), title: "Tire pressure", detail: "All four tires within safe range", isCompleted: true, symbolName: "gauge"),
+                DriverInspectionItem(id: UUID(), title: "Lights and indicators", detail: "Headlamps, brakes, hazard, turn signals", isCompleted: false, symbolName: "lightbulb.fill"),
+                DriverInspectionItem(id: UUID(), title: "Cargo seal", detail: "Verify rear compartment is locked", isCompleted: false, symbolName: "lock.fill")
             ],
             messages: [
                 DriverMessage(
