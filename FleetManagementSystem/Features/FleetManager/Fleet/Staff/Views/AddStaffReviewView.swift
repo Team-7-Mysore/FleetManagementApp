@@ -74,9 +74,11 @@ struct AddStaffReviewView: View {
 
                 // MARK: Summary card
                 VStack(spacing: 0) {
-                    DetailRow(icon: "at",        label: "Username", value: model.generatedUsername)
+                    DetailRow(icon: "at",        label: "Username", value: model.displayUsername)
                     Divider().padding(.leading, 52)
                     DetailRow(icon: "envelope",  label: "Email",    value: model.email)
+                    Divider().padding(.leading, 52)
+                    DetailRow(icon: "phone",     label: "Phone",    value: model.phoneNo.isEmpty ? "—" : model.phoneNo)
                     Divider().padding(.leading, 52)
                     DetailRow(icon: "briefcase", label: "Role",     value: model.selectedRole?.rawValue ?? "—")
                 }
@@ -154,6 +156,11 @@ struct AddStaffReviewView: View {
         .background(Color(.systemGray6))
         .navigationTitle("Review")
         .navigationBarTitleDisplayMode(.inline)
+        .alert("Account Creation Failed", isPresented: .constant(model.errorMessage != nil)) {
+            Button("OK") { model.errorMessage = nil }
+        } message: {
+            Text(model.errorMessage ?? "")
+        }
     }
 
     private var initials: String {

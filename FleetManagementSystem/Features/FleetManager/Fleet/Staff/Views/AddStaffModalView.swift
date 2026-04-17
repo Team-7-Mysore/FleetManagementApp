@@ -17,11 +17,13 @@ struct AddStaffModalView: View {
     @State private var firstNameText: String = ""
     @State private var lastNameText:  String = ""
     @State private var emailText:     String = ""
+    @State private var phoneText:     String = ""
 
     private func syncToModel() {
         model.firstName = firstNameText
         model.lastName  = lastNameText
         model.email     = emailText
+        model.phoneNo   = phoneText
     }
 
     var body: some View {
@@ -52,6 +54,14 @@ struct AddStaffModalView: View {
                     )
                     .onChange(of: emailText) { _ in syncToModel() }
 
+                    StyledField(
+                        title: "PHONE NUMBER (OPTIONAL)",
+                        placeholder: "98XXXXXXXX",
+                        text: $phoneText,
+                        keyboardType: .phonePad
+                    )
+                    .onChange(of: phoneText) { _ in syncToModel() }
+
                     // Auto username row
                     VStack(alignment: .leading, spacing: 6) {
                         Text("USERNAME (AUTO-GENERATED)")
@@ -70,7 +80,7 @@ struct AddStaffModalView: View {
                                     .foregroundColor(Color.primaryBrown)
                             }
 
-                            Text(model.generatedUsername.isEmpty ? "Fill in your name above" : model.generatedUsername)
+                            Text(model.generatedUsername.isEmpty ? "Fill in your name above" : model.displayUsername)
                                 .font(.system(size: 14, design: .rounded))
                                 .foregroundColor(model.generatedUsername.isEmpty ? Color.gray.opacity(0.45) : .primary)
 
@@ -169,6 +179,7 @@ struct AddStaffModalView: View {
             firstNameText = model.firstName
             lastNameText  = model.lastName
             emailText     = model.email
+            phoneText     = model.phoneNo
         }
     }
 }
