@@ -5,14 +5,15 @@ struct FleetListView: View {
     
     var body: some View {
         NavigationStack {
-            ZStack {
+            ZStack(alignment: .bottomTrailing) {
+                
                 Color(.systemGroupedBackground)
                     .ignoresSafeArea()
                 
+                // 🔷 Content
                 ScrollView {
                     VStack(spacing: 16) {
                         
-                      
                         if vm.isLoading {
                             ProgressView()
                                 .padding()
@@ -58,16 +59,22 @@ struct FleetListView: View {
                     }
                     .padding(.vertical)
                 }
+                
+                // 🔥 Floating Add Button
+                NavigationLink(destination: AddVehicleView(fleetVM: vm)) {
+                    Image(systemName: "plus")
+                        .font(.title2.weight(.bold))
+                        .foregroundColor(.white)
+                        .frame(width: 56, height: 56)
+                        .background(Color.accentColor)
+                        .clipShape(Circle())
+                        .shadow(color: .black.opacity(0.2), radius: 6, x: 0, y: 3)
+                }
+                .padding(.trailing, 20)
+                .padding(.bottom, 24)
             }
             .navigationTitle("Fleet")
             .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink(destination: AddVehicleView(fleetVM: vm)) {
-                        Image(systemName: "plus")
-                    }
-                }
-            }
             .task {
                 if vm.vehicles.isEmpty {
                     await vm.fetchVehicles()
@@ -76,7 +83,6 @@ struct FleetListView: View {
         }
     }
 }
-
 
 struct VehicleCardView: View {
     let vehicle: Vehicle
@@ -101,6 +107,7 @@ struct VehicleCardView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(vehicle.registrationNumber)
                     .font(.headline.weight(.semibold))
+                    .foregroundStyle(.primary)
                 
                 Text(
                     [vehicle.brand, vehicle.model]
