@@ -51,11 +51,6 @@ struct FleetManagementSystemApp: App {
 
             } catch {
                 print("❌ Error restoring session:", error)
-
-                await MainActor.run {
-                    print("⚠️ Fallback → SetPasswordView")
-                    showSetPassword = true
-                }
             }
         }
     }
