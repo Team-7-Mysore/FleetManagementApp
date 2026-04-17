@@ -17,11 +17,7 @@ struct DriverDashboardView: View {
         ScrollView {
             VStack(spacing: 12) {
                 // MARK: - Active Route Card
-                if let trip = vm.activeTrip {
-                    activeRouteCard(trip)
-                } else if let next = vm.upcomingTrips.first {
-                    nextTripCard(next)
-                }
+                routeSummaryCard
 
                 // MARK: - Quick Actions
                 quickActionsRow
@@ -31,15 +27,15 @@ struct DriverDashboardView: View {
                 // MARK: - Vehicle Info
                 if let vehicle = vm.assignedVehicle {
                     vehicleCard(vehicle)
+                } else {
+                    vehicleEmptyCard
                 }
 
                 // MARK: - Stats Row
                 statsRow
 
                 // MARK: - Upcoming Trips
-                if !vm.upcomingTrips.isEmpty {
-                    upcomingTripsSection
-                }
+                upcomingTripsSection
             }
             .padding(.horizontal)
             .padding(.bottom, 20)
@@ -86,6 +82,42 @@ struct DriverDashboardView: View {
                 .environmentObject(router)
         }
         .onAppear { vm.loadData() }
+    }
+
+    @ViewBuilder
+    private var routeSummaryCard: some View {
+        if let trip = vm.activeTrip {
+            activeRouteCard(trip)
+        } else if let next = vm.upcomingTrips.first {
+            nextTripCard(next)
+        } else {
+            noTripCard
+        }
+    }
+
+    private var noTripCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                StatusBadge(text: "No Active Trip", color: .secondary)
+                Spacer()
+            }
+
+            Text("No route assigned right now")
+                .font(.subheadline.weight(.semibold))
+            Text("Your next trip will appear here as soon as dispatch assigns one.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            HStack {
+                Image(systemName: "calendar.badge.clock")
+                    .foregroundStyle(AppTheme.statusInfo)
+                Text("Check the Trips section for upcoming schedules.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(18)
+        .cardStyle()
     }
 
     // MARK: - Active Route Card
@@ -177,6 +209,31 @@ struct DriverDashboardView: View {
             }
         }
         .padding(18)
+        .cardStyle()
+    }
+
+    private var vehicleEmptyCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Image(systemName: "car.fill")
+                    .font(.title2)
+                    .foregroundStyle(AppTheme.primaryGreen)
+                    .frame(width: 48, height: 48)
+                    .background(AppTheme.lightGreen)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("No vehicle assigned")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Contact your fleet manager for assignment details.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+            }
+        }
+        .padding(16)
         .cardStyle()
     }
 
@@ -434,13 +491,26 @@ struct DriverDashboardView: View {
                 .foregroundStyle(AppTheme.primaryGreen)
             }
 
-            ForEach(vm.upcomingTrips) { trip in
-                NavigationLink {
-                    TripDetailView(trip: trip, user: user)
-                } label: {
-                    upcomingTripRow(trip)
+            if vm.upcomingTrips.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("No upcoming trips")
+                        .font(.subheadline.weight(.semibold))
+                    Text("You are all caught up. New assignments will appear here.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(14)
+                .cardStyle()
+            } else {
+                ForEach(vm.upcomingTrips) { trip in
+                    NavigationLink {
+                        TripDetailView(trip: trip, user: user)
+                    } label: {
+                        upcomingTripRow(trip)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }
