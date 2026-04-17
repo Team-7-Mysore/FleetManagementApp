@@ -30,9 +30,7 @@ struct FleetListView: View {
                             // Summary Cards
                             SummaryCardView(
                                 title: "TOTAL VEHICLES",
-                                value: "\(vm.totalVehiclesCount)",
-                                trend: vm.trendText,
-                                trendColor: .green
+                                value: "\(vm.totalVehiclesCount)"
                             )
                             .padding(.horizontal)
                             
@@ -108,9 +106,6 @@ struct FleetListView: View {
 struct SummaryCardView: View {
     let title: String
     let value: String
-    let trend: String
-    let trendColor: Color
-    var showProgress: Bool = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -122,31 +117,6 @@ struct SummaryCardView: View {
             Text(value)
                 .font(.system(size: 40, weight: .black))
                 .foregroundColor(.black)
-            
-            if showProgress {
-                VStack(alignment: .leading, spacing: 6) {
-                    GeometryReader { geo in
-                        Capsule()
-                            .fill(Color(.systemGray5))
-                            .frame(height: 4)
-                            .overlay(
-                                Capsule()
-                                    .fill(Color.green)
-                                    .frame(width: geo.size.width * 0.8, height: 4),
-                                alignment: .leading
-                            )
-                    }
-                    .frame(height: 4)
-                }
-            } else {
-                HStack(spacing: 4) {
-                    Image(systemName: "chart.line.uptrend.xyaxis")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text(trend)
-                        .font(.system(size: 14, weight: .bold))
-                }
-                .foregroundColor(trendColor)
-            }
         }
         .padding(24)
         .frame(maxWidth: .infinity, alignment: .leading)
