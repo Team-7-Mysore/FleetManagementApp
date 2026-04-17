@@ -5,7 +5,9 @@ class AddVehicleViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var isSuccess = false
-    
+    @Published var vin = ""
+    @Published var brand = ""
+    @Published var modelYear = ""
     @Published var vehicleName = ""
     @Published var registrationNumber = ""
     @Published var vehicleType = "Truck"
@@ -40,15 +42,16 @@ class AddVehicleViewModel: ObservableObject {
         return nil
     }
     func validateStep1() -> String? {
-        
         if vehicleName.trimmingCharacters(in: .whitespaces).isEmpty {
             return "Vehicle name is required"
         }
-        
         if registrationNumber.trimmingCharacters(in: .whitespaces).isEmpty {
             return "Registration number is required"
         }
-        
+        // Added VIN validation
+        if vin.count != 17 {
+            return "VIN must be exactly 17 characters"
+        }
         return nil
     }
 }
@@ -174,8 +177,10 @@ extension AddVehicleViewModel {
         
         let payload: [String: Any] = [
             "vehicleName": vehicleName,
-            "registrationNumber": registrationNumber,
-            "vin": UUID().uuidString,
+            "registrationNumber": registrationNumber, // Maps to number_plate in DB
+            "vin": vin.uppercased(),
+            "brand": brand,
+            "model_year": Int(modelYear) ?? 0, // Convert to Int
             "vehicleType": vehicleType,
             "fuelType": fuelType,
             "manufacturer": manufacturer,
@@ -185,7 +190,6 @@ extension AddVehicleViewModel {
             "rcExpiry": ISO8601DateFormatter().string(from: rcExpiry),
             "documents": documents
         ]
-        
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         

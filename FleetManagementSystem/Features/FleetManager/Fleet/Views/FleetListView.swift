@@ -19,7 +19,7 @@ struct FleetListView: View {
                         .font(.title2)
                         .foregroundColor(.white)
                         .frame(width: 60, height: 60)
-                        .background(Color(red: 59/255, green: 13/255, blue: 17/255))
+                        .background(Color.TechBlue)
                         .clipShape(Circle())
                         .shadow(radius: 5)
                 }

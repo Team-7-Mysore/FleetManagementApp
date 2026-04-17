@@ -16,7 +16,7 @@ struct FormCard<Content: View>: View {
             
             HStack {
                 Image(systemName: icon)
-                    .foregroundColor(Color.primaryBrown)
+                    .foregroundColor(Color.TechBlue)
                 
                 Text(title)
                     .font(.headline)

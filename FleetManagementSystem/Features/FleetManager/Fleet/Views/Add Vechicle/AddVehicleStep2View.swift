@@ -58,7 +58,7 @@ struct AddVehicleStep2View: View {
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                 }
-                .listRowBackground(Color.primaryBrown)
+                .listRowBackground(Color.TechBlue)
                 .foregroundColor(.white)
             }
         }
