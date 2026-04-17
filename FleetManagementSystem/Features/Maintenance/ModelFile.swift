@@ -213,13 +213,13 @@ struct ChatParticipant: Codable {
 struct ChatMessage: Identifiable, Codable {
     let id: UUID
     var chatRoomId: UUID
-    var senderId: UUID           // The user who sent the message
+    var senderId: UUID
     var messageType: MessageType
-    var content: String?         // The text of the message (optional if it's just an image)
-    var mediaUrl: String?        // Supabase Storage URL if they send a photo
+    var content: String?
+    var mediaUrl: String?
     var isEdited: Bool?
     let createdAt: Date?
-    
+
     enum CodingKeys: String, CodingKey {
         case id
         case chatRoomId = "chat_room_id"
@@ -232,30 +232,16 @@ struct ChatMessage: Identifiable, Codable {
     }
 }
 
-// MARK: - Hex Color Extension
-// Tucked away at the bottom of the file!
-extension Color {
-    init(hex: String) {
-        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
-        var int: UInt64 = 0
-        Scanner(string: hex).scanHexInt64(&int)
-        let a, r, g, b: UInt64
-        switch hex.count {
-        case 3: // RGB (12-bit)
-            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
-        case 6: // RGB (24-bit)
-            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
-        case 8: // ARGB (32-bit)
-            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
-        default:
-            (a, r, g, b) = (255, 0, 0, 0)
-        }
-        self.init(
-            .sRGB,
-            red: Double(r) / 255,
-            green: Double(g) / 255,
-            blue:  Double(b) / 255,
-            opacity: Double(a) / 255
-        )
-    }
+struct ChatPreview: Identifiable {
+    let id: UUID
+    let name: String
+    let lastMessage: String
+    let timestamp: Date
+    let unreadCount: Int
+}
+
+struct SendMessageRequest {
+    let chatRoomId: UUID
+    let senderId: UUID
+    let content: String
 }
