@@ -93,4 +93,12 @@ final class WorkOrderViewModel: ObservableObject {
             .upsert(tasks)
             .execute()
     }
+    
+    func upsertParts(_ parts: [WorkOrderPart]) async throws {
+        guard !parts.isEmpty else { return }
+        try await SupabaseManager.shared.client
+            .from("work_order_parts")
+            .upsert(parts)
+            .execute()
+    }
 }

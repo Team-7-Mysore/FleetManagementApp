@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftUI // Added this so we can use Color
 
 // MARK: - Work Order Enums
 enum WorkOrderPriority: String, Codable, CaseIterable {
@@ -20,6 +21,32 @@ enum WorkOrderStatus: String, Codable, CaseIterable {
     case inProgress = "In Progress"
     case completed = "Completed"
     case cancelled = "Cancelled"
+}
+
+// MARK: - Vehicle Type Enum
+enum VehicleType: String, Codable, CaseIterable {
+    case bike = "Bike"
+    case car = "Car"
+    case bus = "Bus"
+    case truck = "Truck"
+    
+    var sfSymbol: String {
+        switch self {
+        case .bike: return "motorcycle"
+        case .car: return "car.fill"
+        case .bus: return "bus.fill"
+        case .truck: return "box.truck.fill"
+        }
+    }
+   
+    var color: Color {
+        switch self {
+        case .bike: return Color(hex: "#2C2C2E")
+        case .car: return Color(hex: "#0A84FF")
+        case .bus: return Color(hex: "#2E7D32") 
+        case .truck: return Color(hex: "#C75C1A")
+        }
+    }
 }
 
 // MARK: - Chat Enums
@@ -52,7 +79,7 @@ struct InventoryItem: Identifiable, Codable {
     
     // Satisfies Identifiable for SwiftUI
     var id: UUID { inventoryId }
-
+    
     enum CodingKeys: String, CodingKey {
         case inventoryId = "inventory_id"
         case partName = "part_name"
@@ -74,7 +101,8 @@ struct WorkOrder: Identifiable, Codable {
     let workOrderId: UUID
     var vehicleVin: String
     var vehicleName: String?
-    var fleetUnitId: String?
+    var fleetUnitId: String
+    var vehicleType: VehicleType
     var priority: WorkOrderPriority
     var status: WorkOrderStatus
     var issueTitle: String
@@ -89,12 +117,13 @@ struct WorkOrder: Identifiable, Codable {
     
     // Satisfies Identifiable for SwiftUI
     var id: UUID { workOrderId }
-
+    
     enum CodingKeys: String, CodingKey {
         case workOrderId = "work_order_id"
         case vehicleVin = "vehicle_vin"
         case vehicleName = "vehicle_name"
         case fleetUnitId = "fleet_unit_id"
+        case vehicleType = "vehicle_type" // Added to coding keys!
         case priority
         case status
         case issueTitle = "issue_title"
@@ -119,7 +148,7 @@ struct WorkOrderTask: Identifiable, Codable {
     
     // Satisfies Identifiable for SwiftUI
     var id: UUID { taskId }
-
+    
     enum CodingKeys: String, CodingKey {
         case taskId = "task_id"
         case workOrderId = "work_order_id"
@@ -136,7 +165,7 @@ struct WorkOrderPart: Codable {
     var inventoryId: UUID
     var quantityRequired: Int
     var costAtTime: Double?
-
+    
     enum CodingKeys: String, CodingKey {
         case workOrderId = "work_order_id"
         case inventoryId = "inventory_id"
@@ -200,5 +229,33 @@ struct ChatMessage: Identifiable, Codable {
         case mediaUrl = "media_url"
         case isEdited = "is_edited"
         case createdAt = "created_at"
+    }
+}
+
+// MARK: - Hex Color Extension
+// Tucked away at the bottom of the file!
+extension Color {
+    init(hex: String) {
+        let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+        var int: UInt64 = 0
+        Scanner(string: hex).scanHexInt64(&int)
+        let a, r, g, b: UInt64
+        switch hex.count {
+        case 3: // RGB (12-bit)
+            (a, r, g, b) = (255, (int >> 8) * 17, (int >> 4 & 0xF) * 17, (int & 0xF) * 17)
+        case 6: // RGB (24-bit)
+            (a, r, g, b) = (255, int >> 16, int >> 8 & 0xFF, int & 0xFF)
+        case 8: // ARGB (32-bit)
+            (a, r, g, b) = (int >> 24, int >> 16 & 0xFF, int >> 8 & 0xFF, int & 0xFF)
+        default:
+            (a, r, g, b) = (255, 0, 0, 0)
+        }
+        self.init(
+            .sRGB,
+            red: Double(r) / 255,
+            green: Double(g) / 255,
+            blue:  Double(b) / 255,
+            opacity: Double(a) / 255
+        )
     }
 }

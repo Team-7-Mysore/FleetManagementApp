@@ -146,9 +146,7 @@
 			mainGroup = 84A866AE2F8F44E700546587;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-
 				186BD05D2F90B1A000896A45 /* XCRemoteSwiftPackageReference "supabase-swift" */,
-
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 84A866B82F8F44E700546587 /* Products */;
@@ -309,7 +307,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = UK78ULJ8VZ;
+				DEVELOPMENT_TEAM = U32SNWLWG9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -322,7 +320,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.MyOrganization.FleetManagementSystem;
+				PRODUCT_BUNDLE_IDENTIFIER = com.MyOrganization.FleetManagement;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -341,7 +339,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = UK78ULJ8VZ;
+				DEVELOPMENT_TEAM = U32SNWLWG9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -354,7 +352,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.MyOrganization.FleetManagementSystem;
+				PRODUCT_BUNDLE_IDENTIFIER = com.MyOrganization.FleetManagement;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -390,9 +388,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-
 		186BD05D2F90B1A000896A45 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
-
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/supabase/supabase-swift";
 			requirement = {
@@ -401,7 +397,6 @@
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
-
 
 /* Begin XCSwiftPackageProductDependency section */
 		186BD0632F90B98200896A45 /* Supabase */ = {
@@ -435,7 +430,6 @@
 			productName = Realtime;
 		};
 /* End XCSwiftPackageProductDependency section */
-
 	};
 	rootObject = 84A866AF2F8F44E700546587 /* Project object */;
 }
