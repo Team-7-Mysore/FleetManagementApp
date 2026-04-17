@@ -18,7 +18,7 @@ struct CustomDropdown: View {
         VStack(alignment: .leading, spacing: 6) {
             
             Text(title)
-                .font(.caption2)
+                .font(.caption)
                 .foregroundColor(Color(.systemGray))
             Menu {
                 ForEach(options, id: \.self) { option in

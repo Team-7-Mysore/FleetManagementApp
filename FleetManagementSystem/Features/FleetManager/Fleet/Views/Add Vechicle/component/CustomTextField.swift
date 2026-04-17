@@ -15,7 +15,7 @@ struct CustomTextField: View {
         VStack(alignment: .leading, spacing: 6) {
             
             Text(title)
-                .font(.caption2)
+                .font(.caption)
                 .foregroundColor(Color(.systemGray))
             
             TextField(placeholder, text: $text)

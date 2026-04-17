@@ -109,7 +109,7 @@ struct VehicleDetailView: View {
     private func infoSection(_ vehicle: Vehicle) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("BASIC INFORMATION")
-                .font(.system(size: 12, weight: .bold))
+                .font(.caption.weight(.bold))
                 .foregroundColor(.secondary)
 
             VStack(spacing: 0) {
@@ -130,7 +130,7 @@ struct VehicleDetailView: View {
     private var documentsSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("DOCUMENTS")
-                .font(.system(size: 12, weight: .bold))
+                .font(.caption.weight(.bold))
                 .foregroundColor(.secondary)
 
             VStack(spacing: 0) {

@@ -14,7 +14,7 @@ struct CustomDateField: View {
         VStack(alignment: .leading, spacing: 6) {
             
             Text(title)
-                .font(.caption2)
+                .font(.caption)
                 .foregroundColor(Color(.systemGray))
             
             DatePicker("", selection: $date, displayedComponents: .date)
