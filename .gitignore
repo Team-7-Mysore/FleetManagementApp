@@ -14,6 +14,8 @@ DerivedData/
 .build/
 
 # Swift Package Manager
+# SwiftPM resolved file inside Xcode workspace (causes merge conflicts)
+**/xcshareddata/swiftpm/Package.resolved
 .swiftpm/
 Packages/
 

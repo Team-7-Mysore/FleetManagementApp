@@ -8,6 +8,23 @@
 import Foundation
 import SwiftUI // Added this so we can use Color
 
+// MARK: - App User
+struct AppUser: Identifiable, Codable {
+    let id: UUID
+    var name: String
+    var email: String
+    var role: String // fleet_manager, maintenance, driver
+    var avatarUrl: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case id = "user_id"
+        case name
+        case email
+        case role
+        case avatarUrl = "avatar_url"
+    }
+}
+
 // MARK: - Work Order Enums
 enum WorkOrderPriority: String, Codable, CaseIterable {
     case low = "Low"
@@ -56,10 +73,10 @@ enum ChatRoomType: String, Codable {
     case workOrder = "WorkOrder" // Chat specifically tied to a repair job
 }
 
-enum MessageType: String, Codable {
+enum ChatMessageType: String, Codable {
     case text = "Text"
     case image = "Image"
-    case system = "System"       // Auto-generated messages (e.g., "Status changed to Completed")
+    case system = "System"
 }
 
 // MARK: - 1. Inventory Model
@@ -175,13 +192,14 @@ struct WorkOrderPart: Codable {
 }
 
 // MARK: - 5. Chat Room
-struct ChatRoom: Identifiable, Codable {
+struct ChatRoom: Identifiable, Codable, Hashable {
     let id: UUID
     var type: ChatRoomType
     var name: String?            // Optional: Name for group chats (e.g., "Mechanics Team")
     var workOrderId: UUID?       // Optional: Links the chat directly to a Work Order
     let createdAt: Date?
     var updatedAt: Date?         // Useful for sorting the inbox by "most recently active"
+    var lastMessage: String?     // Local property for inbox preview
     
     enum CodingKeys: String, CodingKey {
         case id
@@ -214,7 +232,7 @@ struct ChatMessage: Identifiable, Codable {
     let id: UUID
     var chatRoomId: UUID
     var senderId: UUID
-    var messageType: MessageType
+    var messageType: ChatMessageType
     var content: String?
     var mediaUrl: String?
     var isEdited: Bool?
@@ -244,4 +262,12 @@ struct SendMessageRequest {
     let chatRoomId: UUID
     let senderId: UUID
     let content: String
+}
+
+struct ChatParticipantWithRoom: Codable {
+    let chatRoom: ChatRoom
+
+    enum CodingKeys: String, CodingKey {
+        case chatRoom = "chat_rooms"
+    }
 }
