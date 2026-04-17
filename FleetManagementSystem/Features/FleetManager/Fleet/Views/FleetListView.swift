@@ -39,6 +39,21 @@ struct FleetListView: View {
                             if vm.isLoading {
                                 ProgressView()
                                     .padding()
+                            } else if let errorMessage = vm.errorMessage {
+                                VStack(spacing: 12) {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                        .font(.system(size: 52))
+                                        .foregroundColor(.orange)
+                                    Text("Could Not Load Vehicles")
+                                        .font(.headline)
+                                        .foregroundColor(.primary)
+                                    Text(errorMessage)
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                }
+                                .padding(.top, 40)
+                                .padding(.horizontal)
                             } else if vm.vehicles.isEmpty {
                                 VStack(spacing: 12) {
                                     Image(systemName: "truck.box.fill")
@@ -211,7 +226,7 @@ struct VehicleCardView: View {
                 
                 // Buttons
                 HStack(spacing: 12) {
-                    Button(action: {}) {
+                    NavigationLink(destination: VehicleDetailView(vehicleId: vehicle.id)) {
                         Text("Details")
                             .font(.system(size: 14, weight: .bold))
                             .frame(maxWidth: .infinity)

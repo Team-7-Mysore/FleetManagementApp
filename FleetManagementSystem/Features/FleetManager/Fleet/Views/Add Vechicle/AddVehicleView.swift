@@ -1,3 +1,5 @@
+
+
 import SwiftUI
 
 struct AddVehicleView: View {
@@ -17,29 +19,6 @@ struct AddVehicleView: View {
                 manufacturerSection
                 identificationSection
                 validitySection
-                
-                VStack(spacing: 8) {
-
-                    Text("1 of 2")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(Color(.label))
-                        
-                  
-                    GeometryReader { geometry in
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(Color(.systemGray5))
-                                .frame(height: 3)
-                            
-                            Capsule()
-                                .fill(Color.TechBlue)
-                                .frame(width: geometry.size.width * 0.5, height: 3)
-                        }
-                    }
-                    .frame(height: 3)
-                }
-                .padding(.horizontal)
                 
                 navigationAndActionButtons
             }

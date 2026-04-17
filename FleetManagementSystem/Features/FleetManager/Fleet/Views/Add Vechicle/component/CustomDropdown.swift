@@ -23,7 +23,7 @@ struct CustomDropdown: View {
             Menu {
                 ForEach(options, id: \.self) { option in
                     Button(option) {
-                        selection = option  
+                        selection = option
                     }
                 }
             } label: {

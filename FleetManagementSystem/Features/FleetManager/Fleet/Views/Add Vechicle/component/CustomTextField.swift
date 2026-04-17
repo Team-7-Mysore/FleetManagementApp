@@ -18,7 +18,7 @@ struct CustomTextField: View {
                 .font(.caption2)
                 .foregroundColor(Color(.systemGray))
             
-            TextField(placeholder, text: $text) 
+            TextField(placeholder, text: $text)
                 .textFieldStyle(.roundedBorder)
         }
     }

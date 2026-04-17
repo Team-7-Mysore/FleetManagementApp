@@ -10,38 +10,12 @@ struct AddVehicleStep2View: View {
 
     @State private var selectedType: String = ""
     var body: some View {
-
-        ScrollView {
-            VStack(spacing: 20) {
-                
-                // MARK: Header Progress
-                VStack(spacing: 8) {
-                    Text("2 of 2")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
-                        .foregroundColor(Color(.label))
-                        
-                    // Progress Bar
-                    GeometryReader { geometry in
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(Color(.systemGray5))
-                                .frame(height: 3)
-                            
-                            Capsule()
-                                .fill(Color.TechBlue)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .frame(height: 3)
-                        }
-                    }
-                    .frame(height: 3)
-                }
-                .padding(.horizontal)
-                .padding(.top, 10)
-                
-                VStack(spacing: 24) {
-                    
-
+        List {
+            Section(header: Text("Upload Documents")) {
+                Button(action: {
+                    selectedType = "RC"
+                    showSourcePicker = true
+                }) {
                     DocumentUploadComponent(
                         title: "RC Document",
                         isUploaded: vm.rcURL != nil,
@@ -72,32 +46,7 @@ struct AddVehicleStep2View: View {
                         fileName: vm.pucURL
                     )
                 }
-
-                .padding()
-                .background(Color.white)
-                .cornerRadius(20)
-                .padding(.horizontal)
-                
-               
-                Button(action: {
-                   
-                }) {
-                    HStack {
-                        Text("SAVE VEHICLE")
-                            .fontWeight(.bold)
-                        Image(systemName: "checkmark.circle.fill")
-                    }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.TechBlue)
-                    .cornerRadius(25)
-                }
-                .padding(.horizontal)
-                .padding(.top, 10)
-                
-                Spacer(minLength: 40)
-
+                .buttonStyle(.plain)
             }
             
             Section {
@@ -106,12 +55,19 @@ struct AddVehicleStep2View: View {
                         await vm.saveVehicle()
                     }
                 }) {
-                    Text("Save Vehicle")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
+                    if vm.isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .tint(.white)
+                    } else {
+                        Text("Save Vehicle")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                    }
                 }
                 .listRowBackground(Color.TechBlue)
                 .foregroundColor(.white)
+                .disabled(vm.isLoading)
             }
         }
         .listStyle(.insetGrouped)
@@ -153,6 +109,12 @@ struct AddVehicleStep2View: View {
                     await vm.uploadImage(image: image, type: selectedType)
                 }
             }
+        }
+        .alert(item: Binding(
+            get: { vm.errorMessage.map { ErrorWrapper(message: $0) } },
+            set: { _ in vm.errorMessage = nil }
+        )) { wrapper in
+            Alert(title: Text("Save Failed"), message: Text(wrapper.message))
         }
 
         .onChange(of: vm.isSuccess) { success in

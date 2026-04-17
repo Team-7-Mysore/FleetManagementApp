@@ -13,46 +13,9 @@ struct DocumentUploadComponent: View {
             Spacer()
             
             if isUploaded {
-
-                // Uploaded State
-                HStack(spacing: 12) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.TechBlue.opacity(0.1))
-                            .frame(width: 40, height: 40)
-                        Image(systemName: "doc.text")
-                            .foregroundColor(.TechBlue)
-                    }
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(fileName ?? "Document.pdf")
-                            .font(.footnote)
-                            .fontWeight(.bold)
-                        
-                        HStack(spacing: 4) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 10))
-                                .foregroundColor(.green)
-                            Text("UPLOADED")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.green)
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    Button(action: {}) {
-                        Text("REPLACE")
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(Color.white)
-                            .foregroundColor(.TechBlue)
-                            .cornerRadius(6)
-                            .shadow(color: .black.opacity(0.05), radius: 2)
-                    }
-
+                HStack(spacing: 4) {
+                    Text("Replace")
+                    Image(systemName: "arrow.triangle.2.circlepath")
                 }
                 .foregroundColor(.blue)
             } else {

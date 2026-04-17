@@ -1,6 +1,19 @@
 import SwiftUI
 import Combine
 import Foundation
+import Supabase
+
+private struct VehicleInsert: Encodable {
+    let vehicle_name: String
+    let number_plate: String
+    let brand: String?
+    let model_year: Int?
+    let vehicle_type: String
+    let fuel_type: String?
+    let model: String?
+    let image_url: String?
+}
+
 class AddVehicleViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
@@ -185,21 +198,16 @@ extension AddVehicleViewModel {
 extension AddVehicleViewModel {
     
     func saveVehicle() async {
-        
-      
         if let error = validate() {
             DispatchQueue.main.async {
                 self.errorMessage = error
             }
             return
         }
-        
-        guard let url = URL(string: "https://qisdvwaldlghndrudbvr.supabase.co/functions/v1/bright-action") else {
-            return
-        }
-        
+
         DispatchQueue.main.async {
             self.isLoading = true
+            self.errorMessage = nil
         }
         
         defer {
@@ -207,21 +215,62 @@ extension AddVehicleViewModel {
                 self.isLoading = false
             }
         }
-        
-      
+
+        do {
+            do {
+                let newVehicle = VehicleInsert(
+                    vehicle_name: vehicleName.trimmingCharacters(in: .whitespacesAndNewlines),
+                    number_plate: registrationNumber.trimmingCharacters(in: .whitespacesAndNewlines),
+                    brand: brand.nilIfBlank,
+                    model_year: Int(modelYear.trimmingCharacters(in: .whitespacesAndNewlines)),
+                    vehicle_type: vehicleType.trimmingCharacters(in: .whitespacesAndNewlines),
+                    fuel_type: fuelType.nilIfBlank,
+                    model: model.nilIfBlank,
+                    image_url: vehicleImageURL?.nilIfBlank
+                )
+
+                try await SupabaseManager.shared.client
+                    .from("vehicles")
+                    .insert(newVehicle)
+                    .execute()
+            } catch {
+                let errorText = error.localizedDescription.lowercased()
+                if errorText.contains("row-level security") {
+                    try await saveVehicleViaEdgeFunction()
+                } else {
+                    throw error
+                }
+            }
+
+            DispatchQueue.main.async {
+                self.isSuccess = true
+            }
+        } catch {
+            print("❌ Failed to save vehicle: \(error)")
+            DispatchQueue.main.async {
+                self.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func saveVehicleViaEdgeFunction() async throws {
+        guard let url = URL(string: "https://qisdvwaldlghndrudbvr.supabase.co/functions/v1/bright-action") else {
+            throw URLError(.badURL)
+        }
+
         let documents = [
             rcURL != nil ? ["type": "RC", "url": rcURL!] : nil,
             insuranceURL != nil ? ["type": "INSURANCE", "url": insuranceURL!] : nil,
             pucURL != nil ? ["type": "PUC", "url": pucURL!] : nil
         ].compactMap { $0 }
-        
+
         let payload: [String: Any] = [
             "image_url": vehicleImageURL ?? "",
             "vehicleName": vehicleName,
-            "registrationNumber": registrationNumber, // Maps to number_plate in DB
+            "registrationNumber": registrationNumber,
             "vin": vin.uppercased(),
             "brand": brand,
-            "model_year": Int(modelYear) ?? 0, // Convert to Int
+            "model_year": Int(modelYear) ?? 0,
             "vehicleType": vehicleType,
             "fuelType": fuelType,
             "manufacturer": manufacturer,
@@ -231,41 +280,31 @@ extension AddVehicleViewModel {
             "rcExpiry": ISO8601DateFormatter().string(from: rcExpiry),
             "documents": documents
         ]
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        
         request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
-        
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
-            if let httpResponse = response as? HTTPURLResponse {
-                print("Status Code:", httpResponse.statusCode)
-            }
+        let (data, response) = try await URLSession.shared.data(for: request)
 
-            if let responseString = String(data: data, encoding: .utf8) {
-                print("Response Body:", responseString)
-            }
-            
-            if let httpResponse = response as? HTTPURLResponse,
-               httpResponse.statusCode == 200 {
-                
-                DispatchQueue.main.async {
-                    self.isSuccess = true
-                }
-            } else {
-                DispatchQueue.main.async {
-                    self.errorMessage = "Failed to save vehicle"
-                }
-            }
-            
-        } catch {
-            DispatchQueue.main.async {
-                self.errorMessage = error.localizedDescription
-            }
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
         }
+
+        guard 200..<300 ~= httpResponse.statusCode else {
+            let message = String(data: data, encoding: .utf8) ?? "Edge function failed"
+            throw NSError(domain: "AddVehicle", code: httpResponse.statusCode, userInfo: [
+                NSLocalizedDescriptionKey: message
+            ])
+        }
+    }
+}
+
+private extension String {
+    var nilIfBlank: String? {
+        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
