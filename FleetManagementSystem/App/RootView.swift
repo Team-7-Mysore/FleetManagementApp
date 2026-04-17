@@ -17,7 +17,7 @@ struct RootView: View {
     private func roleBasedView(for profile: UserProfile) -> some View {
         switch profile.role {
         case .driver:
-            DriverDashboardView(profile: profile) {
+            DriverWorkspaceView(profile: profile) {
                 await appSession.signOut()
             }
         case .manager:
