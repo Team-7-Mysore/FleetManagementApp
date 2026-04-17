@@ -63,7 +63,7 @@ struct AddPersonFlowView: View {
                         .foregroundColor(.white)
                 }
                 .padding(36)
-                .background(Color.primaryBrown.opacity(0.9))
+                .background(Color.TechBlue.opacity(0.9))
                 .cornerRadius(20)
                 .shadow(radius: 20)
             }

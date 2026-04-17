@@ -22,20 +22,21 @@ struct AddStaffSuccessView: View {
             // Animated success icon
             ZStack {
                 Circle()
-                    .fill(Color.primaryBrown.opacity(0.08))
+                    .fill(Color.TechBlue
+                        .opacity(0.08))
                     .frame(width: 130, height: 130)
                     .scaleEffect(isAnimating ? 1 : 0.4)
                     .opacity(isAnimating ? 1 : 0)
 
                 Circle()
-                    .fill(Color.primaryBrown.opacity(0.15))
+                    .fill(Color.TechBlue.opacity(0.15))
                     .frame(width: 96, height: 96)
                     .scaleEffect(isAnimating ? 1 : 0.4)
                     .opacity(isAnimating ? 1 : 0)
 
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 64))
-                    .foregroundColor(Color.primaryBrown)
+                    .foregroundColor(Color.TechBlue)
                     .scaleEffect(isAnimating ? 1 : 0.01)
                     .rotationEffect(.degrees(isAnimating ? 0 : -90))
             }
@@ -84,7 +85,7 @@ struct AddStaffSuccessView: View {
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Color.primaryBrown)
+                    .background(Color.TechBlue)
                     .cornerRadius(25)
             }
             .padding(.horizontal, 24)
@@ -106,7 +107,7 @@ private struct SuccessStepRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
-                .foregroundColor(Color.primaryBrown)
+                .foregroundColor(Color.TechBlue)
                 .font(.system(size: 18))
                 .frame(width: 22)
             Text(text)
