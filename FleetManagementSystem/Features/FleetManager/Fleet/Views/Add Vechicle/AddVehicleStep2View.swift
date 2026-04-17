@@ -2,6 +2,9 @@ import SwiftUI
 
 struct AddVehicleStep2View: View {
     @Environment(\.dismiss) var dismiss
+    @ObservedObject var vm: AddVehicleViewModel
+    @State private var showPicker = false
+    @State private var selectedType: String = ""
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
@@ -31,32 +34,44 @@ struct AddVehicleStep2View: View {
                 .padding(.horizontal)
                 .padding(.top, 10)
                 
-                // MARK: Documents White Card
                 VStack(spacing: 24) {
+                    
                     DocumentUploadComponent(
                         title: "RC DOCUMENT",
-                        isUploaded: true,
-                        fileName: "RC_Vehicle_01.pdf"
+                        isUploaded: vm.rcURL != nil,
+                        fileName: vm.rcURL
                     )
+                    .onTapGesture {
+                        selectedType = "RC"
+                        showPicker = true
+                    }
                     
                     DocumentUploadComponent(
                         title: "INSURANCE DOCUMENT",
-                        isUploaded: false
-                    )
+                        isUploaded: vm.insuranceURL != nil,
+                        fileName: vm.insuranceURL
+                    ).onTapGesture {
+                        selectedType = "INSURANCE"
+                        showPicker = true
+                    }
                     
                     DocumentUploadComponent(
                         title: "PUC CERTIFICATE (OPTIONAL)",
-                        isUploaded: false
-                    )
+                        isUploaded: vm.pucURL != nil,
+                        fileName: vm.pucURL
+                    ).onTapGesture {
+                        selectedType = "PUC"
+                        showPicker = true
+                    }
                 }
                 .padding()
                 .background(Color.white)
                 .cornerRadius(20)
                 .padding(.horizontal)
                 
-                // MARK: CTA
+               
                 Button(action: {
-                    // Save vehicle action
+                   
                 }) {
                     HStack {
                         Text("SAVE VEHICLE")
@@ -85,16 +100,26 @@ struct AddVehicleStep2View: View {
             }
             ToolbarItem(placement: .navigationBarLeading) {
                 Button(action: {
-                    dismiss()
+                    Task {
+                            await vm.saveVehicle()
+                        }
                 }) {
                     Image(systemName: "chevron.left")
                         .foregroundColor(Color(.label))
                 }
             }
         }
+        .sheet(isPresented: $showPicker) {
+        DocumentPicker { url in
+            Task {
+                await vm.uploadFile(fileURL: url, type: selectedType)
+            }
+        }
     }
+    }
+       
 }
 
 #Preview {
-    AddVehicleStep2View()
-}
+    AddVehicleStep2View(vm: AddVehicleViewModel())
+    }

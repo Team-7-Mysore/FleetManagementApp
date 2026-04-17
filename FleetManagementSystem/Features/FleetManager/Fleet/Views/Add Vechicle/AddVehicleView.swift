@@ -1,16 +1,7 @@
 import SwiftUI
 
 struct AddVehicleView: View {
-    @State private var vehicleName = ""
-    @State private var registrationNumber = ""
-    @State private var vehicleType = "Truck"
-    @State private var fuelType = "Diesel"
-    @State private var manufacturer = ""
-    @State private var model = ""
-
-    @State private var registrationDate = Date()
-    @State private var pucExpiry = Date()
-    @State private var rcExpiry = Date()
+    @StateObject var vm = AddVehicleViewModel()
     @Environment(\.dismiss) var dismiss
     
     var body: some View {
@@ -48,25 +39,25 @@ struct AddVehicleView: View {
                     CustomTextField(
                         title: "VEHICLE NAME",
                         placeholder: "e.g. Silver Ghost V8",
-                        text: $vehicleName
+                        text: $vm.vehicleName
                     )
 
                     CustomTextField(
                         title: "REGISTRATION NUMBER",
                         placeholder: "ABC-1234",
-                        text: $registrationNumber
+                        text: $vm.registrationNumber
                     )
                     HStack(spacing: 16) {
                            CustomDropdown(
                                title: "VEHICLE TYPE",
                                options: ["Truck", "Car", "Bike"],
-                               selection: $vehicleType
+                               selection: $vm.vehicleType
                            )
                            
                            CustomDropdown(
                                title: "FUEL TYPE",
                                options: ["Diesel", "Petrol", "Electric"],
-                               selection: $fuelType
+                               selection: $vm.fuelType
                            )
                        }
                 }
@@ -77,18 +68,18 @@ struct AddVehicleView: View {
                     CustomTextField(
                         title: "MANUFACTURER",
                         placeholder: "Rolls Royce Heritage",
-                        text: $manufacturer
+                        text: $vm.manufacturer
                     )
                     
                     CustomTextField(
                         title: "MODEL",
                         placeholder: "Phantom Edition",
-                        text: $model
+                        text: $vm.model
                     )
                     
                     CustomDateField(
                         title: "REGISTRATION DATE",
-                        date: $registrationDate
+                        date: $vm.registrationDate
                     )
                 }
               
@@ -97,18 +88,18 @@ struct AddVehicleView: View {
                         
                         CustomDateField(
                             title: "PUC EXPIRY DATE",
-                            date: $pucExpiry
+                            date: $vm.pucExpiry
                         )
                         
                         CustomDateField(
                             title: "RC EXPIRY DATE",
-                            date: $rcExpiry
+                            date: $vm.rcExpiry
                         )
                     }
                 }
                 
              
-                NavigationLink(destination: AddVehicleStep2View()) {
+                NavigationLink(destination: AddVehicleStep2View(vm: vm)){
                     Text("Next Step →")
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -137,5 +128,45 @@ struct AddVehicleView: View {
             }
         }
       
+    }
+}
+extension AddVehicleViewModel {
+    
+    func saveVehicle() async {
+        
+        guard let url = URL(string: "\(SUPABASE_URL)/functions/v1/create-vehicle-with-documents") else {
+            return
+        }
+        
+        let payload: [String: Any] = [
+            "vehicleName": vehicleName,
+            "registrationNumber": registrationNumber,
+            "vehicleType": vehicleType,
+            "fuelType": fuelType,
+            "manufacturer": manufacturer,
+            "model": model,
+            "registrationDate": ISO8601DateFormatter().string(from: registrationDate),
+            "pucExpiry": ISO8601DateFormatter().string(from: pucExpiry),
+            "rcExpiry": ISO8601DateFormatter().string(from: rcExpiry),
+            "documents": [
+                ["type": "RC", "url": rcURL ?? ""],
+                ["type": "INSURANCE", "url": insuranceURL ?? ""],
+                ["type": "PUC", "url": pucURL ?? ""]
+            ]
+        ]
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
+        request.addValue("Content-Type", forHTTPHeaderField: "application/json")
+        
+        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
+        
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            print("Saved:", response)
+        } catch {
+            print("Error saving vehicle:", error)
+        }
     }
 }
