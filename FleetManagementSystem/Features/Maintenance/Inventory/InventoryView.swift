@@ -3,6 +3,7 @@ import SwiftUI
 struct InventoryView: View {
     @StateObject private var viewModel = InventoryViewModel()
     @State private var showFilterSheet = false
+    @State private var selectedItem: InventoryItem?
     
     let filterOptions = ["All", "Car", "Truck", "Bike", "Bus"]
     
@@ -14,7 +15,7 @@ struct InventoryView: View {
                 VStack(spacing: 0) {
                     // Header Subtitle
                     VStack(alignment: .leading) {
-                        Text("Managing fleet components")
+                        Text("Managing vehicle components")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                             .padding(.horizontal, 16)
@@ -37,18 +38,12 @@ struct InventoryView: View {
                         .padding(.bottom, 12)
                     
                     // Inventory List
-                    VStack(alignment: .leading) {
-                        Text("Items: \(viewModel.items.count)")
-                        Text("Filtered: \(viewModel.filteredItems.count)")
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
-
-                    // Inventory List
                     ScrollView {
                         LazyVStack(spacing: 12) {
                             ForEach(viewModel.filteredItems) { item in
-                                NavigationLink(destination: Text("\(item.partName) Details").navigationTitle(item.partName)) {
+                                Button {
+                                    selectedItem = item
+                                } label: {
                                     inventoryRow(for: item)
                                 }
                                 .buttonStyle(PlainButtonStyle())
@@ -59,27 +54,36 @@ struct InventoryView: View {
                     }
                 }
             }
+            .overlay(alignment: .bottomTrailing) {
+                NavigationLink(destination: AddPartView(viewModel: viewModel)) {
+                    Image(systemName: "plus")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .frame(width: 60, height: 60)
+                        .background(Color(hex: "#A3352A"))
+                        .clipShape(Circle())
+                        .shadow(color: Color.black.opacity(0.2), radius: 6, x: 0, y: 3)
+                }
+                .padding(.trailing, 20)
+                .padding(.bottom, 20)
+            }
             .navigationTitle("Inventory")
+            .sheet(item: $selectedItem) { item in
+                NavigationStack {
+                    PartDetailView(viewModel: viewModel, item: item)
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        // Notification action
-                    }) {
+                    NavigationLink(destination: NotificationsView()) {
                         Image(systemName: "bell")
-                            .foregroundColor(.blue)
+                            .foregroundColor(Color(hex: "#A3352A"))
                     }
                 }
             }
             .task {
                 await viewModel.fetchInventory()
-            }
-            .confirmationDialog("Filter by Category", isPresented: $showFilterSheet, titleVisibility: .visible) {
-                 ForEach(filterOptions, id: \.self) { option in
-                     Button(option) {
-                         viewModel.selectedVehicleFilter = option
-                     }
-                 }
-                 Button("Cancel", role: .cancel) {}
             }
         }
     }
@@ -97,6 +101,13 @@ struct InventoryView: View {
                 .foregroundColor(.primary)
             
             Spacer()
+            
+            NavigationLink(destination: LowStockView(viewModel: viewModel)) {
+                Image(systemName: "chevron.right")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .padding(4)
+            }
             
             Button {
                 withAnimation {
@@ -132,17 +143,67 @@ struct InventoryView: View {
             Button {
                 showFilterSheet = true
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "line.3.horizontal.decrease.circle")
-                    Text("Filter")
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .font(.system(size: 18, weight: .medium))
+                    .frame(width: 44, height: 44)
+                    .background(Color(.systemBackground))
+                    .foregroundColor(
+                        viewModel.selectedVehicleFilter != "All"
+                        ? Color(hex: "#A3352A")
+                        : .primary
+                    )
+                    .background(
+                        viewModel.selectedVehicleFilter != "All"
+                        ? Color(hex: "#A3352A").opacity(0.1)
+                        : Color.clear
+                    )
+                    .cornerRadius(10)
+                    .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+            }
+            .popover(isPresented: $showFilterSheet, attachmentAnchor: .rect(.bounds), arrowEdge: .top) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Filter by Category")
+                        .font(.headline)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 20)
+                        .padding(.bottom, 10)
+                    
+                    Divider()
+                        .padding(.horizontal, 20)
+                    
+                    ForEach(filterOptions, id: \.self) { option in
+                        Button {
+                            let impact = UIImpactFeedbackGenerator(style: .medium)
+                            impact.impactOccurred()
+                            
+                            withAnimation {
+                                viewModel.selectedVehicleFilter = option
+                                showFilterSheet = false
+                            }
+                        } label: {
+                            HStack {
+                                Text(option)
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                if viewModel.selectedVehicleFilter == option {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(Color(hex: "#A3352A"))
+                                        .font(.system(size: 14, weight: .bold))
+                                }
+                            }
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 20)
+                            .contentShape(Rectangle())
+                        }
+                        
+                        if option != filterOptions.last {
+                            Divider()
+                                .padding(.leading, 20)
+                        }
+                    }
                 }
-                .font(.subheadline)
-                .fontWeight(.medium)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(viewModel.selectedVehicleFilter != "All" ? Color.blue.opacity(0.15) : Color(.systemBackground))
-                .foregroundColor(viewModel.selectedVehicleFilter != "All" ? .blue : .primary)
-                .cornerRadius(10)
+                .frame(minWidth: 220)
+                .presentationDetents([.medium, .large]) // For iPhone sheet behavior fallback
             }
         }
     }
@@ -184,8 +245,8 @@ struct InventoryView: View {
                 let categoryText = item.categoryDescription ?? item.vehicleCategory ?? "Uncategorized"
                 
                 Text("\(locationText) • \(categoryText)")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                    .font(.subheadline)
+                    .foregroundColor(.primary.opacity(0.8))
             }
             
             Spacer()

@@ -83,6 +83,7 @@ struct WorkOrder: Identifiable, Codable {
     var estCost: Double?
     var internalNotes: String?
     var maintenanceNotes: String?
+    var images: [String]?
     let createdAt: Date?
     var updatedAt: Date?
     
@@ -102,6 +103,7 @@ struct WorkOrder: Identifiable, Codable {
         case estCost = "est_cost"
         case internalNotes = "internal_notes"
         case maintenanceNotes = "maintenance_notes"
+        case images
         case createdAt = "created_at"
         case updatedAt = "updated_at"
     }
