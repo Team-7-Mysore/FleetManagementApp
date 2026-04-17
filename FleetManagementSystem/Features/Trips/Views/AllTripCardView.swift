@@ -68,21 +68,21 @@ struct AllTripCardView: View {
             Label("Route", systemImage: "point.bottomleft.forward.to.point.topright.scurvepath")
                 .font(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
-
             HStack(alignment: .center, spacing: 12) {
-                routeNode(title: "From", value: trip.originText)
+                routeNode(title: "From", value: trip.originText, alignment: .leading)
 
                 Image(systemName: "arrow.right")
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.tertiary)
 
-                routeNode(title: "To", value: trip.destinationText)
+                routeNode(title: "To", value: trip.destinationText, alignment: .trailing)
             }
         }
     }
 
-    private func routeNode(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+
+    private func routeNode(title: String, value: String, alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 4) {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -91,7 +91,7 @@ struct AllTripCardView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: alignment == .leading ? .leading : .trailing)
     }
 
     private var progressSummary: some View {

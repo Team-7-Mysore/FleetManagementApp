@@ -24,7 +24,7 @@ struct AddVehicleStep2View: View {
                                 .frame(height: 3)
                             
                             Capsule()
-                                .fill(Color.primaryBrown)
+                                .fill(Color.TechBlue)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .frame(height: 3)
                         }
@@ -81,7 +81,7 @@ struct AddVehicleStep2View: View {
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Color.primaryBrown)
+                    .background(Color.TechBlue)
                     .cornerRadius(25)
                 }
                 .padding(.horizontal)

@@ -25,7 +25,7 @@ struct AddVehicleView: View {
                                 .frame(height: 3)
                             
                             Capsule()
-                                .fill(Color.primaryBrown)
+                                .fill(Color.TechBlue)
                                 .frame(width: geometry.size.width * 0.5, height: 3)
                         }
                     }
@@ -104,7 +104,7 @@ struct AddVehicleView: View {
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(Color.primaryBrown)
+                        .background(Color.TechBlue)
                         .cornerRadius(25)
                 }
                 .padding()

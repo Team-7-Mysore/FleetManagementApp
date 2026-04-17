@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct TripsListView: View {
-    @State private var showCreateTrip = false
     @StateObject private var vm = TripListViewModel()
 
     private var displayedTrips: [Trip] {
@@ -58,9 +57,6 @@ struct TripsListView: View {
                 }
                 .refreshable {
                     await vm.fetchTrips()
-                }
-                .sheet(isPresented: $showCreateTrip) {
-                    CreateTripView()
                 }
 
                 floatingActionButton
@@ -126,7 +122,7 @@ struct TripsListView: View {
                 }
 
                 ProgressView(value: Double(vm.capacityPercent), total: 100)
-                    .tint(.primaryBrown)
+
             }
         }
         .padding(20)
@@ -185,19 +181,17 @@ struct TripsListView: View {
     }
 
     private var floatingActionButton: some View {
-        Button {
-            showCreateTrip = true
-        } label: {
+        NavigationLink(destination: CreateTripView()) {
             Image(systemName: "plus")
-                .font(.title3.weight(.bold))
-                .foregroundStyle(.white)
+                .font(.title2.weight(.bold))
+                .foregroundColor(.white)
                 .frame(width: 56, height: 56)
-                .background(Color.primaryBrown, in: Circle())
-                .shadow(color: .black.opacity(0.18), radius: 12, x: 0, y: 6)
+                .background(Color.blue)
+                .clipShape(Circle())
+                .shadow(radius: 6)
         }
         .padding(.trailing, 20)
         .padding(.bottom, 24)
-        .accessibilityLabel("Add Trip")
     }
 }
 

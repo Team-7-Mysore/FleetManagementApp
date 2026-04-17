@@ -17,10 +17,10 @@ struct DocumentUploadComponent: View {
                 HStack(spacing: 12) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 8)
-                            .fill(Color.primaryBrown.opacity(0.1))
+                            .fill(Color.TechBlue.opacity(0.1))
                             .frame(width: 40, height: 40)
                         Image(systemName: "doc.text")
-                            .foregroundColor(.primaryBrown)
+                            .foregroundColor(.TechBlue)
                     }
                     
                     VStack(alignment: .leading, spacing: 4) {
@@ -47,7 +47,7 @@ struct DocumentUploadComponent: View {
                             .padding(.horizontal, 12)
                             .padding(.vertical, 8)
                             .background(Color.white)
-                            .foregroundColor(.primaryBrown)
+                            .foregroundColor(.TechBlue)
                             .cornerRadius(6)
                             .shadow(color: .black.opacity(0.05), radius: 2)
                     }

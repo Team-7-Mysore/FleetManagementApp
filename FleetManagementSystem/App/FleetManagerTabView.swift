@@ -38,8 +38,8 @@ struct FleetManagerTabView: View {
                     Text("Chat")
                 }
         }
-        .accentColor(.primaryBrown)
-        .tint(.primaryBrown)
+        .accentColor(.TechBlue)
+        .tint(.TechBlue)
     }
 }
 #Preview {
