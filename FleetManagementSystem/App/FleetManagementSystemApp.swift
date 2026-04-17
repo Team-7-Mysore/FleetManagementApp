@@ -15,7 +15,9 @@ struct FleetManagementSystemApp: App {
         WindowGroup {
             Group {
                 if showSetPassword {
-                    SetPasswordView()
+                    SetPasswordView {
+                        showSetPassword = false
+                    }
                 } else {
                     LoginView()
                 }
@@ -26,51 +28,57 @@ struct FleetManagementSystemApp: App {
         }
     }
 
-    func handleDeepLink(_ url: URL) {
+    private func handleDeepLink(_ url: URL) {
         print("📩 Received deep link:", url)
-
-        guard let fixedURL = convertFragmentToQuery(url) else {
-            print("❌ Failed to convert URL")
-            return
-        }
 
         Task {
             do {
-                let session = try await SupabaseManager.shared.client.auth.session(from: fixedURL)
+                let params = authParams(from: url)
 
-                try await SupabaseManager.shared.client.auth.setSession(
-                    accessToken: session.accessToken,
-                    refreshToken: session.refreshToken
-                )
-                print("✅ Session restored successfully!")
-
-                await MainActor.run {
-                    print("🔄 Switching to SetPasswordView")
-                    showSetPassword = true
+                if let accessToken = params["access_token"],
+                   let refreshToken = params["refresh_token"],
+                   !accessToken.isEmpty,
+                   !refreshToken.isEmpty {
+                    try await SupabaseManager.shared.client.auth.setSession(
+                        accessToken: accessToken,
+                        refreshToken: refreshToken
+                    )
+                    print("✅ Session restored from tokens")
+                } else if params["code"] != nil {
+                    _ = try await SupabaseManager.shared.client.auth.session(from: url)
+                    print("✅ Session restored from auth code")
+                } else {
+                    print("❌ Deep link did not contain usable auth data")
+                    return
                 }
 
+                let isInvite = params["type"] == "invite"
+                await MainActor.run {
+                    showSetPassword = isInvite
+                    print(isInvite ? "🔄 Switching to SetPasswordView" : "🔄 Staying on LoginView")
+                }
             } catch {
                 print("❌ Error restoring session:", error)
             }
         }
     }
 
-    func convertFragmentToQuery(_ url: URL) -> URL? {
-        guard let fragment = url.fragment else {
-            return url
+    private func authParams(from url: URL) -> [String: String] {
+        var result: [String: String] = [:]
+
+        if let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems {
+            for item in queryItems {
+                result[item.name] = item.value
+            }
         }
 
-        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-
-        let existingQuery = components?.query   // 👈 read first (safe)
-
-        if let existingQuery = existingQuery {
-            components?.query = existingQuery + "&" + fragment
-        } else {
-            components?.query = fragment
+        if let fragment = URLComponents(url: url, resolvingAgainstBaseURL: false)?.fragment,
+           let fragmentItems = URLComponents(string: "?\(fragment)")?.queryItems {
+            for item in fragmentItems {
+                result[item.name] = item.value
+            }
         }
 
-        components?.fragment = nil
-        return components?.url
+        return result
     }
 }

@@ -7,7 +7,10 @@
 
 import SwiftUI
 import Supabase
+
 struct SetPasswordView: View {
+    let onPasswordSet: () -> Void
+
     @State private var password = ""
     @State private var isLoading = false
 
@@ -27,7 +30,7 @@ struct SetPasswordView: View {
         .padding()
     }
 
-    func setPassword() {
+    private func setPassword() {
         isLoading = true
 
         Task {
@@ -38,19 +41,16 @@ struct SetPasswordView: View {
 
                 print("✅ Password set successfully")
 
-                // 🔥 NEXT STEP: navigate
                 await MainActor.run {
                     isLoading = false
-
-                    // temporary test
-                    print("🚀 Ready to move to dashboard")
-
-                    // TODO: replace with navigation later
+                    onPasswordSet()
                 }
 
             } catch {
                 print("❌ Error setting password:", error)
-                isLoading = false
+                await MainActor.run {
+                    isLoading = false
+                }
             }
         }
     }
