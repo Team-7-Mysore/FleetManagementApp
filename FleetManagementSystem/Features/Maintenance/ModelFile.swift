@@ -184,13 +184,13 @@ struct ChatParticipant: Codable {
 struct ChatMessage: Identifiable, Codable {
     let id: UUID
     var chatRoomId: UUID
-    var senderId: UUID           // The user who sent the message
+    var senderId: UUID
     var messageType: MessageType
-    var content: String?         // The text of the message (optional if it's just an image)
-    var mediaUrl: String?        // Supabase Storage URL if they send a photo
+    var content: String?
+    var mediaUrl: String?
     var isEdited: Bool?
     let createdAt: Date?
-    
+
     enum CodingKeys: String, CodingKey {
         case id
         case chatRoomId = "chat_room_id"
@@ -201,4 +201,18 @@ struct ChatMessage: Identifiable, Codable {
         case isEdited = "is_edited"
         case createdAt = "created_at"
     }
+}
+
+struct ChatPreview: Identifiable {
+    let id: UUID
+    let name: String
+    let lastMessage: String
+    let timestamp: Date
+    let unreadCount: Int
+}
+
+struct SendMessageRequest {
+    let chatRoomId: UUID
+    let senderId: UUID
+    let content: String
 }
