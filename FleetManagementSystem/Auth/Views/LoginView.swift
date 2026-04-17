@@ -39,11 +39,11 @@ struct LoginView: View {
                                     .font(.system(size: 38, weight: .semibold))
                                     .foregroundStyle(.white)
                             }
-                            .shadow(color: AppTheme.primaryGreen.opacity(0.3), radius: 16, x: 0, y: 8)
+                            .shadow(color: AppTheme.primaryGreen.opacity(0.15), radius: 8, x: 0, y: 4)
 
                         VStack(spacing: 6) {
                             Text("The FMS")
-                                .font(.system(size: 36, weight: .bold, design: .rounded))
+                                .font(.largeTitle.weight(.bold))
 
                             Text("Streamlining Every Mile")
                                 .font(.subheadline)
@@ -73,9 +73,9 @@ struct LoginView: View {
                                     .textInputAutocapitalization(.never)
                             }
                             .padding(.horizontal, 16)
-                            .frame(height: 50)
+                            .padding(.vertical, 14)
                             .background(Color(.tertiarySystemGroupedBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: AppTheme.smallCornerRadius, style: .continuous))
                         }
 
                         // Password field
@@ -108,9 +108,9 @@ struct LoginView: View {
                                 .buttonStyle(.plain)
                             }
                             .padding(.horizontal, 16)
-                            .frame(height: 50)
+                            .padding(.vertical, 14)
                             .background(Color(.tertiarySystemGroupedBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: AppTheme.smallCornerRadius, style: .continuous))
                         }
 
                         // Error Message
@@ -148,8 +148,8 @@ struct LoginView: View {
                     }
                     .padding(24)
                     .background(Color(.systemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .shadow(color: .black.opacity(0.04), radius: 12, x: 0, y: 4)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous))
+                    .shadow(color: AppTheme.cardShadowColor, radius: AppTheme.cardShadowRadius, x: 0, y: AppTheme.cardShadowY)
 
                     // MARK: - Demo Hint
                     VStack(spacing: 6) {

@@ -58,6 +58,7 @@ struct TripListView: View {
         }
         .background(AppTheme.pageBackground)
         .navigationTitle("My Trips")
+        .navigationBarTitleDisplayMode(.large)
         .onAppear { vm.loadData() }
     }
 
@@ -116,12 +117,21 @@ struct TripListView: View {
 
                 Spacer()
 
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(trip.formattedDistance)
-                        .font(.title3.weight(.bold).monospacedDigit())
-                    Text(trip.formattedETA)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                VStack(alignment: .trailing, spacing: 6) {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text("DIST")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.secondary)
+                        Text(trip.formattedDistance)
+                            .font(.title2.weight(.bold).monospacedDigit())
+                    }
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text("ETA")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.secondary)
+                        Text(trip.formattedETA)
+                            .font(.headline.weight(.semibold).monospacedDigit())
+                    }
                 }
             }
 

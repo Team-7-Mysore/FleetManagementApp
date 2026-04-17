@@ -12,7 +12,7 @@ struct ReportIssueView: View {
     @State private var showConfirmation = false
 
     private let categories = ["Mechanical", "Electrical", "Tire/Wheel", "Fluid Leak", "Body Damage", "Safety", "Other"]
-    private let severities = ["Low", "Medium", "High", "Critical"]
+    private let severities = ["Low", "Medium", "Critical"]
 
     var body: some View {
         NavigationStack {
@@ -47,54 +47,88 @@ struct ReportIssueView: View {
 
                 // Severity
                 Section("Severity") {
-                    Picker("Severity", selection: $severity) {
-                        ForEach(severities, id: \.self) { sev in
-                            Text(sev).tag(sev)
+                    VStack(spacing: 2) {
+                        Slider(
+                            value: Binding(
+                                get: { Double(severities.firstIndex(of: severity) ?? 1) },
+                                set: { newValue in
+                                    withAnimation(.snappy) {
+                                        severity = severities[Int(newValue)]
+                                    }
+                                }
+                            ),
+                            in: 0...Double(severities.count - 1),
+                            step: 1.0
+                        )
+                        .tint(colorForSeverity(severity))
+                        
+                        HStack {
+                            Text("Low")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(colorForSeverity("Low"))
+                            Spacer()
+                            Text("Critical")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(colorForSeverity("Critical"))
                         }
                     }
-                    .pickerStyle(.segmented)
                 }
 
                 // Description
                 Section("Description") {
-                    TextEditor(text: $description)
-                        .frame(minHeight: 100)
+                    ZStack(alignment: .topLeading) {
+                        TextEditor(text: $description)
+                            .frame(minHeight: 100)
+                        
+                        if description.isEmpty {
+                            Text("Provide as much detail as possible...")
+                                .foregroundStyle(Color(.placeholderText))
+                                .padding(.top, 8)
+                                .padding(.leading, 4)
+                                .allowsHitTesting(false)
+                        }
+                    }
                 }
 
                 // Submit
                 Section {
-                    Button {
-                        showConfirmation = true
-                    } label: {
-                        HStack {
-                            Spacer()
-                            Label("Submit Report", systemImage: "exclamationmark.triangle")
+                    HStack {
+                        Spacer()
+                        Button {
+                            showConfirmation = true
+                        } label: {
+                            Text("Submit Report")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(.white)
-                            Spacer()
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 12)
+                                .background(AppTheme.primaryGreen)
+                                .clipShape(Capsule())
                         }
-                        .padding(.vertical, 8)
-                        .background(AppTheme.primaryGreen)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .disabled(description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        Spacer()
                     }
-                    .disabled(description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
                 }
             }
+            .listSectionSpacing(.compact)
             .navigationTitle("Report Issue")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") { dismiss() }
-                        .tint(AppTheme.primaryGreen)
-                }
-            }
             .alert("Issue Reported", isPresented: $showConfirmation) {
                 Button("OK") { dismiss() }
             } message: {
                 Text("Your issue report has been submitted to the fleet manager. They will follow up shortly.")
             }
+        }
+    }
+
+    private func colorForSeverity(_ sev: String) -> Color {
+        switch sev {
+        case "Low": return AppTheme.primaryGreen
+        case "Medium": return AppTheme.statusWarning
+        case "Critical": return AppTheme.statusDanger
+        default: return .secondary
         }
     }
 }

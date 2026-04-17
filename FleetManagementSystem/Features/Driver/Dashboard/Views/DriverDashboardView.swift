@@ -15,7 +15,7 @@ struct DriverDashboardView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
+            VStack(spacing: 12) {
                 // MARK: - Active Route Card
                 if let trip = vm.activeTrip {
                     activeRouteCard(trip)
@@ -45,7 +45,8 @@ struct DriverDashboardView: View {
             .padding(.bottom, 20)
         }
         .background(AppTheme.pageBackground)
-        .navigationTitle("Dashboard")
+        .navigationTitle("Hi \(user.firstName)")
+        .navigationBarTitleDisplayMode(.large)
         .toolbar {
 
             ToolbarItem(placement: .topBarTrailing) {
@@ -94,8 +95,6 @@ struct DriverDashboardView: View {
             HStack {
                 StatusBadge(text: "Active Route", color: AppTheme.primaryGreen)
                 Spacer()
-                Image(systemName: "location.fill")
-                    .foregroundStyle(AppTheme.primaryGreen)
             }
 
             HStack(alignment: .top) {
@@ -140,17 +139,26 @@ struct DriverDashboardView: View {
                 Spacer()
 
                 // Distance & ETA
-                VStack(alignment: .trailing, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text("\(Int(trip.distance))")
-                            .font(.title.weight(.bold))
-                        Text("mi")
-                            .font(.caption.weight(.medium))
+                VStack(alignment: .trailing, spacing: 12) {
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text("DISTANCE")
+                            .font(.caption2.weight(.medium))
                             .foregroundStyle(.secondary)
+                        HStack(alignment: .firstTextBaseline, spacing: 2) {
+                            Text("\(Int(trip.distance))")
+                                .font(.title3.weight(.bold))
+                            Text("mi")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                    Text(trip.formattedETA + " left")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text("ETA")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        Text(trip.formattedETA)
+                            .font(.subheadline.weight(.semibold))
+                    }
                 }
             }
 
@@ -223,17 +231,26 @@ struct DriverDashboardView: View {
 
                 Spacer()
 
-                VStack(alignment: .trailing, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline, spacing: 2) {
-                        Text("\(Int(trip.distance))")
-                            .font(.title.weight(.bold))
-                        Text("mi")
-                            .font(.caption.weight(.medium))
+                VStack(alignment: .trailing, spacing: 12) {
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text("DISTANCE")
+                            .font(.caption2.weight(.medium))
                             .foregroundStyle(.secondary)
+                        HStack(alignment: .firstTextBaseline, spacing: 2) {
+                            Text("\(Int(trip.distance))")
+                                .font(.title3.weight(.bold))
+                            Text("mi")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                    Text(trip.formattedETA)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text("ETA")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                        Text(trip.formattedETA)
+                            .font(.subheadline.weight(.semibold))
+                    }
                 }
             }
 
@@ -260,7 +277,7 @@ struct DriverDashboardView: View {
     private var quickActionsRow: some View {
         HStack(spacing: 12) {
             NavigationLink(value: AppRoute.vehicleInspection(nil)) {
-                quickActionItem(icon: "checklist", title: "Inspect", color: AppTheme.primaryGreen)
+                quickActionItem(icon: "checklist", title: "Inspect", color: AppTheme.statusWarning)
             }
 
             NavigationLink {
@@ -269,11 +286,7 @@ struct DriverDashboardView: View {
                 quickActionItem(icon: "map", title: "Trips", color: AppTheme.statusInfo)
             }
 
-            NavigationLink {
-                FuelLogView(user: user)
-            } label: {
-                quickActionItem(icon: "fuelpump", title: "Fuel", color: AppTheme.statusWarning)
-            }
+
 
             NavigationLink {
                 ReportIssueView(user: user, vehicle: vm.assignedVehicle)
@@ -294,7 +307,7 @@ struct DriverDashboardView: View {
 
             Text(title)
                 .font(.caption2.weight(.medium))
-                .foregroundStyle(.primary)
+                .foregroundStyle(.black)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)

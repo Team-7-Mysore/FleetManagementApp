@@ -32,17 +32,12 @@ struct NotificationListView: View {
             .navigationTitle("Notifications")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Done") { dismiss() }
-                        .tint(AppTheme.primaryGreen)
-                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Read All") {
-                        service.markAllAsRead(forUser: user.id)
-                        loadData()
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                            .fontWeight(.medium)
+                            .foregroundStyle(.primary)
                     }
-                    .font(.caption)
-                    .tint(AppTheme.primaryGreen)
                 }
             }
             .onAppear { loadData() }

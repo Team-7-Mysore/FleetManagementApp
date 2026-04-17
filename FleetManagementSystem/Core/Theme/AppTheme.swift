@@ -33,9 +33,9 @@ enum AppTheme {
     }
 
     // MARK: Corner Radii
-    static let cornerRadius: CGFloat      = 16
-    static let smallCornerRadius: CGFloat  = 10
-    static let largeCornerRadius: CGFloat  = 22
+    static let cornerRadius: CGFloat      = 12
+    static let smallCornerRadius: CGFloat  = 8
+    static let largeCornerRadius: CGFloat  = 16
 
     // MARK: Spacing
     static let paddingSmall: CGFloat  = 8
@@ -43,9 +43,9 @@ enum AppTheme {
     static let paddingLarge: CGFloat  = 24
 
     // MARK: Card shadow
-    static let cardShadowColor  = Color.black.opacity(0.06)
-    static let cardShadowRadius: CGFloat = 8
-    static let cardShadowY: CGFloat      = 4
+    static let cardShadowColor  = Color.black.opacity(0.03)
+    static let cardShadowRadius: CGFloat = 4
+    static let cardShadowY: CGFloat      = 2
 }
 
 // MARK: - View Modifiers
@@ -73,8 +73,8 @@ struct PrimaryButtonStyle: ButtonStyle {
                     .fill(AppTheme.primaryGreen)
             )
             .opacity(configuration.isPressed ? 0.85 : 1.0)
-            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
-            .animation(.easeInOut(duration: 0.15), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .animation(.snappy(duration: 0.2), value: configuration.isPressed)
     }
 }
 
@@ -89,7 +89,8 @@ struct SecondaryButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous)
                     .fill(AppTheme.lightGreen)
             )
-            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .animation(.snappy(duration: 0.2), value: configuration.isPressed)
     }
 }
 
