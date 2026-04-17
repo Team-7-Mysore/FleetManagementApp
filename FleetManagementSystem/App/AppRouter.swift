@@ -1,8 +1,16 @@
 import Foundation
 import Combine
 
+import SwiftUI
+
+// MARK: - App Routes
+enum AppRoute: Hashable {
+    case activeTrip(Trip)
+    case vehicleInspection(Trip?)
+}
+
 // MARK: - App Router
-// Controls top-level navigation: Login → Role-based Tab View.
+// Controls top-level navigation: Login → Role-based Tab View, plus path-based routing.
 
 @MainActor
 final class AppRouter: ObservableObject {
@@ -10,6 +18,7 @@ final class AppRouter: ObservableObject {
     @Published var currentUser: User?
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var path = NavigationPath()
 
     private let authService = AuthService.shared
 

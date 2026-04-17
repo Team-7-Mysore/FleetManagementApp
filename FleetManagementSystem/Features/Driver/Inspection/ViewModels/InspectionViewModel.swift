@@ -11,6 +11,7 @@ final class InspectionViewModel: ObservableObject {
     private let user: User
     private let service = InspectionService.shared
     private let vehicleService = VehicleService.shared
+    private let tripService = TripService.shared
 
     enum InspectionTab: String, CaseIterable, Identifiable {
         case current = "Current"
@@ -42,6 +43,13 @@ final class InspectionViewModel: ObservableObject {
     func startNewInspection(type: InspectionType) {
         guard let vehicle = vehicleService.assignedVehicle(forDriver: user.id) else { return }
         _ = service.createNewInspection(vehicleId: vehicle.id, driverId: user.id, type: type)
+        loadData()
+    }
+
+    func submitAndStartTrip(notes: String, trip: Trip) {
+        guard let inspection = currentInspection else { return }
+        service.submitInspection(id: inspection.id, notes: notes)
+        tripService.startTrip(id: trip.id)
         loadData()
     }
 

@@ -3,8 +3,8 @@ import SwiftUI
 struct LoginView: View {
     @EnvironmentObject private var router: AppRouter
 
-    @State private var email = ""
-    @State private var password = ""
+    @State private var email = "john.carter@fms.com"
+    @State private var password = "xxx"
     @State private var isPasswordVisible = false
 
     private var canSubmit: Bool {
@@ -172,3 +172,4 @@ struct LoginView: View {
         }
     }
 }
+

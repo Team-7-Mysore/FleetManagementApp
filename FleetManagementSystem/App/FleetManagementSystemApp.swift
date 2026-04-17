@@ -11,29 +11,26 @@ import SwiftUI
 struct FleetManagementSystemApp: App {
     @StateObject private var router = AppRouter()
 
+    /// Hardcoded driver user — skips login entirely
+    private let driverUser = MockDataStore.shared.users.first {
+        $0.id == MockDataStore.driverJohnId
+    }!
+
     var body: some Scene {
         WindowGroup {
-            Group {
-                if router.isLoggedIn, let user = router.currentUser {
-                    switch user.role {
-                    case .driver:
-                        DriverTabView(user: user)
-                            .environmentObject(router)
-                    case .fleetManager:
-                        // Placeholder — will be built later
-                        Text("Fleet Manager Interface")
-                            .environmentObject(router)
-                    case .maintenance:
-                        // Placeholder — will be built later
-                        Text("Maintenance Interface")
-                            .environmentObject(router)
+            NavigationStack(path: $router.path) {
+                DriverDashboardView(user: driverUser)
+                    .navigationDestination(for: AppRoute.self) { route in
+                        switch route {
+                        case .activeTrip(let trip):
+                            ActiveTripView(trip: trip, user: driverUser)
+                        case .vehicleInspection(let trip):
+                            VehicleInspectionView(user: driverUser, trip: trip)
+                        }
                     }
-                } else {
-                    LoginView()
-                        .environmentObject(router)
-                }
             }
-            .animation(.easeInOut(duration: 0.3), value: router.isLoggedIn)
+            .tint(AppTheme.primaryGreen)
+            .environmentObject(router)
         }
     }
 }

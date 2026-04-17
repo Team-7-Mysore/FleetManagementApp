@@ -26,10 +26,7 @@ struct DriverDashboardView: View {
                 // MARK: - Quick Actions
                 quickActionsRow
 
-                // MARK: - Inspection Status
-                if let inspection = vm.currentInspection {
-                    inspectionCard(inspection)
-                }
+
 
                 // MARK: - Vehicle Info
                 if let vehicle = vm.assignedVehicle {
@@ -158,9 +155,7 @@ struct DriverDashboardView: View {
             }
 
             // End Trip Button
-            NavigationLink {
-                ActiveTripView(trip: trip, user: user)
-            } label: {
+            NavigationLink(value: AppRoute.activeTrip(trip)) {
                 HStack {
                     Image(systemName: "location.fill")
                     Text("View Active Trip")
@@ -242,18 +237,20 @@ struct DriverDashboardView: View {
                 }
             }
 
-            // Start Trip Button
-            Button {
-                vm.startTrip(trip)
-            } label: {
+            // Start Inspection Button
+            NavigationLink(value: AppRoute.vehicleInspection(trip)) {
                 HStack(spacing: 8) {
-                    Image(systemName: "play.fill")
-                    Text("START TRIP")
+                    Image(systemName: "checklist")
+                    Text("START INSPECTION")
                         .font(.headline.weight(.bold))
                         .tracking(0.5)
                 }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(AppTheme.primaryGreen)
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous))
             }
-            .buttonStyle(PrimaryButtonStyle())
         }
         .padding(18)
         .cardStyle()
@@ -262,9 +259,7 @@ struct DriverDashboardView: View {
     // MARK: - Quick Actions
     private var quickActionsRow: some View {
         HStack(spacing: 12) {
-            NavigationLink {
-                VehicleInspectionView(user: user)
-            } label: {
+            NavigationLink(value: AppRoute.vehicleInspection(nil)) {
                 quickActionItem(icon: "checklist", title: "Inspect", color: AppTheme.primaryGreen)
             }
 
@@ -336,9 +331,7 @@ struct DriverDashboardView: View {
 
                 Spacer()
 
-                NavigationLink {
-                    VehicleInspectionView(user: user)
-                } label: {
+                NavigationLink(value: AppRoute.vehicleInspection(nil)) {
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)

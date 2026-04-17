@@ -3,13 +3,18 @@ import SwiftUI
 // MARK: - Vehicle Inspection View
 struct VehicleInspectionView: View {
     let user: User
+    let trip: Trip?
     @StateObject private var vm: InspectionViewModel
     @State private var showNewInspectionSheet = false
     @State private var overallNotes = ""
-    @State private var showSubmitConfirmation = false
+    @State private var showStartTripConfirmation = false
+    @State private var showReportIssue = false
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var router: AppRouter
 
-    init(user: User) {
+    init(user: User, trip: Trip? = nil) {
         self.user = user
+        self.trip = trip
         _vm = StateObject(wrappedValue: InspectionViewModel(user: user))
     }
 
@@ -59,11 +64,23 @@ struct VehicleInspectionView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
-        .alert("Submit Inspection", isPresented: $showSubmitConfirmation) {
-            Button("Submit") { vm.submitInspection(notes: overallNotes) }
+        .alert("Start Trip", isPresented: $showStartTripConfirmation) {
+            Button("Start Trip") {
+                if let trip {
+                    vm.submitAndStartTrip(notes: overallNotes, trip: trip)
+                    // Push Active Trip, replaces the stack so back goes to Driver Dashboard root
+                    router.path = NavigationPath([AppRoute.activeTrip(trip)])
+                } else {
+                    vm.submitInspection(notes: overallNotes)
+                    dismiss()
+                }
+            }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Are you sure you want to submit this inspection? This action cannot be undone.")
+            Text("Inspection passed! Ready to start the trip?")
+        }
+        .sheet(isPresented: $showReportIssue) {
+            ReportIssueView(user: user, vehicle: VehicleService.shared.assignedVehicle(forDriver: user.id))
         }
         .onAppear { vm.loadData() }
     }
@@ -142,16 +159,61 @@ struct VehicleInspectionView: View {
             }
             .padding(.top, 4)
 
-            // Submit
-            Button { showSubmitConfirmation = true } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle")
-                    Text("Submit Inspection")
+            // Action Button — depends on inspection results
+            if vm.canSubmit {
+                if let inspection = vm.currentInspection, inspection.failCount > 0 {
+                    // Has failures → Report Issue (safety first)
+                    VStack(spacing: 10) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(AppTheme.statusDanger)
+                            Text("\(inspection.failCount) issue\(inspection.failCount == 1 ? "" : "s") found. Trip cannot start.")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(AppTheme.statusDanger)
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity)
+                        .background(AppTheme.statusDanger.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                        Button {
+                            vm.submitInspection(notes: overallNotes)
+                            showReportIssue = true
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle")
+                                Text("Report Issue")
+                            }
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 54)
+                            .background(AppTheme.statusDanger)
+                            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous))
+                        }
+                    }
+                } else {
+                    // All clear → Start Trip
+                    Button { showStartTripConfirmation = true } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "play.fill")
+                            Text(trip != nil ? "Start Trip" : "Submit Inspection")
+                        }
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
                 }
+            } else {
+                // Not all items checked yet
+                Button {} label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checklist")
+                        Text("Complete All Items")
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(true)
+                .opacity(0.5)
             }
-            .buttonStyle(PrimaryButtonStyle())
-            .disabled(!vm.canSubmit)
-            .opacity(vm.canSubmit ? 1 : 0.6)
 
         } else {
             EmptyStateView(
