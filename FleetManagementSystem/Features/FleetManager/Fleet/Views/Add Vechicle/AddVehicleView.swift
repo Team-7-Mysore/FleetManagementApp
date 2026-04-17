@@ -1,5 +1,3 @@
-
-
 import SwiftUI
 
 struct AddVehicleView: View {
@@ -20,8 +18,6 @@ struct AddVehicleView: View {
                 identificationSection
                 validitySection
                 
-
-             
                 VStack(spacing: 8) {
 
                     Text("1 of 2")
@@ -45,82 +41,7 @@ struct AddVehicleView: View {
                 }
                 .padding(.horizontal)
                 
-                
-                FormCard(title: "Vehicle Info", icon: "car.fill") {
-                    
-                    CustomTextField(
-                        title: "VEHICLE NAME",
-                        placeholder: "e.g. Silver Ghost V8",
-                        text: $vm.vehicleName
-                    )
-
-                    CustomTextField(
-                        title: "REGISTRATION NUMBER",
-                        placeholder: "ABC-1234",
-                        text: $vm.registrationNumber
-                    )
-                    HStack(spacing: 16) {
-                           CustomDropdown(
-                               title: "VEHICLE TYPE",
-                               options: ["Truck", "Car", "Bike"],
-                               selection: $vm.vehicleType
-                           )
-                           
-                           CustomDropdown(
-                               title: "FUEL TYPE",
-                               options: ["Diesel", "Petrol", "Electric"],
-                               selection: $vm.fuelType
-                           )
-                       }
-                }
-                
-               
-                FormCard(title: "Basic Details", icon: "gearshape.fill") {
-                    
-                    CustomTextField(
-                        title: "MANUFACTURER",
-                        placeholder: "Rolls Royce Heritage",
-                        text: $vm.manufacturer
-                    )
-                    
-                    CustomTextField(
-                        title: "MODEL",
-                        placeholder: "Phantom Edition",
-                        text: $vm.model
-                    )
-                    
-                    CustomDateField(
-                        title: "REGISTRATION DATE",
-                        date: $vm.registrationDate
-                    )
-                }
-              
-                FormCard(title: "Validity", icon: "shield.fill") {
-                    HStack(spacing: 16) {
-                        
-                        CustomDateField(
-                            title: "PUC EXPIRY DATE",
-                            date: $vm.pucExpiry
-                        )
-                        
-                        CustomDateField(
-                            title: "RC EXPIRY DATE",
-                            date: $vm.rcExpiry
-                        )
-                    }
-                }
-                
-             
-                NavigationLink(destination: AddVehicleStep2View(vm: vm)){
-                    Text("Next Step →")
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.TechBlue)
-                        .cornerRadius(25)
-                }
-                .padding()
-
+                navigationAndActionButtons
             }
         }
         .background(Color(.systemGray6))
