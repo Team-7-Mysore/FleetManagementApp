@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AddVehicleView: View {
+    @State private var navigateToStep2 = false
     @StateObject var vm = AddVehicleViewModel()
     @Environment(\.dismiss) var dismiss
     
@@ -99,7 +100,22 @@ struct AddVehicleView: View {
                 }
                 
              
-                NavigationLink(destination: AddVehicleStep2View(vm: vm)){
+            
+                NavigationLink(
+                    destination: AddVehicleStep2View(vm: vm),
+                    isActive: $navigateToStep2
+                ) {
+                    EmptyView()
+                }
+
+                
+                Button {
+                    if let error = vm.validateStep1() {
+                        vm.errorMessage = error
+                    } else {
+                        navigateToStep2 = true
+                    }
+                } label: {
                     Text("Next Step →")
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
@@ -127,46 +143,17 @@ struct AddVehicleView: View {
                 }
             }
         }
+        .alert(item: Binding(
+            get: {
+                vm.errorMessage.map { ErrorWrapper(message: $0) }
+            },
+            set: { _ in vm.errorMessage = nil }
+        )) { wrapper in
+            Alert(
+                title: Text("Error"),
+                message: Text(wrapper.message)
+            )
+        }
       
-    }
-}
-extension AddVehicleViewModel {
-    
-    func saveVehicle() async {
-        
-        guard let url = URL(string: "\(SUPABASE_URL)/functions/v1/create-vehicle-with-documents") else {
-            return
-        }
-        
-        let payload: [String: Any] = [
-            "vehicleName": vehicleName,
-            "registrationNumber": registrationNumber,
-            "vehicleType": vehicleType,
-            "fuelType": fuelType,
-            "manufacturer": manufacturer,
-            "model": model,
-            "registrationDate": ISO8601DateFormatter().string(from: registrationDate),
-            "pucExpiry": ISO8601DateFormatter().string(from: pucExpiry),
-            "rcExpiry": ISO8601DateFormatter().string(from: rcExpiry),
-            "documents": [
-                ["type": "RC", "url": rcURL ?? ""],
-                ["type": "INSURANCE", "url": insuranceURL ?? ""],
-                ["type": "PUC", "url": pucURL ?? ""]
-            ]
-        ]
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
-        request.addValue("Content-Type", forHTTPHeaderField: "application/json")
-        
-        request.httpBody = try? JSONSerialization.data(withJSONObject: payload)
-        
-        do {
-            let (_, response) = try await URLSession.shared.data(for: request)
-            print("Saved:", response)
-        } catch {
-            print("Error saving vehicle:", error)
-        }
     }
 }

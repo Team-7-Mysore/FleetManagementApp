@@ -1,22 +1,25 @@
 import SwiftUI
 
 struct AddVehicleStep2View: View {
+    @State private var showSourcePicker = false
+    @State private var showDocumentPicker = false
+    @State private var showImagePicker = false
     @Environment(\.dismiss) var dismiss
     @ObservedObject var vm: AddVehicleViewModel
-    @State private var showPicker = false
+
     @State private var selectedType: String = ""
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
                 
-                // MARK: Header Progress
+                
                 VStack(spacing: 8) {
                     Text("2 of 2")
                         .font(.subheadline)
                         .fontWeight(.semibold)
                         .foregroundColor(Color(.label))
                         
-                    // Progress Bar
+                    
                     GeometryReader { geometry in
                         ZStack(alignment: .leading) {
                             Capsule()
@@ -43,16 +46,15 @@ struct AddVehicleStep2View: View {
                     )
                     .onTapGesture {
                         selectedType = "RC"
-                        showPicker = true
+                        showSourcePicker = true
                     }
-                    
                     DocumentUploadComponent(
                         title: "INSURANCE DOCUMENT",
                         isUploaded: vm.insuranceURL != nil,
                         fileName: vm.insuranceURL
                     ).onTapGesture {
                         selectedType = "INSURANCE"
-                        showPicker = true
+                        showSourcePicker = true
                     }
                     
                     DocumentUploadComponent(
@@ -61,7 +63,7 @@ struct AddVehicleStep2View: View {
                         fileName: vm.pucURL
                     ).onTapGesture {
                         selectedType = "PUC"
-                        showPicker = true
+                        showSourcePicker = true
                     }
                 }
                 .padding()
@@ -71,6 +73,9 @@ struct AddVehicleStep2View: View {
                 
                
                 Button(action: {
+                    Task {
+                            await vm.saveVehicle()
+                        }
                    
                 }) {
                     HStack {
@@ -100,22 +105,60 @@ struct AddVehicleStep2View: View {
             }
             ToolbarItem(placement: .navigationBarLeading) {
                 Button(action: {
-                    Task {
-                            await vm.saveVehicle()
-                        }
+                    dismiss()
+                    
                 }) {
                     Image(systemName: "chevron.left")
                         .foregroundColor(Color(.label))
                 }
             }
         }
-        .sheet(isPresented: $showPicker) {
-        DocumentPicker { url in
-            Task {
-                await vm.uploadFile(fileURL: url, type: selectedType)
+        .confirmationDialog("Select Source", isPresented: $showSourcePicker) {
+            
+            Button("Choose File") {
+                showDocumentPicker = true
+            }
+            
+            Button("Choose Photo") {
+                showImagePicker = true
+            }
+            
+            Button("Cancel", role: .cancel) { }
+        }
+        .sheet(isPresented: $showDocumentPicker) {
+            DocumentPicker { url in
+                Task {
+                    await vm.uploadFile(fileURL: url, type: selectedType)
+                }
             }
         }
-    }
+
+   
+        .sheet(isPresented: $showImagePicker) {
+            ImagePicker { image in
+                Task {
+                    await vm.uploadImage(image: image, type: selectedType)
+                }
+            }
+        }
+        .alert(item: Binding(
+            get: {
+                vm.errorMessage.map { ErrorWrapper(message: $0) }
+            },
+            set: { _ in vm.errorMessage = nil }
+        )) { wrapper in
+            Alert(
+                title: Text("Error"),
+                message: Text(wrapper.message)
+            )
+        }
+
+       
+        .onChange(of: vm.isSuccess) { success in
+            if success {
+                dismiss()
+            }
+        }
     }
        
 }
@@ -123,3 +166,7 @@ struct AddVehicleStep2View: View {
 #Preview {
     AddVehicleStep2View(vm: AddVehicleViewModel())
     }
+struct ErrorWrapper: Identifiable {
+    let id = UUID()
+    let message: String
+}
