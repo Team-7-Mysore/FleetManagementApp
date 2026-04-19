@@ -77,3 +77,67 @@ struct Trip: Identifiable, Codable, Hashable {
         return "\(minutes)m"
     }
 }
+
+struct TripDTO: Decodable {
+    let tripId: String
+    let vehicleId: String?
+    let driverId: String?
+    let startLocation: String?
+    let endLocation: String?
+    let startTime: Date?
+    let endTime: Date?
+    let pickupTime: Date?
+    let status: String
+    let distanceTravelled: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case tripId = "trip_id"
+        case vehicleId = "vehicle_id"
+        case driverId = "driver_id"
+        case startLocation = "start_location"
+        case endLocation = "end_location"
+        case startTime = "start_time"
+        case endTime = "end_time"
+        case pickupTime = "pickup_time"
+        case status
+        case distanceTravelled = "distance_travelled"
+    }
+}
+
+extension Trip {
+    init(dto: TripDTO) {
+        self.id = UUID(uuidString: dto.tripId) ?? UUID()
+        self.vehicleId = UUID(uuidString: dto.vehicleId ?? "") ?? UUID()
+        self.driverId = UUID(uuidString: dto.driverId ?? "") ?? UUID()
+
+        self.startLocation = dto.startLocation ?? "Unknown"
+        self.endLocation = dto.endLocation ?? "Unknown"
+
+        self.startTime = dto.startTime
+        self.endTime = dto.endTime
+
+        self.scheduledStartTime = dto.pickupTime ?? Date()
+
+        self.distance = dto.distanceTravelled ?? 0
+        self.estimatedDuration = 0
+
+        self.fuelUsed = nil
+
+        // 🔥 STATUS MAPPING (IMPORTANT)
+        switch dto.status.lowercased() {
+        case "assigned":
+            self.status = .planned
+        case "active":
+            self.status = .inProgress
+        case "completed":
+            self.status = .completed
+        case "cancelled":
+            self.status = .cancelled
+        default:
+            self.status = .planned
+        }
+
+        self.notes = ""
+        self.route = []
+    }
+}
