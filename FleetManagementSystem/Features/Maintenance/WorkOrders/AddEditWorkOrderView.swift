@@ -30,7 +30,6 @@ struct AddEditWorkOrderView: View {
     
     // Parts State
     @State private var parts: [PartSelectionUI] = []
-    @State private var newPartName: String = ""
     
     // Photos State
     @State private var photos: [String] = []
@@ -42,7 +41,6 @@ struct AddEditWorkOrderView: View {
     @State private var isSaving: Bool = false
     
     var body: some View {
-        // FIX 1: Wrapping in a ZStack so the background NEVER gets pushed up
         ZStack {
             Color(uiColor: .systemGroupedBackground)
                 .ignoresSafeArea()
@@ -144,14 +142,15 @@ struct AddEditWorkOrderView: View {
                                     Image(systemName: "plus.circle.fill")
                                         .foregroundColor(.blue)
                                     
-                                    TextField("Add Task...", text: $newTaskName)
+                                    TextField("Add new task...", text: $newTaskName)
                                         .font(.subheadline)
                                         .onSubmit {
                                             guard !newTaskName.isEmpty else { return }
                                             tasks.append(newTaskName)
-                                            newTaskName = "" // clear after adding
+                                            newTaskName = "" // Reset field
                                         }
                                 }
+                                .padding(.vertical, 8)
                             }
                         }
                     }
@@ -208,18 +207,44 @@ struct AddEditWorkOrderView: View {
                                     Divider()
                                 }
                                 
-                                // Full-width inline part adder
-                                HStack {
-                                    Image(systemName: "plus.circle.fill")
-                                        .foregroundColor(.blue)
-                                    
-                                    TextField("Add Part Name or SKU...", text: $newPartName)
-                                        .font(.subheadline)
-                                        .onSubmit {
-                                            guard !newPartName.isEmpty else { return }
-                                            parts.append(PartSelectionUI(inventoryId: UUID(), name: newPartName, quantity: 1))
-                                            newPartName = ""
+                                // Full-width inline part adder (Dropdown Menu)
+                                Menu {
+                                    if viewModel.availableInventory.isEmpty {
+                                        Text("Loading inventory...")
+                                    } else {
+                                        ForEach(viewModel.availableInventory) { item in
+                                            Button {
+                                                // Prevent adding duplicate parts
+                                                if !parts.contains(where: { $0.inventoryId == item.inventoryId }) {
+                                                    parts.append(
+                                                        PartSelectionUI(
+                                                            inventoryId: item.inventoryId,
+                                                            name: item.partName,
+                                                            quantity: 1
+                                                        )
+                                                    )
+                                                }
+                                            } label: {
+                                                Text("\(item.partName) (In Stock: \(item.quantity))")
+                                            }
                                         }
+                                    }
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "plus.circle.fill")
+                                            .foregroundColor(.blue)
+                                        
+                                        Text("Select a Part from Inventory...")
+                                            .font(.subheadline)
+                                            .foregroundColor(.primary)
+                                        
+                                        Spacer()
+                                        
+                                        Image(systemName: "chevron.up.chevron.down")
+                                            .font(.caption)
+                                            .foregroundColor(.gray)
+                                    }
+                                    .padding(.vertical, 8)
                                 }
                             }
                         }
@@ -302,41 +327,23 @@ struct AddEditWorkOrderView: View {
                                 .lineLimit(4...8)
                         }
                     }
-                    
-                    // MARK: 8. Create Button
-                    Button(action: {
-                        saveWorkOrderToSupabase()
-                    }) {
-                        HStack {
-                            if isSaving {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            } else {
-                                Text("Create Work Order")
-                                    .font(.headline)
-                            }
-                        }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(isSaving ? Color.blue.opacity(0.7) : Color.blue)
-                        .cornerRadius(12)
-                    }
-                    .disabled(isSaving)
-                    .padding(.top, 10)
-                    .padding(.bottom, 30) // Extra padding for scrolling
                 }
                 .padding(.horizontal)
                 .padding(.top, 20)
+                .padding(.bottom, 40) // Give bottom breathing room
             }
         }
+        
+        .task {
+            await viewModel.fetchAllInventory()
+        }
+        
         .navigationTitle("New Work Order")
         .navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.interactively)
         
         .toolbar {
-            
-            // Leading Cancel Button (nice UX addition)
+            // Leading Cancel Button
             ToolbarItem(placement: .navigationBarLeading) {
                 Button("Cancel") {
                     dismiss()
@@ -410,7 +417,8 @@ struct AddEditWorkOrderView: View {
                     )
                 }
                 
-                _ = parts.map { uiPart in
+                // Mapped the selected UI parts to the database model
+                let workOrderParts = parts.map { uiPart in
                     WorkOrderPart(
                         workOrderId: newWorkOrderId,
                         inventoryId: uiPart.inventoryId,
@@ -419,8 +427,10 @@ struct AddEditWorkOrderView: View {
                     )
                 }
                 
+                // Push all three tables to Supabase
                 try await viewModel.upsertWorkOrder(newOrder)
                 try await viewModel.insertTasks(workOrderTasks)
+                try await viewModel.upsertParts(workOrderParts) // FIX: Parts are now pushed!
                 
                 await MainActor.run {
                     isSaving = false
@@ -437,9 +447,9 @@ struct AddEditWorkOrderView: View {
     }
 }
 
-
 #Preview {
     NavigationStack {
         AddEditWorkOrderView()
     }
 }
+

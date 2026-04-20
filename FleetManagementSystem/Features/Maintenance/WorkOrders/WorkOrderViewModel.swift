@@ -7,6 +7,7 @@ final class WorkOrderViewModel: ObservableObject {
     
     // MARK: - Published State
     @Published var workOrders: [WorkOrder] = []
+    @Published var availableInventory: [InventoryItem] = []
     
     @Published var inProgressOrders: [WorkOrder] = []
     @Published var pendingOrders: [WorkOrder] = []
@@ -100,5 +101,19 @@ final class WorkOrderViewModel: ObservableObject {
             .from("work_order_parts")
             .upsert(parts)
             .execute()
+    }
+    
+    func fetchAllInventory() async {
+        do {
+            let fetched: [InventoryItem] = try await SupabaseManager.shared.client
+                .from("inventory")
+                .select()
+                .execute()
+                .value
+            
+            self.availableInventory = fetched
+        } catch {
+            print("ERROR fetching inventory: \(error)")
+        }
     }
 }

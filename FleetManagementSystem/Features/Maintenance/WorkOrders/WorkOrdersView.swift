@@ -17,7 +17,11 @@ struct WorkOrdersView: View {
                     // MARK: Top Horizontal Cards (Only 2: Pending & Completed)
                     HStack(spacing: 12) {
                         // Pending Card
-                        NavigationLink(destination: FilteredWorkOrdersView(title: "Pending Orders", workOrders: viewModel.pendingOrders)) {
+                        NavigationLink(destination: FilteredWorkOrdersView(
+                            title: "Pending Orders",
+                            workOrders: viewModel.pendingOrders,
+                            onRefresh: { await viewModel.fetchWorkOrders() } // <-- Added Callback
+                        )) {
                             SummaryCardView(
                                 title: "PENDING",
                                 icon: "clock.fill",
@@ -29,7 +33,11 @@ struct WorkOrdersView: View {
                         .buttonStyle(PlainButtonStyle())
                         
                         // Completed Card
-                        NavigationLink(destination: FilteredWorkOrdersView(title: "Completed Orders", workOrders: viewModel.completedOrders)) {
+                        NavigationLink(destination: FilteredWorkOrdersView(
+                            title: "Completed Orders",
+                            workOrders: viewModel.completedOrders,
+                            onRefresh: { await viewModel.fetchWorkOrders() } // <-- Added Callback
+                        )) {
                             SummaryCardView(
                                 title: "COMPLETED",
                                 icon: "checkmark.circle.fill",
@@ -111,17 +119,34 @@ struct WorkOrdersView: View {
                 .padding(.trailing, 24)
                 .padding(.bottom, 24)
             }
+            
             // MARK: - Modals (Sheets)
-            .sheet(item: $selectedDetailOrder) { order in
+            // Added onDismiss closures with a tiny 0.5s delay to allow DB saves to finish before fetching
+            .sheet(item: $selectedDetailOrder, onDismiss: {
+                Task {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    await viewModel.fetchWorkOrders()
+                }
+            }) { order in
                 NavigationStack {
                     WorkOrderDetailView(workOrder: order)
                 }
             }
-            .sheet(item: $selectedReportOrder) { order in
+            .sheet(item: $selectedReportOrder, onDismiss: {
+                Task {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    await viewModel.fetchWorkOrders()
+                }
+            }) { order in
                 WorkOrderCompletionReportView(workOrder: order)
                     .presentationDragIndicator(.visible)
             }
-            .sheet(isPresented: $showingAddOrder) {
+            .sheet(isPresented: $showingAddOrder, onDismiss: {
+                Task {
+                    try? await Task.sleep(nanoseconds: 500_000_000)
+                    await viewModel.fetchWorkOrders()
+                }
+            }) {
                 NavigationStack {
                     AddEditWorkOrderView()
                 }
@@ -134,6 +159,9 @@ struct WorkOrdersView: View {
 struct FilteredWorkOrdersView: View {
     let title: String
     let workOrders: [WorkOrder]
+    
+    // NEW: Callback so this view can tell the parent to fetch data when a sheet dismisses
+    var onRefresh: (() async -> Void)? = nil
     
     // Modal Presentation States for the filtered lists
     @State private var selectedDetailOrder: WorkOrder?
@@ -169,13 +197,24 @@ struct FilteredWorkOrdersView: View {
         }
         .navigationTitle(title)
         .background(Color(uiColor: .systemGroupedBackground))
+        
         // Modals for the Filtered View
-        .sheet(item: $selectedDetailOrder) { order in
+        .sheet(item: $selectedDetailOrder, onDismiss: {
+            Task {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                await onRefresh?()
+            }
+        }) { order in
             NavigationStack {
                 WorkOrderDetailView(workOrder: order)
             }
         }
-        .sheet(item: $selectedReportOrder) { order in
+        .sheet(item: $selectedReportOrder, onDismiss: {
+            Task {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                await onRefresh?()
+            }
+        }) { order in
             WorkOrderCompletionReportView(workOrder: order)
                 .presentationDragIndicator(.visible)
         }
@@ -225,7 +264,7 @@ struct WorkOrderRowView: View {
     let workOrder: WorkOrder
     var showStatus: Bool
     var isLargeTitle: Bool
-    var onViewReport: (() -> Void)? = nil // NEW: Callback for the report button
+    var onViewReport: (() -> Void)? = nil
     
     var body: some View {
         VStack(spacing: 0) {
@@ -271,7 +310,7 @@ struct WorkOrderRowView: View {
     
     // Dynamic Colors based on Vehicle Type
     private var iconColor: Color {
-        workOrder.vehicleType.color
+        workOrder.vehicleType.color // Requires color extension in ModelFile
     }
     
     private var iconBackgroundColor: Color {
@@ -302,7 +341,7 @@ struct RowTextLinesDefault: View {
             }
             
             // MIDDLE LINE: Fleet ID & Vehicle Name
-            Text("\(workOrder.fleetUnitId ?? "Unit") • \(workOrder.vehicleName ?? "Fleet Vehicle")")
+            Text("\(workOrder.fleetUnitId) • \(workOrder.vehicleName ?? "Fleet Vehicle")")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
@@ -374,7 +413,7 @@ struct RowTextLinesCompleted: View {
 
 // MARK: - View Report Button (Bottom of completed card)
 struct ViewReportButtonView: View {
-    var action: () -> Void // NEW: Action passed in from the card
+    var action: () -> Void
     
     var body: some View {
         Button(action: action) {

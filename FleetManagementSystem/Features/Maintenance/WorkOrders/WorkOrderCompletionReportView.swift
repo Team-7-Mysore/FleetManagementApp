@@ -245,7 +245,7 @@ struct ReportHeaderCard: View {
                         .fontWeight(.bold)
                         .foregroundColor(.primary)
                     
-                    Text("ID: \(workOrder.fleetUnitId ?? "N/A")")
+                    Text("ID: \(workOrder.fleetUnitId)")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
