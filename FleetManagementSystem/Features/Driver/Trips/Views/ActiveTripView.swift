@@ -2,7 +2,7 @@ import SwiftUI
 import MapKit
 // MARK: - Active Trip View
 struct ActiveTripView: View {
-    let trip: Trip
+    let trip: TripMap
     let user: User
     @EnvironmentObject private var router: AppRouter
 

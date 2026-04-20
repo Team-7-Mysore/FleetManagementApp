@@ -28,7 +28,7 @@ final class InspectionViewModel: ObservableObject {
     }
 
     // MARK: - Auto-start inspection when coming from a trip
-    func loadDataAndAutoStart(for trip: Trip?, type: InspectionType = .preTrip) {
+    func loadDataAndAutoStart(for trip: TripMap?, type: InspectionType = .preTrip) {
         currentInspection = service.currentInspection(forDriver: user.id)
         history = service.inspectionHistory(forDriver: user.id)
 
@@ -80,7 +80,7 @@ final class InspectionViewModel: ObservableObject {
         loadData()
     }
 
-    func submitAndStartTrip(notes: String, trip: Trip) {
+    func submitAndStartTrip(notes: String, trip: TripMap) {
         guard let inspection = currentInspection else { return }
         service.submitInspection(id: inspection.id, notes: notes)
 
@@ -102,7 +102,7 @@ final class InspectionViewModel: ObservableObject {
         loadData()
     }
 
-    func submitAndCompleteTrip(notes: String, trip: Trip) {
+    func submitAndCompleteTrip(notes: String, trip: TripMap) {
         guard let inspection = currentInspection else { return }
         service.submitInspection(id: inspection.id, notes: notes)
 

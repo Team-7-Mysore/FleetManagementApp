@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Vehicle Inspection View
 struct VehicleInspectionView: View {
     let user: User
-    let trip: Trip?
+    let trip: TripMap?
     @StateObject private var vm: InspectionViewModel
     @State private var showNewInspectionSheet = false
     @State private var overallNotes = ""
@@ -14,7 +14,7 @@ struct VehicleInspectionView: View {
 
     let defaultType: InspectionType
 
-    init(user: User, trip: Trip? = nil, defaultType: InspectionType = .preTrip) {
+    init(user: User, trip: TripMap? = nil, defaultType: InspectionType = .preTrip) {
         self.user = user
         self.trip = trip
         self.defaultType = defaultType

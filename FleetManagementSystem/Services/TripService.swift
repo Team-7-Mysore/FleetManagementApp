@@ -7,21 +7,21 @@ final class TripService {
 
     private init() {}
 
-    func fetchTrips(forDriver driverId: UUID) -> [Trip] {
+    func fetchTrips(forDriver driverId: UUID) -> [TripMap] {
         store.trips.filter { $0.driverId == driverId }
             .sorted { $0.scheduledStartTime > $1.scheduledStartTime }
     }
 
-    func activeTrip(forDriver driverId: UUID) -> Trip? {
+    func activeTrip(forDriver driverId: UUID) -> TripMap? {
         store.trips.first { $0.driverId == driverId && $0.status == .inProgress }
     }
 
-    func upcomingTrips(forDriver driverId: UUID) -> [Trip] {
+    func upcomingTrips(forDriver driverId: UUID) -> [TripMap] {
         store.trips.filter { $0.driverId == driverId && $0.status == .planned }
             .sorted { $0.scheduledStartTime < $1.scheduledStartTime }
     }
 
-    func completedTrips(forDriver driverId: UUID) -> [Trip] {
+    func completedTrips(forDriver driverId: UUID) -> [TripMap] {
         store.trips.filter { $0.driverId == driverId && $0.status == .completed }
             .sorted { ($0.endTime ?? $0.scheduledStartTime) > ($1.endTime ?? $1.scheduledStartTime) }
     }
@@ -45,7 +45,7 @@ final class TripService {
         store.trips[index].status = .cancelled
     }
 
-    func todayTrips(forDriver driverId: UUID) -> [Trip] {
+    func todayTrips(forDriver driverId: UUID) -> [TripMap] {
         let cal = Calendar.current
         return store.trips.filter { trip in
             trip.driverId == driverId &&

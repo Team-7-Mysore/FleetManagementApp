@@ -2,12 +2,12 @@ import SwiftUI
 
 // MARK: - Trip Detail View
 struct TripDetailView: View {
-    let trip: Trip
+    let trip: TripMap
     let user: User
     @StateObject private var vm: DriverTripViewModel
     @Environment(\.dismiss) private var dismiss
 
-    init(trip: Trip, user: User) {
+    init(trip: TripMap, user: User) {
         self.trip = trip
         self.user = user
         _vm = StateObject(wrappedValue: DriverTripViewModel(user: user))

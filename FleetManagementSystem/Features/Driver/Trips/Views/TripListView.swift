@@ -63,7 +63,7 @@ struct TripListView: View {
     }
 
     // MARK: - Active Trip Banner
-    private func activeTripBanner(_ trip: Trip) -> some View {
+    private func activeTripBanner(_ trip: TripMap) -> some View {
         HStack(spacing: 14) {
             Image(systemName: "location.fill")
                 .font(.title3)
@@ -97,7 +97,7 @@ struct TripListView: View {
     }
 
     // MARK: - Trip Card
-    private func tripCard(_ trip: Trip) -> some View {
+    private func tripCard(_ trip: TripMap) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {

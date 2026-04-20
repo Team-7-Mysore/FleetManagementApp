@@ -126,7 +126,7 @@ struct DriverDashboardView: View {
 
     // MARK: - Active Route Card
     @ViewBuilder
-    private func activeRouteCard(_ trip: Trip) -> some View {
+    private func activeRouteCard(_ trip: TripMap) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 StatusBadge(text: "Active Route", color: AppTheme.primaryGreen)
@@ -243,7 +243,7 @@ struct DriverDashboardView: View {
 
     // MARK: - Next Trip Card (when no active trip)
     @ViewBuilder
-    private func nextTripCard(_ trip: Trip) -> some View {
+    private func nextTripCard(_ trip: TripMap) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 StatusBadge(text: "Next Trip", color: AppTheme.statusInfo)
@@ -507,7 +507,7 @@ struct DriverDashboardView: View {
         }
     }
 
-    private func upcomingTripRow(_ trip: Trip) -> some View {
+    private func upcomingTripRow(_ trip: TripMap) -> some View {
         HStack(spacing: 14) {
             Image(systemName: "truck.box.fill")
                 .font(.body)

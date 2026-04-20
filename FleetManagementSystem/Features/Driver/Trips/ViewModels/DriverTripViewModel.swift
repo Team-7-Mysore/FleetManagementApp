@@ -5,9 +5,9 @@ import Supabase
 // MARK: - Driver Trip ViewModel
 @MainActor
 final class DriverTripViewModel: ObservableObject {
-    @Published private(set) var activeTrip: Trip?
-    @Published private(set) var upcomingTrips: [Trip] = []
-    @Published private(set) var completedTrips: [Trip] = []
+    @Published private(set) var activeTrip: TripMap?
+    @Published private(set) var upcomingTrips: [TripMap] = []
+    @Published private(set) var completedTrips: [TripMap] = []
     @Published var selectedFilter: TripFilter = .upcoming
 
     private let user: User
@@ -61,7 +61,7 @@ final class DriverTripViewModel: ObservableObject {
                 }
 
                 let dtoTrips = try decoder.decode([TripDTO].self, from: res.data)
-                let trips = dtoTrips.map { Trip(dto: $0) }
+                let trips = dtoTrips.map { TripMap(dto: $0) }
 
                 self.activeTrip    = trips.first { $0.status == .inProgress }
                 self.upcomingTrips = trips.filter { $0.status == .planned }
@@ -75,7 +75,7 @@ final class DriverTripViewModel: ObservableObject {
         }
     }
 
-    var filteredTrips: [Trip] {
+    var filteredTrips: [TripMap] {
         switch selectedFilter {
         case .upcoming:  return upcomingTrips
         case .completed: return completedTrips
@@ -83,7 +83,7 @@ final class DriverTripViewModel: ObservableObject {
         }
     }
 
-    func startTrip(_ trip: Trip) {
+    func startTrip(_ trip: TripMap) {
         Task {
             do {
                 try await SupabaseManager.shared.client
@@ -101,7 +101,7 @@ final class DriverTripViewModel: ObservableObject {
         }
     }
 
-    func endTrip(_ trip: Trip) {
+    func endTrip(_ trip: TripMap) {
         Task {
             do {
                 try await SupabaseManager.shared.client
@@ -119,7 +119,7 @@ final class DriverTripViewModel: ObservableObject {
         }
     }
 
-    func cancelTrip(_ trip: Trip) {
+    func cancelTrip(_ trip: TripMap) {
         Task {
             do {
                 try await SupabaseManager.shared.client

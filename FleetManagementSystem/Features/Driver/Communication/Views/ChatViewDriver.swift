@@ -1,7 +1,7 @@
 import SwiftUI
 
 // MARK: - Chat View
-struct ChatView: View {
+struct ChatViewDriver: View {
     let user: User
     let otherUser: User
     @StateObject private var vm: MessagingViewModel

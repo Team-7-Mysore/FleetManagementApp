@@ -35,7 +35,7 @@ struct Coordinate: Codable, Hashable {
 }
 
 // MARK: - Trip
-struct Trip: Identifiable, Codable, Hashable {
+struct TripMap: Identifiable, Codable, Hashable {
     let id: UUID
     var vehicleId: UUID
     var driverId: UUID
@@ -114,7 +114,7 @@ struct TripDTO: Decodable {
     }
 }
 
-extension Trip {
+extension TripMap {
     init(dto: TripDTO) {
         self.id = UUID(uuidString: dto.tripId) ?? UUID()
         self.vehicleId = UUID(uuidString: dto.vehicleId ?? "") ?? UUID()

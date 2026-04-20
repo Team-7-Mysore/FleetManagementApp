@@ -10,7 +10,7 @@ final class MockDataStore {
     // MARK: - Stored Data
     var users: [User]
     var vehicles: [Vehicle]
-    var trips: [Trip]
+    var trips: [TripMap]
     var maintenanceTasks: [MaintenanceTask]
     var inspections: [Inspection]
     var fuelLogs: [FuelLog]
@@ -111,7 +111,7 @@ final class MockDataStore {
 
         trips = [
             // Active trip for John
-            Trip(id: UUID(), vehicleId: Self.vehicleTruck702Id, driverId: Self.driverJohnId,
+            TripMap(id: UUID(), vehicleId: Self.vehicleTruck702Id, driverId: Self.driverJohnId,
                  startLocation: "Central Port", endLocation: "Logistics Hub East",
                  startTime: cal.date(byAdding: .hour, value: -1, to: now),
                  endTime: nil,
@@ -122,7 +122,7 @@ final class MockDataStore {
                          Coordinate(latitude: 40.7580, longitude: -73.8855)]),
 
             // Upcoming trip for John
-            Trip(id: UUID(), vehicleId: Self.vehicleTruck702Id, driverId: Self.driverJohnId,
+            TripMap(id: UUID(), vehicleId: Self.vehicleTruck702Id, driverId: Self.driverJohnId,
                  startLocation: "Logistics Hub East", endLocation: "Warehouse District B",
                  startTime: nil, endTime: nil,
                  scheduledStartTime: todayAfternoon,
@@ -131,7 +131,7 @@ final class MockDataStore {
                  route: []),
 
             // Tomorrow trip for John
-            Trip(id: UUID(), vehicleId: Self.vehicleTruck702Id, driverId: Self.driverJohnId,
+            TripMap(id: UUID(), vehicleId: Self.vehicleTruck702Id, driverId: Self.driverJohnId,
                  startLocation: "Main Depot", endLocation: "North Terminal",
                  startTime: nil, endTime: nil,
                  scheduledStartTime: cal.date(byAdding: .day, value: 1, to: todayMorning)!,
@@ -140,7 +140,7 @@ final class MockDataStore {
                  route: []),
 
             // Completed trip (yesterday) for John
-            Trip(id: UUID(), vehicleId: Self.vehicleTruck702Id, driverId: Self.driverJohnId,
+            TripMap(id: UUID(), vehicleId: Self.vehicleTruck702Id, driverId: Self.driverJohnId,
                  startLocation: "South Yard", endLocation: "Central Port",
                  startTime: cal.date(byAdding: .day, value: -1, to: todayMorning),
                  endTime: cal.date(byAdding: .hour, value: 3, to: cal.date(byAdding: .day, value: -1, to: todayMorning)!),
@@ -150,7 +150,7 @@ final class MockDataStore {
                  route: []),
 
             // Completed trip (2 days ago)
-            Trip(id: UUID(), vehicleId: Self.vehicleTruck702Id, driverId: Self.driverJohnId,
+            TripMap(id: UUID(), vehicleId: Self.vehicleTruck702Id, driverId: Self.driverJohnId,
                  startLocation: "Airport Cargo", endLocation: "Downtown Hub",
                  startTime: cal.date(byAdding: .day, value: -2, to: todayMorning),
                  endTime: cal.date(byAdding: .hour, value: 2, to: cal.date(byAdding: .day, value: -2, to: todayMorning)!),
@@ -160,7 +160,7 @@ final class MockDataStore {
                  route: []),
 
             // Trip for Sarah
-            Trip(id: UUID(), vehicleId: Self.vehicleVan305Id, driverId: Self.driverSarahId,
+            TripMap(id: UUID(), vehicleId: Self.vehicleVan305Id, driverId: Self.driverSarahId,
                  startLocation: "Metro Center", endLocation: "East Side Depot",
                  startTime: nil, endTime: nil,
                  scheduledStartTime: todayAfternoon,

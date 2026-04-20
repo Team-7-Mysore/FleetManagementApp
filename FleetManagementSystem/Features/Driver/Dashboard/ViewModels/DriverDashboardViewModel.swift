@@ -33,8 +33,8 @@ struct VehicleDTO: Decodable {
 @MainActor
 final class DriverDashboardViewModel: ObservableObject {
     @Published private(set) var assignedVehicle: Vehicle?
-    @Published private(set) var activeTrip: Trip?
-    @Published private(set) var upcomingTrips: [Trip] = []
+    @Published private(set) var activeTrip: TripMap?
+    @Published private(set) var upcomingTrips: [TripMap] = []
     @Published private(set) var currentInspection: Inspection?
     @Published private(set) var notifications: [AppNotification] = []
     @Published private(set) var unreadNotificationCount = 0
@@ -96,7 +96,7 @@ final class DriverDashboardViewModel: ObservableObject {
                 }
 
                 let dtoTrips = try decoder.decode([TripDTO].self, from: response.data)
-                let trips = dtoTrips.map { Trip(dto: $0) }
+                let trips = dtoTrips.map { TripMap(dto: $0) }
 
                 print("✅ Final Trips:", trips)
 
@@ -147,7 +147,7 @@ final class DriverDashboardViewModel: ObservableObject {
         }
     }
 
-    func startTrip(_ trip: Trip) {
+    func startTrip(_ trip: TripMap) {
         Task {
             do {
                 try await SupabaseManager.shared.client

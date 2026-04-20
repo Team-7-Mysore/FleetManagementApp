@@ -23,7 +23,7 @@ struct ConversationListView: View {
                 } else {
                     ForEach(vm.conversations) { conversation in
                         NavigationLink {
-                            ChatView(user: user, otherUser: conversation.otherUser)
+                            ChatViewDriver(user: user, otherUser: conversation.otherUser)
                         } label: {
                             conversationRow(conversation)
                         }
