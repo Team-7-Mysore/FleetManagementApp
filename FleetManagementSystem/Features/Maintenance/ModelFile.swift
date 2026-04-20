@@ -15,7 +15,7 @@ struct AppUser: Identifiable, Codable {
     var email: String
     var role: String // fleet_manager, maintenance, driver
     var avatarUrl: String?
-    
+
     enum CodingKeys: String, CodingKey {
         case id = "user_id"
         case name
@@ -46,7 +46,7 @@ enum VehicleType: String, Codable, CaseIterable {
     case car = "Car"
     case bus = "Bus"
     case truck = "Truck"
-    
+
     var sfSymbol: String {
         switch self {
         case .bike: return "motorcycle"
@@ -55,12 +55,12 @@ enum VehicleType: String, Codable, CaseIterable {
         case .truck: return "box.truck.fill"
         }
     }
-   
+
     var color: Color {
         switch self {
         case .bike: return Color(hex: "#2C2C2E")
         case .car: return Color(hex: "#0A84FF")
-        case .bus: return Color(hex: "#2E7D32") 
+        case .bus: return Color(hex: "#2E7D32")
         case .truck: return Color(hex: "#C75C1A")
         }
     }
@@ -93,10 +93,10 @@ struct InventoryItem: Identifiable, Codable {
     var imageUrl: String?
     let createdAt: Date?
     var updatedAt: Date?
-    
+
     // Satisfies Identifiable for SwiftUI
     var id: UUID { inventoryId }
-    
+
     enum CodingKeys: String, CodingKey {
         case inventoryId = "inventory_id"
         case partName = "part_name"
@@ -131,10 +131,10 @@ struct WorkOrder: Identifiable, Codable {
     var images: [String]?
     let createdAt: Date?
     var updatedAt: Date?
-    
+
     // Satisfies Identifiable for SwiftUI
     var id: UUID { workOrderId }
-    
+
     enum CodingKeys: String, CodingKey {
         case workOrderId = "work_order_id"
         case vehicleVin = "vehicle_vin"
@@ -162,10 +162,10 @@ struct WorkOrderTask: Identifiable, Codable {
     var description: String
     var isCompleted: Bool
     let createdAt: Date?
-    
+
     // Satisfies Identifiable for SwiftUI
     var id: UUID { taskId }
-    
+
     enum CodingKeys: String, CodingKey {
         case taskId = "task_id"
         case workOrderId = "work_order_id"
@@ -182,7 +182,7 @@ struct WorkOrderPart: Codable {
     var inventoryId: UUID
     var quantityRequired: Int
     var costAtTime: Double?
-    
+
     enum CodingKeys: String, CodingKey {
         case workOrderId = "work_order_id"
         case inventoryId = "inventory_id"
@@ -200,7 +200,7 @@ struct ChatRoom: Identifiable, Codable, Hashable {
     let createdAt: Date?
     var updatedAt: Date?         // Useful for sorting the inbox by "most recently active"
     var lastMessage: String?     // Local property for inbox preview
-    
+
     enum CodingKeys: String, CodingKey {
         case id
         case type
@@ -218,7 +218,7 @@ struct ChatParticipant: Codable {
     var userId: UUID             // Links to your auth.users or public.profiles table
     var joinedAt: Date?
     var lastReadAt: Date?        // Crucial for showing unread message badges/counts
-    
+
     enum CodingKeys: String, CodingKey {
         case chatRoomId = "chat_room_id"
         case userId = "user_id"

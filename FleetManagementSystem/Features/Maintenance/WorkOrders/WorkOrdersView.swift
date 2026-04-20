@@ -3,17 +3,17 @@ import SwiftUI
 struct WorkOrdersView: View {
     // Injecting the ViewModel to get real data silently
     @StateObject private var viewModel = WorkOrderViewModel()
-    
+
     // Modal Presentation States
     @State private var selectedDetailOrder: WorkOrder?
     @State private var selectedReportOrder: WorkOrder?
     @State private var showingAddOrder: Bool = false
-    
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    
+
                     // MARK: Top Horizontal Cards (Only 2: Pending & Completed)
                     HStack(spacing: 12) {
                         // Pending Card
@@ -31,7 +31,7 @@ struct WorkOrdersView: View {
                             )
                         }
                         .buttonStyle(PlainButtonStyle())
-                        
+
                         // Completed Card
                         NavigationLink(destination: FilteredWorkOrdersView(
                             title: "Completed Orders",
@@ -50,7 +50,7 @@ struct WorkOrdersView: View {
                     }
                     .padding(.top, 10)
                     .fixedSize(horizontal: false, vertical: true)
-                    
+
                     // MARK: List / Content Area (In Progress Only)
                     VStack(alignment: .leading, spacing: 16) {
                         Text("IN PROGRESS TASKS")
@@ -59,7 +59,7 @@ struct WorkOrdersView: View {
                             .foregroundColor(.secondary)
                             .tracking(1.0)
                             .padding(.top, 8)
-                        
+
                         if viewModel.isLoading && viewModel.inProgressOrders.isEmpty {
                             ProgressView("Fetching Orders...")
                                 .frame(maxWidth: .infinity)
@@ -119,7 +119,7 @@ struct WorkOrdersView: View {
                 .padding(.trailing, 24)
                 .padding(.bottom, 24)
             }
-            
+
             // MARK: - Modals (Sheets)
             // Added onDismiss closures with a tiny 0.5s delay to allow DB saves to finish before fetching
             .sheet(item: $selectedDetailOrder, onDismiss: {
@@ -159,14 +159,14 @@ struct WorkOrdersView: View {
 struct FilteredWorkOrdersView: View {
     let title: String
     let workOrders: [WorkOrder]
-    
+
     // NEW: Callback so this view can tell the parent to fetch data when a sheet dismisses
     var onRefresh: (() async -> Void)? = nil
-    
+
     // Modal Presentation States for the filtered lists
     @State private var selectedDetailOrder: WorkOrder?
     @State private var selectedReportOrder: WorkOrder?
-    
+
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
@@ -197,7 +197,7 @@ struct FilteredWorkOrdersView: View {
         }
         .navigationTitle(title)
         .background(Color(uiColor: .systemGroupedBackground))
-        
+
         // Modals for the Filtered View
         .sheet(item: $selectedDetailOrder, onDismiss: {
             Task {
@@ -228,24 +228,24 @@ struct SummaryCardView: View {
     let count: Int
     let tintColor: Color
     let backgroundColor: Color
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 4) {
                 Image(systemName: icon)
                     .font(.system(size: 14, weight: .bold))
-                
+
                 Text(title)
                     .font(.system(size: 14, weight: .bold))
-                
+
                 Spacer(minLength: 0) // Pushes the chevron to the right edge
-                
+
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(tintColor.opacity(0.5))
             }
             .foregroundColor(tintColor)
-            
+
             Text("\(count)")
                 .font(.system(size: 28, weight: .bold))
                 .foregroundColor(.primary)
@@ -265,36 +265,36 @@ struct WorkOrderRowView: View {
     var showStatus: Bool
     var isLargeTitle: Bool
     var onViewReport: (() -> Void)? = nil
-    
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 16) {
-                
+
                 // Vehicle Icon
                 ZStack {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(iconBackgroundColor)
                         .frame(width: 50, height: 50)
-                    
+
                     Image(systemName: workOrder.vehicleType.sfSymbol)
                         .foregroundColor(iconColor)
                         .font(.title2)
                 }
-                
+
                 // Text Content
                 if workOrder.status == .completed {
                     RowTextLinesCompleted(workOrder: workOrder)
                 } else {
                     RowTextLinesDefault(workOrder: workOrder, showStatus: showStatus, isLargeTitle: isLargeTitle)
                 }
-                
+
                 // Chevron
                 Image(systemName: "chevron.right")
                     .font(.body)
                     .foregroundColor(Color.gray.opacity(0.4))
             }
             .padding()
-            
+
             if workOrder.status == .completed {
                 ViewReportButtonView(action: {
                     onViewReport?() // Trigger the callback
@@ -307,12 +307,12 @@ struct WorkOrderRowView: View {
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
     }
-    
+
     // Dynamic Colors based on Vehicle Type
     private var iconColor: Color {
         workOrder.vehicleType.color // Requires color extension in ModelFile
     }
-    
+
     private var iconBackgroundColor: Color {
         iconColor.opacity(0.1)
     }
@@ -323,10 +323,10 @@ struct RowTextLinesDefault: View {
     let workOrder: WorkOrder
     var showStatus: Bool
     var isLargeTitle: Bool
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            
+
             // TOP LINE: Issue Title + Priority
             HStack {
                 Text(workOrder.issueTitle)
@@ -334,25 +334,25 @@ struct RowTextLinesDefault: View {
                     .fontWeight(.semibold)
                     .foregroundColor(.primary)
                     .lineLimit(1)
-                
+
                 Spacer()
-                
+
                 PriorityTagView(priority: workOrder.priority)
             }
-            
+
             // MIDDLE LINE: Fleet ID & Vehicle Name
             Text("\(workOrder.fleetUnitId) • \(workOrder.vehicleName ?? "Fleet Vehicle")")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
-            
+
             // BOTTOM LINE: Status Dot (Hidden based on toggle)
             if showStatus {
                 HStack(spacing: 6) {
                     Circle()
                         .fill(statusColor)
                         .frame(width: 8, height: 8)
-                    
+
                     Text(workOrder.status.rawValue.uppercased())
                         .font(.caption)
                         .fontWeight(.bold)
@@ -361,7 +361,7 @@ struct RowTextLinesDefault: View {
             }
         }
     }
-    
+
     private var statusColor: Color {
         switch workOrder.status {
         case .pending: return .orange
@@ -375,7 +375,7 @@ struct RowTextLinesDefault: View {
 // MARK: - COMPLETED Row Content
 struct RowTextLinesCompleted: View {
     let workOrder: WorkOrder
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
@@ -384,9 +384,9 @@ struct RowTextLinesCompleted: View {
                     .fontWeight(.semibold)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
-                
+
                 Spacer()
-                
+
                 Text("DONE")
                     .font(.caption)
                     .fontWeight(.bold)
@@ -396,13 +396,13 @@ struct RowTextLinesCompleted: View {
                     .background(Color(uiColor: .systemGray5))
                     .clipShape(Capsule())
             }
-            
+
             Text(workOrder.vehicleName ?? "Fleet Vehicle")
                 .font(.headline)
                 .fontWeight(.semibold)
                 .foregroundColor(.primary)
                 .lineLimit(1)
-            
+
             Text(workOrder.issueTitle)
                 .font(.subheadline)
                 .foregroundColor(.secondary)
@@ -414,14 +414,14 @@ struct RowTextLinesCompleted: View {
 // MARK: - View Report Button (Bottom of completed card)
 struct ViewReportButtonView: View {
     var action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
             HStack(alignment: .center) {
                 Spacer()
                 Image(systemName: "doc.text.fill")
                     .font(.subheadline.bold())
-                
+
                 Text("View Report")
                     .font(.subheadline.bold())
                 Spacer()
@@ -438,7 +438,7 @@ struct ViewReportButtonView: View {
 // MARK: - Priority Tag Component
 struct PriorityTagView: View {
     let priority: WorkOrderPriority
-    
+
     var body: some View {
         Text(priority.rawValue.uppercased())
             .font(.caption2)
@@ -449,7 +449,7 @@ struct PriorityTagView: View {
             .foregroundColor(priorityTextColor)
             .clipShape(Capsule())
     }
-    
+
     private var priorityBackgroundColor: Color {
         switch priority {
         case .low: return Color.green.opacity(0.1)
@@ -457,7 +457,7 @@ struct PriorityTagView: View {
         case .high, .urgent: return Color.red.opacity(0.1)
         }
     }
-    
+
     private var priorityTextColor: Color {
         switch priority {
         case .low: return .green

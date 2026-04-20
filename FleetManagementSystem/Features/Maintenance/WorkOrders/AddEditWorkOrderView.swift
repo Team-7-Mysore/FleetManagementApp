@@ -11,47 +11,47 @@ struct PartSelectionUI: Identifiable {
 
 struct AddEditWorkOrderView: View {
     @Environment(\.dismiss) private var dismiss
-    
+
     // MARK: - ViewModel Injection
     @StateObject private var viewModel = WorkOrderViewModel()
-    
+
     // MARK: - State Variables
     @State private var vin: String = ""
     @State private var fleetId: String = ""
     @State private var vehicleName: String = ""
     @State private var vehicleType: VehicleType = .car
-    
+
     @State private var issueTitle: String = ""
     @State private var issueDescription: String = ""
-    
+
     // Tasks State
     @State private var tasks: [String] = []
     @State private var newTaskName: String = ""
-    
+
     // Parts State
     @State private var parts: [PartSelectionUI] = []
-    
+
     // Photos State
     @State private var photos: [String] = []
-    
+
     @State private var priority: WorkOrderPriority = .medium
     @State private var internalNotes: String = ""
-    
+
     // Saving State
     @State private var isSaving: Bool = false
-    
+
     var body: some View {
         ZStack {
             Color(uiColor: .systemGroupedBackground)
                 .ignoresSafeArea()
-            
+
             ScrollView {
                 VStack(spacing: 24) {
-                    
+
                     // MARK: 1. Vehicle Identification
                     VStack(alignment: .leading, spacing: 8) {
                         SectionHeaderView(title: "VEHICLE IDENTIFICATION")
-                        
+
                         CardView {
                             VStack(spacing: 12) {
                                 HStack(alignment: .top, spacing: 16) {
@@ -62,7 +62,7 @@ struct AddEditWorkOrderView: View {
                                         .frame(width: 54, height: 54)
                                         .background(Color.blue.opacity(0.1))
                                         .cornerRadius(12)
-                                    
+
                                     VStack(spacing: 12) {
                                         TextField("VIN", text: $vin)
                                             .font(.subheadline)
@@ -74,9 +74,9 @@ struct AddEditWorkOrderView: View {
                                             .font(.subheadline)
                                     }
                                 }
-                                
+
                                 Divider().padding(.vertical, 4)
-                                
+
                                 // Vehicle Type Dropdown
                                 HStack {
                                     Text("Vehicle Type")
@@ -93,29 +93,29 @@ struct AddEditWorkOrderView: View {
                             }
                         }
                     }
-                    
+
                     // MARK: 2. Issue Summary
                     VStack(alignment: .leading, spacing: 8) {
                         SectionHeaderView(title: "ISSUE SUMMARY")
-                        
+
                         CardView {
                             VStack(spacing: 12) {
                                 TextField("Short Description (e.g. Engine noise)", text: $issueTitle)
                                     .font(.subheadline)
-                                
+
                                 Divider()
-                                
+
                                 TextField("Detailed symptoms or notes...", text: $issueDescription, axis: .vertical)
                                     .font(.subheadline)
                                     .lineLimit(3...6)
                             }
                         }
                     }
-                    
+
                     // MARK: 3. Task Checklist
                     VStack(alignment: .leading, spacing: 8) {
                         SectionHeaderView(title: "TASK CHECKLIST")
-                        
+
                         CardView {
                             VStack(alignment: .leading, spacing: 16) {
                                 // Render added tasks
@@ -136,12 +136,12 @@ struct AddEditWorkOrderView: View {
                                     }
                                     Divider()
                                 }
-                                
+
                                 // Full-width inline task adder
                                 HStack {
                                     Image(systemName: "plus.circle.fill")
                                         .foregroundColor(.blue)
-                                    
+
                                     TextField("Add new task...", text: $newTaskName)
                                         .font(.subheadline)
                                         .onSubmit {
@@ -154,11 +154,11 @@ struct AddEditWorkOrderView: View {
                             }
                         }
                     }
-                    
+
                     // MARK: 4. Parts Required
                     VStack(alignment: .leading, spacing: 8) {
                         SectionHeaderView(title: "PARTS REQUIRED")
-                        
+
                         CardView {
                             VStack(alignment: .leading, spacing: 16) {
                                 // Render added parts
@@ -167,9 +167,9 @@ struct AddEditWorkOrderView: View {
                                         Text(part.name)
                                             .font(.subheadline)
                                             .fontWeight(.medium)
-                                        
+
                                         Spacer()
-                                        
+
                                         // Custom Stepper Look
                                         HStack(spacing: 16) {
                                             Button(action: {
@@ -178,11 +178,11 @@ struct AddEditWorkOrderView: View {
                                                 Image(systemName: "minus")
                                                     .foregroundColor(.blue)
                                             }
-                                            
+
                                             Text("\(part.quantity)")
                                                 .font(.subheadline)
                                                 .fontWeight(.medium)
-                                            
+
                                             Button(action: {
                                                 part.quantity += 1
                                             }) {
@@ -194,7 +194,7 @@ struct AddEditWorkOrderView: View {
                                         .padding(.vertical, 8)
                                         .background(Color(uiColor: .systemGray6))
                                         .cornerRadius(8)
-                                        
+
                                         // Remove part button
                                         Button(action: {
                                             parts.removeAll { $0.id == part.id }
@@ -206,7 +206,7 @@ struct AddEditWorkOrderView: View {
                                     }
                                     Divider()
                                 }
-                                
+
                                 // Full-width inline part adder (Dropdown Menu)
                                 Menu {
                                     if viewModel.availableInventory.isEmpty {
@@ -233,13 +233,13 @@ struct AddEditWorkOrderView: View {
                                     HStack {
                                         Image(systemName: "plus.circle.fill")
                                             .foregroundColor(.blue)
-                                        
+
                                         Text("Select a Part from Inventory...")
                                             .font(.subheadline)
                                             .foregroundColor(.primary)
-                                        
+
                                         Spacer()
-                                        
+
                                         Image(systemName: "chevron.up.chevron.down")
                                             .font(.caption)
                                             .foregroundColor(.gray)
@@ -249,11 +249,11 @@ struct AddEditWorkOrderView: View {
                             }
                         }
                     }
-                    
+
                     // MARK: 5. Photo Documentation
                     VStack(alignment: .leading, spacing: 8) {
                         SectionHeaderView(title: "PHOTO DOCUMENTATION")
-                        
+
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 12) {
                                 ForEach(photos, id: \.self) { photoString in
@@ -265,7 +265,7 @@ struct AddEditWorkOrderView: View {
                                                 Image(systemName: "photo")
                                                     .foregroundColor(.gray)
                                             )
-                                        
+
                                         Button(action: {
                                             photos.removeAll { $0 == photoString }
                                         }) {
@@ -276,7 +276,7 @@ struct AddEditWorkOrderView: View {
                                         .offset(x: 6, y: -6)
                                     }
                                 }
-                                
+
                                 // Add Photo Button
                                 Button(action: {
                                     // Add photo logic goes here
@@ -296,11 +296,11 @@ struct AddEditWorkOrderView: View {
                             .padding(.vertical, 8)
                         }
                     }
-                    
+
                     // MARK: 6. Priority Level
                     VStack(alignment: .leading, spacing: 8) {
                         SectionHeaderView(title: "PRIORITY LEVEL")
-                        
+
                         CardView {
                             HStack {
                                 Text("Priority")
@@ -316,11 +316,11 @@ struct AddEditWorkOrderView: View {
                             }
                         }
                     }
-                    
+
                     // MARK: 7. Internal Notes
                     VStack(alignment: .leading, spacing: 8) {
                         SectionHeaderView(title: "INTERNAL NOTES")
-                        
+
                         CardView {
                             TextField("Additional details only visible to mechanics...", text: $internalNotes, axis: .vertical)
                                 .font(.subheadline)
@@ -333,15 +333,15 @@ struct AddEditWorkOrderView: View {
                 .padding(.bottom, 40) // Give bottom breathing room
             }
         }
-        
+
         .task {
             await viewModel.fetchAllInventory()
         }
-        
+
         .navigationTitle("New Work Order")
         .navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.interactively)
-        
+
         .toolbar {
             // Leading Cancel Button
             ToolbarItem(placement: .navigationBarLeading) {
@@ -350,7 +350,7 @@ struct AddEditWorkOrderView: View {
                 }
                 .disabled(isSaving)
             }
-            
+
             // Trailing Save Button
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
@@ -366,7 +366,7 @@ struct AddEditWorkOrderView: View {
                 .disabled(isSaving)
             }
         }
-        
+
         // MARK: - Keyboard Done Toolbar
         .toolbar {
             ToolbarItemGroup(placement: .keyboard) {
@@ -378,16 +378,16 @@ struct AddEditWorkOrderView: View {
             }
         }
     }
-    
+
     // MARK: - ViewModel Saving Logic
     private func saveWorkOrderToSupabase() {
         guard !isSaving else { return }
         isSaving = true
-        
+
         Task {
             do {
                 let newWorkOrderId = UUID()
-                
+
                 let newOrder = WorkOrder(
                     workOrderId: newWorkOrderId,
                     vehicleVin: vin.isEmpty ? "UNKNOWN-VIN" : vin,
@@ -406,7 +406,7 @@ struct AddEditWorkOrderView: View {
                     createdAt: Date(),
                     updatedAt: Date()
                 )
-                
+
                 let workOrderTasks = tasks.map { taskName in
                     WorkOrderTask(
                         taskId: UUID(),
@@ -416,7 +416,7 @@ struct AddEditWorkOrderView: View {
                         createdAt: Date()
                     )
                 }
-                
+
                 // Mapped the selected UI parts to the database model
                 let workOrderParts = parts.map { uiPart in
                     WorkOrderPart(
@@ -426,17 +426,17 @@ struct AddEditWorkOrderView: View {
                         costAtTime: nil
                     )
                 }
-                
+
                 // Push all three tables to Supabase
                 try await viewModel.upsertWorkOrder(newOrder)
                 try await viewModel.insertTasks(workOrderTasks)
                 try await viewModel.upsertParts(workOrderParts) // FIX: Parts are now pushed!
-                
+
                 await MainActor.run {
                     isSaving = false
                     dismiss()
                 }
-                
+
             } catch {
                 print("🚨 Error saving work order: \(error)")
                 await MainActor.run {

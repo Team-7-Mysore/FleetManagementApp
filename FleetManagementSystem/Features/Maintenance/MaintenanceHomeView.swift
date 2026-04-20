@@ -7,13 +7,13 @@ struct MaintenanceHomeView: View {
                 .tabItem {
                     Label("Work Orders", systemImage: "list.bullet")
                 }
-            
-            
+
+
             InventoryView()
                 .tabItem {
                     Label("Inventory", systemImage: "cube.box")
                 }
-            
+
             ChatListView()
                 .tabItem {
                     Label("Chat", systemImage: "message")
