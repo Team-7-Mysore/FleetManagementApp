@@ -8,6 +8,7 @@ xcuserdata/
 
 # Xcode workspace user data
 *.xcworkspace/xcuserdata/
+*.xcworkspace/xcshareddata/
 
 # Derived data
 DerivedData/
