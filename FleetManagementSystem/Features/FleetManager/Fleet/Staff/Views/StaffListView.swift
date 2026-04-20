@@ -56,11 +56,7 @@ struct StaffListView: View {
                         }
                     } header: {
                         staffSectionHeader
-                    } footer: {
-                        if !vm.isLoading && !vm.filteredStaff.isEmpty {
-                            Text("Pull down to refresh the latest staff status.")
-                        }
-                    }
+                    } 
                 }
                 .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)

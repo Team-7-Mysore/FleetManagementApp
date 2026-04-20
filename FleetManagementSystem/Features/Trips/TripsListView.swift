@@ -34,11 +34,7 @@ struct TripsListView: View {
                         }
                     } header: {
                         ongoingTripsHeader
-                    } footer: {
-                        if !vm.isLoading && !vm.filteredTrips.isEmpty {
-                            Text("Pull down to refresh the latest trip status.")
-                        }
-                    }
+                    } 
                 }
                 .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
@@ -186,7 +182,7 @@ struct TripsListView: View {
                 .font(.title2.weight(.bold))
                 .foregroundColor(.white)
                 .frame(width: 56, height: 56)
-                .background(Color.blue)
+                .background(Color.TechBlue)
                 .clipShape(Circle())
                 .shadow(radius: 6)
         }
