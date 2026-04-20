@@ -60,7 +60,7 @@ struct LoginView: View {
                         ZStack(alignment: .leading) {
                             if emailOrUsername.isEmpty {
                                 Text("john.doe@precision.com")
-                                    .foregroundStyle(.gray)
+                                    .foregroundStyle(Color(.systemGray).opacity(0.7))
                                     .padding(.horizontal, 16)
                             }
 
@@ -91,7 +91,7 @@ struct LoginView: View {
                             ZStack(alignment: .leading) {
                                 if password.isEmpty {
                                     Text("Password")
-                                        .foregroundStyle(.gray)
+                                        .foregroundStyle(Color(.systemGray).opacity(0.7))
                                 }
 
                                 if isPasswordVisible {

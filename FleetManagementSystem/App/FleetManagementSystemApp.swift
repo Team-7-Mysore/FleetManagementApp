@@ -11,9 +11,13 @@ import SwiftUI
 struct FleetManagementSystemApp: App {
     var body: some Scene {
         WindowGroup {
-//            LoginView()
-           MaintenanceHomeView()
-                .tint(Color(hex: "#A3352A"))
+
+
+//           MaintenanceHomeView()
+//                .tint(Color(hex: "#A3352A"))
+
+           // LoginView()
+            FleetManagerTabView()
         }
     }
 }

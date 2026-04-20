@@ -26,7 +26,6 @@ struct WorkOrderDetailView: View {
     @State private var editedIssueDescription: String = ""
 
     @State private var newTaskName: String = ""
-    @State private var newPartName: String = ""
 
     @State private var editedMaintenanceNotes: String = ""
     @State private var editedHoursWorked: String = ""
@@ -168,7 +167,6 @@ struct WorkOrderDetailView: View {
                                             .frame(maxWidth: .infinity, alignment: .leading)
                                             .padding(.bottom, 8)
                                     } else {
-                                        // FIX: Extracted into a subview to prevent compiler errors
                                         ForEach($partsUI) { $part in
                                             PartDetailRowView(part: $part, onQuantityChange: {
                                                 scheduleAutosave()
@@ -181,25 +179,46 @@ struct WorkOrderDetailView: View {
                                         }
                                     }
 
-                                    HStack {
-                                        Image(systemName: "plus.circle.fill")
-                                            .foregroundColor(.blue)
-
-                                        TextField("Add Part Name or SKU...", text: $newPartName)
-                                            .font(.subheadline)
-                                            .padding(.vertical, 8)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                            .onSubmit {
-                                                guard !newPartName.isEmpty else { return }
-                                                partsUI.append(PartDisplayInfo(
-                                                    inventoryId: UUID(),
-                                                    name: newPartName,
-                                                    quantity: 1,
-                                                    unitCost: 75.0 // MOCK COST
-                                                ))
-                                                newPartName = ""
-                                                scheduleAutosave()
+                                    // FIX: Parts Dropdown Menu
+                                    Menu {
+                                        if viewModel.availableInventory.isEmpty {
+                                            Text("Loading inventory...")
+                                        } else {
+                                            ForEach(viewModel.availableInventory) { item in
+                                                Button {
+                                                    // Prevent adding duplicate parts
+                                                    if !partsUI.contains(where: { $0.inventoryId == item.inventoryId }) {
+                                                        partsUI.append(
+                                                            PartDisplayInfo(
+                                                                inventoryId: item.inventoryId,
+                                                                name: item.partName,
+                                                                quantity: 1,
+                                                                unitCost: item.costPerUnit ?? 0.0 // Grab real unit cost
+                                                            )
+                                                        )
+                                                        scheduleAutosave()
+                                                    }
+                                                } label: {
+                                                    Text("\(item.partName) (In Stock: \(item.quantity))")
+                                                }
                                             }
+                                        }
+                                    } label: {
+                                        HStack {
+                                            Image(systemName: "plus.circle.fill")
+                                                .foregroundColor(.blue)
+
+                                            Text("Select a Part from Inventory...")
+                                                .font(.subheadline)
+                                                .foregroundColor(.primary)
+
+                                            Spacer()
+
+                                            Image(systemName: "chevron.up.chevron.down")
+                                                .font(.caption)
+                                                .foregroundColor(.gray)
+                                        }
+                                        .padding(.vertical, 8)
                                     }
                                 }
                             }
@@ -338,7 +357,9 @@ struct WorkOrderDetailView: View {
             }
         }
         .task {
+            // Fetch everything when view loads
             await fetchWorkOrderDetails()
+            await viewModel.fetchAllInventory()
         }
     }
 
@@ -403,7 +424,17 @@ struct WorkOrderDetailView: View {
                 try await viewModel.upsertTasks(tasks)
             }
 
-            // Update parts if needed (depends on your DB mapping structure)
+            // Re-map the parts to update DB
+            let workOrderParts = partsUI.map { uiPart in
+                WorkOrderPart(
+                    workOrderId: workOrder.workOrderId,
+                    inventoryId: uiPart.inventoryId,
+                    quantityRequired: uiPart.quantity,
+                    costAtTime: uiPart.unitCost
+                )
+            }
+            try await viewModel.upsertParts(workOrderParts)
+
         } catch {
             print("🚨 Autosave failed: \(error)")
         }
@@ -585,7 +616,7 @@ struct WorkEntryAndDocumentationView: View {
                         }
 
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("LABOUR COST ($)")
+                            Text("LABOUR COST (₹)")
                                 .font(.caption2)
                                 .fontWeight(.medium)
                                 .foregroundColor(.secondary)
@@ -673,7 +704,7 @@ struct LiveCostTotalsView: View {
                     .fontWeight(.bold)
                     .foregroundColor(.primary)
                 Spacer()
-                Text(String(format: "$%.2f", total))
+                Text(String(format: "₹%.2f", total))
                     .font(.title3)
                     .fontWeight(.bold)
                     .foregroundColor(.green)
@@ -695,7 +726,7 @@ struct LiveCostRow: View {
                 .font(.subheadline)
                 .foregroundColor(.secondary)
             Spacer()
-            Text(String(format: "$%.2f", value))
+            Text(String(format: "₹%.2f", value))
                 .font(.headline)
                 .foregroundColor(.primary)
         }
@@ -740,7 +771,7 @@ struct PartDetailRowView: View {
                 Text(part.name)
                     .font(.subheadline)
                     .fontWeight(.medium)
-                Text(String(format: "$%.2f ea", part.unitCost))
+                Text(String(format: "₹%.2f ea", part.unitCost))
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }

@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
   "originHash" : "fe9127bc532f1973b495245e48e9b2592532657b445b03b75e86d723f9805df3",
   "pins" : [
     {
@@ -20,6 +21,11 @@
       }
     },
     {
+=======
+  "originHash" : "5f3436049b395fcbc71828c07d82e81a46af698ebe0b146cdc52345a5a60558d",
+  "pins" : [
+    {
+>>>>>>> merge-fleet
       "identity" : "supabase-swift",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/supabase/supabase-swift",

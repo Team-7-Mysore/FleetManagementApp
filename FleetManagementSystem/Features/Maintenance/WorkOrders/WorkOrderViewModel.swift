@@ -17,29 +17,55 @@ final class WorkOrderViewModel: ObservableObject {
     @Published var errorMessage: String? = nil
 
     // MARK: - Main Fetch
-    func fetchWorkOrders() async {
-        isLoading = true
-        errorMessage = nil
+//    func fetchWorkOrders() async {
+//        isLoading = true
+//        errorMessage = nil
+//
+//        do {
+//            let fetchedOrders: [WorkOrder] = try await SupabaseManager.shared.client
+//                .from("work_orders")
+//                .select()
+//                .execute()
+//                .value
+//
+//            self.workOrders = fetchedOrders
+//            self.inProgressOrders = fetchedOrders.filter { $0.status == .inProgress }
+//            self.pendingOrders = fetchedOrders.filter { $0.status == .pending }
+//            self.completedOrders = fetchedOrders.filter { $0.status == .completed }
+//
+//        } catch {
+//            print("ERROR:", error)
+//            self.errorMessage = "Failed to fetch work orders: \(error.localizedDescription)"
+//        }
+//
+//        isLoading = false
+//    }
 
-        do {
-            let fetchedOrders: [WorkOrder] = try await SupabaseManager.shared.client
-                .from("work_orders")
-                .select()
-                .execute()
-                .value
+    // MARK: - Main Fetch
+        func fetchWorkOrders() async {
+            isLoading = true
+            errorMessage = nil
 
-            self.workOrders = fetchedOrders
-            self.inProgressOrders = fetchedOrders.filter { $0.status == .inProgress }
-            self.pendingOrders = fetchedOrders.filter { $0.status == .pending }
-            self.completedOrders = fetchedOrders.filter { $0.status == .completed }
+            do {
+                let fetchedOrders: [WorkOrder] = try await SupabaseManager.shared.client
+                    .from("work_orders")
+                    .select()
+                    .order("created_at", ascending: false)
+                    .execute()
+                    .value
 
-        } catch {
-            print("ERROR:", error)
-            self.errorMessage = "Failed to fetch work orders: \(error.localizedDescription)"
+                self.workOrders = fetchedOrders
+                self.inProgressOrders = fetchedOrders.filter { $0.status == .inProgress }
+                self.pendingOrders = fetchedOrders.filter { $0.status == .pending }
+                self.completedOrders = fetchedOrders.filter { $0.status == .completed }
+
+            } catch {
+                print("ERROR:", error)
+                self.errorMessage = "Failed to fetch work orders: \(error.localizedDescription)"
+            }
+
+            isLoading = false
         }
-
-        isLoading = false
-    }
 
     // MARK: - Relational Data Fetches
     func fetchTasks(for workOrderId: UUID) async throws -> [WorkOrderTask] {
