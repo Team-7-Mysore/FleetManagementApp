@@ -50,6 +50,8 @@ struct Trip: Identifiable, Codable, Hashable {
     var status: TripStatus
     var notes: String
     var route: [Coordinate]
+    var startCoordinate: Coordinate?
+    var endCoordinate: Coordinate?
 
     var isActive: Bool { status == .inProgress }
 
@@ -89,6 +91,10 @@ struct TripDTO: Decodable {
     let pickupTime: Date?
     let status: String
     let distanceTravelled: Double?
+    let originLatitude: Double?
+    let originLongitude: Double?
+    let destinationLatitude: Double?
+    let destinationLongitude: Double?
 
     enum CodingKeys: String, CodingKey {
         case tripId = "trip_id"
@@ -101,6 +107,10 @@ struct TripDTO: Decodable {
         case pickupTime = "pickup_time"
         case status
         case distanceTravelled = "distance_travelled"
+        case originLatitude = "origin_latitude"
+        case originLongitude = "origin_longitude"
+        case destinationLatitude = "destination_latitude"
+        case destinationLongitude = "destination_longitude"
     }
 }
 
@@ -139,5 +149,17 @@ extension Trip {
 
         self.notes = ""
         self.route = []
+        
+        if let oLat = dto.originLatitude, let oLng = dto.originLongitude {
+            self.startCoordinate = Coordinate(latitude: oLat, longitude: oLng)
+        } else {
+            self.startCoordinate = nil
+        }
+        
+        if let dLat = dto.destinationLatitude, let dLng = dto.destinationLongitude {
+            self.endCoordinate = Coordinate(latitude: dLat, longitude: dLng)
+        } else {
+            self.endCoordinate = nil
+        }
     }
 }
