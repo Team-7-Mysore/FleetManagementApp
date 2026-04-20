@@ -13,11 +13,11 @@ struct FleetManagementSystemApp: App {
         WindowGroup {
 
 //
-           MaintenanceHomeView()
-                .tint(Color(hex: "#A3352A"))
+          MaintenanceHomeView()
+           .tint(Color(hex: "#A3352A"))
 
             //LoginView()
-//            FleetManagerTabView()
+ //FleetManagerTabView()
         }
     }
 }
