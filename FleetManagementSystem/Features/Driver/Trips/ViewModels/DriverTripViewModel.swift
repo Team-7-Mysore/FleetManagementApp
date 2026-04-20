@@ -88,7 +88,10 @@ final class DriverTripViewModel: ObservableObject {
             do {
                 try await SupabaseManager.shared.client
                     .from("trips")
-                    .update(["status": "in_progress"])
+                    .update([
+                        "status": "in_progress",
+                        "start_time": ISO8601DateFormatter().string(from: Date())
+                    ])
                     .eq("trip_id", value: trip.id.uuidString)
                     .execute()
                 loadData()

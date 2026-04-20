@@ -30,8 +30,8 @@ struct DriverWorkspaceView: View {
                     switch route {
                     case .activeTrip(let trip):
                         ActiveTripView(trip: trip, user: mappedUser)
-                    case .vehicleInspection(let trip):
-                        VehicleInspectionView(user: mappedUser, trip: trip)
+                    case .vehicleInspection(let trip, let type):
+                        VehicleInspectionView(user: mappedUser, trip: trip, defaultType: type)
                     }
                 }
         }

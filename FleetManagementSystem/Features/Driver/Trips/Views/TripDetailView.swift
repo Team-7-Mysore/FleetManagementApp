@@ -120,14 +120,18 @@ struct TripDetailView: View {
             detailRow(icon: "calendar", title: "Scheduled",
                       value: trip.scheduledStartTime.formatted(date: .abbreviated, time: .shortened))
 
-            if let startTime = trip.startTime {
-                Divider().padding(.leading, 48)
-                detailRow(icon: "play.circle", title: "Started", value: startTime.formatted(date: .omitted, time: .shortened))
+            if trip.status == .inProgress || trip.status == .completed {
+                if let startTime = trip.startTime {
+                    Divider().padding(.leading, 48)
+                    detailRow(icon: "play.circle", title: "Started", value: startTime.formatted(date: .omitted, time: .shortened))
+                }
             }
 
-            if let endTime = trip.endTime {
-                Divider().padding(.leading, 48)
-                detailRow(icon: "stop.circle", title: "Ended", value: endTime.formatted(date: .omitted, time: .shortened))
+            if trip.status == .completed {
+                if let endTime = trip.endTime {
+                    Divider().padding(.leading, 48)
+                    detailRow(icon: "stop.circle", title: "Ended", value: endTime.formatted(date: .omitted, time: .shortened))
+                }
             }
 
             if let fuel = trip.fuelUsed {
@@ -171,29 +175,7 @@ struct TripDetailView: View {
     // MARK: - Action Buttons
     @ViewBuilder
     private var actionButtons: some View {
-        if trip.status == .planned {
-            Button {
-                vm.startTrip(trip)
-                dismiss()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "play.fill")
-                    Text("Start Trip")
-                }
-            }
-            .buttonStyle(PrimaryButtonStyle())
-
-            Button {
-                vm.cancelTrip(trip)
-                dismiss()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "xmark")
-                    Text("Cancel Trip")
-                }
-            }
-            .buttonStyle(SecondaryButtonStyle())
-        } else if trip.status == .inProgress {
+        if trip.status == .inProgress {
             NavigationLink {
                 ActiveTripView(trip: trip, user: user)
             } label: {

@@ -4,19 +4,12 @@ import SwiftUI
 struct ActiveTripView: View {
     let trip: Trip
     let user: User
-    @StateObject private var vm: DriverTripViewModel
-    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var router: AppRouter
 
     @State private var elapsedTime: TimeInterval = 0
     @State private var showEndTripConfirmation = false
     @State private var showReportIssue = false
     @State private var timer: Timer?
-
-    init(trip: Trip, user: User) {
-        self.trip = trip
-        self.user = user
-        _vm = StateObject(wrappedValue: DriverTripViewModel(user: user))
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -39,16 +32,6 @@ struct ActiveTripView: View {
                         }
                     }
 
-                // Turn indicator overlay
-                VStack {
-                    HStack {
-                        turnIndicator
-                        Spacer()
-                    }
-                    .padding(.horizontal)
-                    .padding(.top, 8)
-                    Spacer()
-                }
             }
             .frame(maxHeight: .infinity)
 
@@ -120,10 +103,10 @@ struct ActiveTripView: View {
         .ignoresSafeArea(edges: .top)
         .navigationTitle("Active Trip")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
         .confirmationDialog("End Trip", isPresented: $showEndTripConfirmation) {
             Button("End Trip", role: .destructive) {
-                vm.endTrip(trip)
-                dismiss()
+                router.path.append(AppRoute.vehicleInspection(trip, type: .postTrip))
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -136,27 +119,6 @@ struct ActiveTripView: View {
         .onDisappear { stopTimer() }
     }
 
-    // MARK: - Turn Indicator
-    private var turnIndicator: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "arrow.turn.up.right")
-                .font(.title3.weight(.bold))
-                .foregroundStyle(.white)
-
-            VStack(alignment: .leading, spacing: 0) {
-                Text("0.3 mi")
-                    .font(.caption.weight(.bold))
-                    .foregroundStyle(.white)
-                Text("Turn right")
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.8))
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(AppTheme.primaryGreen)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
 
     private func tripInfoItem(value: String, label: String) -> some View {
         VStack(spacing: 2) {

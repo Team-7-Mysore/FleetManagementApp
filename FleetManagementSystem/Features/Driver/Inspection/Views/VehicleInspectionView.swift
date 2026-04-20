@@ -7,14 +7,17 @@ struct VehicleInspectionView: View {
     @StateObject private var vm: InspectionViewModel
     @State private var showNewInspectionSheet = false
     @State private var overallNotes = ""
-    @State private var showStartTripConfirmation = false
+    @State private var showSubmissionConfirmation = false
     @State private var showReportIssue = false
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var router: AppRouter
 
-    init(user: User, trip: Trip? = nil) {
+    let defaultType: InspectionType
+
+    init(user: User, trip: Trip? = nil, defaultType: InspectionType = .preTrip) {
         self.user = user
         self.trip = trip
+        self.defaultType = defaultType
         _vm = StateObject(wrappedValue: InspectionViewModel(user: user))
     }
 
@@ -48,25 +51,19 @@ struct VehicleInspectionView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
-        .alert("Start Trip", isPresented: $showStartTripConfirmation) {
-            Button("Start Trip") {
-                if let trip {
-                    vm.submitAndStartTrip(notes: overallNotes, trip: trip)
-                    router.path = NavigationPath([AppRoute.activeTrip(trip)])
-                } else {
-                    vm.submitInspection(notes: overallNotes)
-                    dismiss()
-                }
+        .alert(confirmationTitle, isPresented: $showSubmissionConfirmation) {
+            Button(confirmationButtonTitle) {
+                handleSubmitConfirmation()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Inspection passed! Ready to start the trip?")
+            Text(confirmationMessage)
         }
         .sheet(isPresented: $showReportIssue) {
             ReportIssueView(user: user, vehicle: nil)
         }
         .onAppear {
-            vm.loadDataAndAutoStart(for: trip)
+            vm.loadDataAndAutoStart(for: trip, type: defaultType)
         }
     }
 
@@ -150,7 +147,7 @@ struct VehicleInspectionView: View {
                         HStack(spacing: 8) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(AppTheme.statusDanger)
-                            Text("\(inspection.failCount) issue\(inspection.failCount == 1 ? "" : "s") found. Trip cannot start.")
+                            Text(blockingIssuesMessage(for: inspection.failCount))
                                 .font(.subheadline.weight(.medium))
                                 .foregroundStyle(AppTheme.statusDanger)
                         }
@@ -176,10 +173,10 @@ struct VehicleInspectionView: View {
                         }
                     }
                 } else {
-                    Button { showStartTripConfirmation = true } label: {
+                    Button { showSubmissionConfirmation = true } label: {
                         HStack(spacing: 8) {
-                            Image(systemName: "play.fill")
-                            Text(trip != nil ? "Start Trip" : "Submit Inspection")
+                            Image(systemName: primaryActionSymbol)
+                            Text(primaryActionTitle)
                         }
                     }
                     .buttonStyle(PrimaryButtonStyle())
@@ -283,6 +280,57 @@ struct VehicleInspectionView: View {
             Text("\(Int(inspection.completionPercentage * 100))%")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(AppTheme.primaryGreen)
+        }
+    }
+
+    private var isPostTripFlow: Bool {
+        trip != nil && defaultType == .postTrip
+    }
+
+    private var primaryActionTitle: String {
+        if isPostTripFlow { return "Submit Inspection" }
+        return trip != nil ? "Start Trip" : "Submit Inspection"
+    }
+
+    private var primaryActionSymbol: String {
+        if isPostTripFlow { return "checkmark.circle.fill" }
+        return trip != nil ? "play.fill" : "checkmark.circle.fill"
+    }
+
+    private var confirmationTitle: String {
+        isPostTripFlow ? "End Trip" : "Start Trip"
+    }
+
+    private var confirmationButtonTitle: String {
+        isPostTripFlow ? "Submit Inspection" : "Start Trip"
+    }
+
+    private var confirmationMessage: String {
+        if isPostTripFlow {
+            return "Post-trip inspection passed. Submit and return to home screen?"
+        }
+        return "Inspection passed! Ready to start the trip?"
+    }
+
+    private func blockingIssuesMessage(for failCount: Int) -> String {
+        if isPostTripFlow {
+            return "\(failCount) issue\(failCount == 1 ? "" : "s") found. Resolve or report before closing the trip."
+        }
+        return "\(failCount) issue\(failCount == 1 ? "" : "s") found. Trip cannot start."
+    }
+
+    private func handleSubmitConfirmation() {
+        if let trip {
+            if isPostTripFlow {
+                vm.submitAndCompleteTrip(notes: overallNotes, trip: trip)
+                router.resetPath()
+            } else {
+                vm.submitAndStartTrip(notes: overallNotes, trip: trip)
+                router.path = NavigationPath([AppRoute.activeTrip(trip)])
+            }
+        } else {
+            vm.submitInspection(notes: overallNotes)
+            dismiss()
         }
     }
 }

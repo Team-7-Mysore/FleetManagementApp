@@ -28,7 +28,7 @@ final class InspectionViewModel: ObservableObject {
     }
 
     // MARK: - Auto-start inspection when coming from a trip
-    func loadDataAndAutoStart(for trip: Trip?) {
+    func loadDataAndAutoStart(for trip: Trip?, type: InspectionType = .preTrip) {
         currentInspection = service.currentInspection(forDriver: user.id)
         history = service.inspectionHistory(forDriver: user.id)
 
@@ -44,7 +44,7 @@ final class InspectionViewModel: ObservableObject {
         _ = service.createNewInspection(
             vehicleId: vehicleId,
             driverId: user.id,
-            type: .preTrip
+            type: type
         )
 
         // Reload after creation
@@ -89,11 +89,36 @@ final class InspectionViewModel: ObservableObject {
             do {
                 try await SupabaseManager.shared.client
                     .from("trips")
-                    .update(["status": "active"])
+                    .update([
+                        "status": "in_progress",
+                        "start_time": ISO8601DateFormatter().string(from: Date())
+                    ])
                     .eq("trip_id", value: trip.id.uuidString)
                     .execute()
             } catch {
                 print("❌ submitAndStartTrip error:", error)
+            }
+        }
+        loadData()
+    }
+
+    func submitAndCompleteTrip(notes: String, trip: Trip) {
+        guard let inspection = currentInspection else { return }
+        service.submitInspection(id: inspection.id, notes: notes)
+
+        // Mark trip as completed in Supabase after post-trip inspection.
+        Task {
+            do {
+                try await SupabaseManager.shared.client
+                    .from("trips")
+                    .update([
+                        "status": "completed",
+                        "end_time": ISO8601DateFormatter().string(from: Date())
+                    ])
+                    .eq("trip_id", value: trip.id.uuidString)
+                    .execute()
+            } catch {
+                print("❌ submitAndCompleteTrip error:", error)
             }
         }
         loadData()

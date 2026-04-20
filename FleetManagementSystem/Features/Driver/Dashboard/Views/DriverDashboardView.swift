@@ -25,11 +25,15 @@ struct DriverDashboardView: View {
 
 
                 // MARK: - Vehicle Info
-                if let vehicle = vm.assignedVehicle {
-                    vehicleCard(vehicle)
-                } else {
-                    vehicleEmptyCard
+                VStack(alignment: .leading, spacing: 12) {
+                    AppTheme.sectionHeader("Assigned Vehicle")
+                    if let vehicle = vm.assignedVehicle {
+                        vehicleCard(vehicle)
+                    } else {
+                        vehicleEmptyCard
+                    }
                 }
+                .padding(.top, 8)
 
                 // MARK: - Stats Row
                 statsRow
@@ -323,52 +327,46 @@ struct DriverDashboardView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 54)
                 .background(AppTheme.primaryGreen)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius, style: .continuous))
+                .clipShape(Capsule())
             }
         }
         .padding(18)
         .cardStyle()
     }
 
-    // MARK: - Quick Actions
+    // MARK: - Report Issue Button
     private var quickActionsRow: some View {
-        HStack(spacing: 12) {
-            NavigationLink(value: AppRoute.vehicleInspection(nil)) {
-                quickActionItem(icon: "checklist", title: "Inspect", color: AppTheme.statusWarning)
+        NavigationLink {
+            ReportIssueView(user: user, vehicle: vm.assignedVehicle)
+        } label: {
+            HStack(spacing: 16) {
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.statusDanger.opacity(0.1))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.statusDanger)
+                }
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Report Issue")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                    Text("Log defect or safety concern")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color(.tertiaryLabel))
             }
-
-            NavigationLink {
-                TripListView(user: user)
-            } label: {
-                quickActionItem(icon: "map", title: "Trips", color: AppTheme.statusInfo)
-            }
-
-
-
-            NavigationLink {
-                ReportIssueView(user: user, vehicle: vm.assignedVehicle)
-            } label: {
-                quickActionItem(icon: "exclamationmark.triangle", title: "Report", color: AppTheme.statusDanger)
-            }
+            .padding(18)
+            .cardStyle()
         }
-    }
-
-    private func quickActionItem(icon: String, title: String, color: Color) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(color)
-                .frame(width: 44, height: 44)
-                .background(color.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-            Text(title)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(.black)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .cardStyle()
     }
 
     // MARK: - Inspection Card
@@ -425,7 +423,7 @@ struct DriverDashboardView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(vehicle.name)
+                    Text(vehicle.licensePlate)
                         .font(.subheadline.weight(.semibold))
                     Text("\(vehicle.make) \(vehicle.model) • \(String(vehicle.year))")
                         .font(.caption)
@@ -433,13 +431,6 @@ struct DriverDashboardView: View {
                 }
 
                 Spacer()
-
-                StatusBadge(
-                    text: vehicle.status.rawValue,
-                    color: vehicle.status == .inUse ? AppTheme.primaryGreen :
-                           vehicle.status == .maintenance ? AppTheme.statusWarning :
-                           .secondary
-                )
             }
 
             Divider()
@@ -490,6 +481,7 @@ struct DriverDashboardView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(AppTheme.primaryGreen)
             }
+            .padding(.top, 8)
 
             if vm.upcomingTrips.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
