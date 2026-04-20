@@ -4,7 +4,7 @@ struct ChatListView: View {
     @StateObject private var viewModel = ChatViewModel()
     @State private var navigationPath = NavigationPath()
     @State private var isShowingNewChat = false
-    @State private var accent = Color(hex: "#A3352A")
+    @State private var accent = Color(red: 0.639, green: 0.207, blue: 0.165)
     
     // Placeholder current user ID
     let currentUserId = UUID(uuidString: "00000000-0000-0000-0000-000000000000")! 
@@ -22,7 +22,7 @@ struct ChatListView: View {
                             Section {
                                 ForEach(viewModel.chats) { chat in
                                     NavigationLink(value: chat) {
-                                        ChatInboxRow(chat: chat)
+                                        ChatInboxRow(chat: chat, accent: accent)
                                     }
                                 }
                             }
@@ -79,7 +79,7 @@ struct ChatListView: View {
             Button("Drivers") { viewModel.selectedRoleFilter = "Driver" }
         } label: {
             Image(systemName: "line.3.horizontal.decrease.circle")
-                .foregroundColor(Color(hex: "#A3352A"))
+                .foregroundColor(accent)
         }
     }
     
@@ -114,8 +114,8 @@ struct ChatListView: View {
 
 struct ChatInboxRow: View {
     let chat: ChatRoom
-    let accent = Color(hex: "#A3352A")
-    
+    let accent: Color
+
     var body: some View {
         HStack(spacing: 12) {
             // Unread indicator (dot)
@@ -179,7 +179,7 @@ struct ContactRow: View {
                     .frame(width: 40, height: 40)
                     .overlay {
                         Text(user.name.prefix(1).uppercased())
-                            .foregroundColor((Color(hex: "#A3352A")))
+                            .foregroundColor(Color(red: 0.639, green: 0.207, blue: 0.165))
                     }
                 
                 VStack(alignment: .leading) {

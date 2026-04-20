@@ -12,12 +12,12 @@ struct FleetManagementSystemApp: App {
     var body: some Scene {
         WindowGroup {
 
+//
+           MaintenanceHomeView()
+                .tint(Color(hex: "#A3352A"))
 
-//           MaintenanceHomeView()
-//                .tint(Color(hex: "#A3352A"))
-
-           // LoginView()
-            FleetManagerTabView()
+            //LoginView()
+//            FleetManagerTabView()
         }
     }
 }
