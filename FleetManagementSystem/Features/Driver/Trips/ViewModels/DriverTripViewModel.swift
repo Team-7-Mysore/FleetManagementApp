@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Supabase
 
 // MARK: - Driver Trip ViewModel
 @MainActor
@@ -10,7 +11,7 @@ final class DriverTripViewModel: ObservableObject {
     @Published var selectedFilter: TripFilter = .upcoming
 
     private let user: User
-    private let tripService = TripService.shared
+    private var driverId: String?
 
     enum TripFilter: String, CaseIterable, Identifiable {
         case upcoming   = "Upcoming"
@@ -24,31 +25,109 @@ final class DriverTripViewModel: ObservableObject {
     }
 
     func loadData() {
-        activeTrip = tripService.activeTrip(forDriver: user.id)
-        upcomingTrips = tripService.upcomingTrips(forDriver: user.id)
-        completedTrips = tripService.completedTrips(forDriver: user.id)
+        Task {
+            do {
+                // Step 1: Resolve driver_id
+                if driverId == nil {
+                    let res = try await SupabaseManager.shared.client
+                        .from("drivers")
+                        .select("driver_id")
+                        .eq("user_id", value: user.id)
+                        .single()
+                        .execute()
+                    let data = try JSONDecoder().decode([String: String].self, from: res.data)
+                    driverId = data["driver_id"]
+                }
+
+                guard let driverId else { return }
+
+                // Step 2: Fetch trips
+                let res = try await SupabaseManager.shared.client
+                    .from("trips")
+                    .select("*")
+                    .eq("driver_id", value: driverId)
+                    .execute()
+
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .custom { decoder in
+                    let container = try decoder.singleValueContainer()
+                    let str = try container.decode(String.self)
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+                    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                    if let date = formatter.date(from: str) { return date }
+                    throw DecodingError.dataCorruptedError(in: container,
+                        debugDescription: "Invalid date: \(str)")
+                }
+
+                let dtoTrips = try decoder.decode([TripDTO].self, from: res.data)
+                let trips = dtoTrips.map { Trip(dto: $0) }
+
+                self.activeTrip    = trips.first { $0.status == .inProgress }
+                self.upcomingTrips = trips.filter { $0.status == .planned }
+                    .sorted { $0.scheduledStartTime < $1.scheduledStartTime }
+                self.completedTrips = trips.filter { $0.status == .completed }
+                    .sorted { ($0.endTime ?? .distantPast) > ($1.endTime ?? .distantPast) }
+
+            } catch {
+                print("❌ DriverTripViewModel loadData error:", error)
+            }
+        }
     }
 
     var filteredTrips: [Trip] {
         switch selectedFilter {
         case .upcoming:  return upcomingTrips
         case .completed: return completedTrips
-        case .all:       return tripService.fetchTrips(forDriver: user.id)
+        case .all:       return upcomingTrips + completedTrips + (activeTrip.map { [$0] } ?? [])
         }
     }
 
     func startTrip(_ trip: Trip) {
-        tripService.startTrip(id: trip.id)
-        loadData()
+        Task {
+            do {
+                try await SupabaseManager.shared.client
+                    .from("trips")
+                    .update(["status": "in_progress"])
+                    .eq("trip_id", value: trip.id.uuidString)
+                    .execute()
+                loadData()
+            } catch {
+                print("❌ startTrip error:", error)
+            }
+        }
     }
 
     func endTrip(_ trip: Trip) {
-        tripService.endTrip(id: trip.id, distance: trip.distance, fuelUsed: trip.distance / 18.0)
-        loadData()
+        Task {
+            do {
+                try await SupabaseManager.shared.client
+                    .from("trips")
+                    .update([
+                        "status": "completed",
+                        "end_time": ISO8601DateFormatter().string(from: Date())
+                    ])
+                    .eq("trip_id", value: trip.id.uuidString)
+                    .execute()
+                loadData()
+            } catch {
+                print("❌ endTrip error:", error)
+            }
+        }
     }
 
     func cancelTrip(_ trip: Trip) {
-        tripService.cancelTrip(id: trip.id)
-        loadData()
+        Task {
+            do {
+                try await SupabaseManager.shared.client
+                    .from("trips")
+                    .update(["status": "cancelled"])
+                    .eq("trip_id", value: trip.id.uuidString)
+                    .execute()
+                loadData()
+            } catch {
+                print("❌ cancelTrip error:", error)
+            }
+        }
     }
 }

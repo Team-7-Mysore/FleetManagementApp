@@ -63,3 +63,46 @@ struct Vehicle: Identifiable, Codable, Hashable {
         return (formatter.string(from: NSNumber(value: Int(mileage))) ?? "\(Int(mileage))") + " mi"
     }
 }
+// MARK: - Vehicle DTO init
+extension Vehicle {
+    init(dto: VehicleDTO) {
+        self.id               = UUID(uuidString: dto.vehicleId) ?? UUID()
+        self.name             = dto.vehicleName ?? "Unknown Vehicle"
+        self.make             = dto.brand ?? dto.manufacturer ?? "Unknown"
+        self.model            = dto.model ?? "Unknown"
+        self.year             = dto.modelYear ?? 0
+        self.vin              = ""
+        self.licensePlate     = dto.numberPlate ?? "—"
+        self.registrationNumber = dto.numberPlate ?? "—"
+        self.status           = {
+            switch dto.status?.lowercased() {
+            case "active":       return .available
+            case "in_use":       return .inUse
+            case "maintenance":  return .maintenance
+            default:             return .available
+            }
+        }()
+        self.mileage          = 0
+        self.fuelLevel        = 0
+        self.fuelType         = {
+            switch dto.fuelType?.lowercased() {
+            case "diesel":   return .diesel
+            case "electric": return .electric
+            case "hybrid":   return .hybrid
+            case "cng":      return .cng
+            default:         return .gasoline
+            }
+        }()
+        self.assignedDriverId    = nil
+        self.lastMaintenanceDate = nil
+        self.nextMaintenanceDate = nil
+        self.imageSystemName     = {
+            switch dto.vehicleType?.lowercased() {
+            case "truck":  return "truck.box.fill"
+            case "bus":    return "bus.fill"
+            case "van":    return "van.fill"
+            default:       return "car.fill"
+            }
+        }()
+    }
+}

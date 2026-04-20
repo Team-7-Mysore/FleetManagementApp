@@ -130,7 +130,7 @@ struct ActiveTripView: View {
             Text("Are you sure you want to end this trip?")
         }
         .sheet(isPresented: $showReportIssue) {
-            ReportIssueView(user: user, vehicle: VehicleService.shared.vehicle(byId: trip.vehicleId))
+            ReportIssueView(user: user, vehicle: nil)
         }
         .onAppear { startTimer() }
         .onDisappear { stopTimer() }

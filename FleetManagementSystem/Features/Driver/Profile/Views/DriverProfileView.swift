@@ -1,4 +1,5 @@
 import SwiftUI
+import Supabase
 
 // MARK: - Driver Profile View
 struct DriverProfileView: View {
@@ -7,9 +8,10 @@ struct DriverProfileView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var showLogoutConfirmation = false
-
-    private let vehicleService = VehicleService.shared
-    private let tripService = TripService.shared
+    @State private var assignedVehicle: Vehicle?
+    @State private var totalMiles: Double = 0
+    @State private var totalTrips: Int = 0
+    @State private var avgDistance: Double = 0
 
     var body: some View {
         NavigationStack {
@@ -51,7 +53,7 @@ struct DriverProfileView: View {
                 }
 
                 // MARK: - Assigned Vehicle
-                if let vehicle = vehicleService.assignedVehicle(forDriver: user.id) {
+                if let vehicle = assignedVehicle {
                     Section("Assigned Vehicle") {
                         HStack(spacing: 14) {
                             Image(systemName: vehicle.imageSystemName)
@@ -72,19 +74,17 @@ struct DriverProfileView: View {
                         .padding(.vertical, 4)
 
                         profileRow(icon: "number", title: "License", value: vehicle.licensePlate)
-                        profileRow(icon: "fuelpump", title: "Fuel", value: "\(vehicle.fuelPercentage)%")
-                        profileRow(icon: "speedometer", title: "Mileage", value: vehicle.formattedMileage)
                     }
                 }
 
                 // MARK: - Statistics
                 Section("Statistics") {
                     profileRow(icon: "road.lanes", title: "Total Miles",
-                               value: String(format: "%.0f mi", tripService.totalMiles(forDriver: user.id)))
+                               value: String(format: "%.0f mi", totalMiles))
                     profileRow(icon: "truck.box", title: "Total Trips",
-                               value: "\(tripService.totalTrips(forDriver: user.id))")
+                               value: "\(totalTrips)")
                     profileRow(icon: "chart.line.uptrend.xyaxis", title: "Avg Distance",
-                               value: String(format: "%.0f mi", tripService.averageDistance(forDriver: user.id)))
+                               value: String(format: "%.0f mi", avgDistance))
                 }
 
                 // MARK: - App Info
@@ -129,6 +129,69 @@ struct DriverProfileView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("Are you sure you want to log out?")
+            }
+            .onAppear { loadProfileData() }
+        }
+    }
+
+    private func loadProfileData() {
+        Task {
+            do {
+                // Step 1: Get driver_id
+                let driverRes = try await SupabaseManager.shared.client
+                    .from("drivers")
+                    .select("driver_id")
+                    .eq("user_id", value: user.id)
+                    .single()
+                    .execute()
+
+                let driverData = try JSONDecoder().decode([String: String].self, from: driverRes.data)
+                guard let driverId = driverData["driver_id"] else { return }
+
+                // Step 2: Fetch trips
+                let tripRes = try await SupabaseManager.shared.client
+                    .from("trips")
+                    .select("*")
+                    .eq("driver_id", value: driverId)
+                    .execute()
+
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .custom { decoder in
+                    let container = try decoder.singleValueContainer()
+                    let str = try container.decode(String.self)
+                    let formatter = DateFormatter()
+                    formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+                    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                    if let date = formatter.date(from: str) { return date }
+                    throw DecodingError.dataCorruptedError(in: container,
+                        debugDescription: "Invalid date: \(str)")
+                }
+
+                let dtoTrips = try decoder.decode([TripDTO].self, from: tripRes.data)
+                let completed = dtoTrips.filter { $0.status == "completed" }
+
+                self.totalTrips = completed.count
+                self.totalMiles = completed.compactMap { $0.distanceTravelled }.reduce(0, +)
+                self.avgDistance = totalTrips > 0 ? totalMiles / Double(totalTrips) : 0
+
+                // Step 3: Fetch vehicle from first active/assigned trip
+                if let vehicleId = dtoTrips
+                    .first(where: { $0.status == "assigned" || $0.status == "active" })?
+                    .vehicleId {
+
+                    let vRes = try await SupabaseManager.shared.client
+                        .from("vehicles")
+                        .select("*")
+                        .eq("vehicle_id", value: vehicleId)
+                        .single()
+                        .execute()
+
+                    let vDto = try JSONDecoder().decode(VehicleDTO.self, from: vRes.data)
+                    self.assignedVehicle = Vehicle(dto: vDto)
+                }
+
+            } catch {
+                print("❌ DriverProfileView loadProfileData error:", error)
             }
         }
     }

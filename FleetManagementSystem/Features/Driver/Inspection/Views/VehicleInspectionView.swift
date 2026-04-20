@@ -19,34 +19,18 @@ struct VehicleInspectionView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Tab picker
-            Picker("Tab", selection: $vm.selectedTab) {
-                ForEach(InspectionViewModel.InspectionTab.allCases) { tab in
-                    Text(tab.rawValue).tag(tab)
-                }
+        ScrollView {
+            VStack(spacing: 16) {
+                currentInspectionContent
             }
-            .pickerStyle(.segmented)
             .padding(.horizontal)
-            .padding(.top, 8)
-
-            ScrollView {
-                VStack(spacing: 16) {
-                    switch vm.selectedTab {
-                    case .current:
-                        currentInspectionContent
-                    case .history:
-                        historyContent
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 12)
-            }
+            .padding(.vertical, 12)
         }
         .background(AppTheme.pageBackground)
         .navigationTitle("Vehicle Inspection")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if vm.selectedTab == .current && vm.currentInspection == nil {
+            if vm.currentInspection == nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showNewInspectionSheet = true } label: {
                         Image(systemName: "plus")
@@ -68,7 +52,6 @@ struct VehicleInspectionView: View {
             Button("Start Trip") {
                 if let trip {
                     vm.submitAndStartTrip(notes: overallNotes, trip: trip)
-                    // Push Active Trip, replaces the stack so back goes to Driver Dashboard root
                     router.path = NavigationPath([AppRoute.activeTrip(trip)])
                 } else {
                     vm.submitInspection(notes: overallNotes)
@@ -80,9 +63,11 @@ struct VehicleInspectionView: View {
             Text("Inspection passed! Ready to start the trip?")
         }
         .sheet(isPresented: $showReportIssue) {
-            ReportIssueView(user: user, vehicle: VehicleService.shared.assignedVehicle(forDriver: user.id))
+            ReportIssueView(user: user, vehicle: nil)
         }
-        .onAppear { vm.loadData() }
+        .onAppear {
+            vm.loadDataAndAutoStart(for: trip)
+        }
     }
 
     // MARK: - Current Inspection
@@ -140,7 +125,6 @@ struct VehicleInspectionView: View {
             ForEach(Array(grouped.keys.sorted()), id: \.self) { category in
                 VStack(alignment: .leading, spacing: 10) {
                     AppTheme.sectionHeader(category)
-
                     ForEach(grouped[category] ?? []) { item in
                         inspectionItemRow(item)
                     }
@@ -159,10 +143,9 @@ struct VehicleInspectionView: View {
             }
             .padding(.top, 4)
 
-            // Action Button — depends on inspection results
+            // Action Button
             if vm.canSubmit {
-                if let inspection = vm.currentInspection, inspection.failCount > 0 {
-                    // Has failures → Report Issue (safety first)
+                if inspection.failCount > 0 {
                     VStack(spacing: 10) {
                         HStack(spacing: 8) {
                             Image(systemName: "exclamationmark.triangle.fill")
@@ -193,7 +176,6 @@ struct VehicleInspectionView: View {
                         }
                     }
                 } else {
-                    // All clear → Start Trip
                     Button { showStartTripConfirmation = true } label: {
                         HStack(spacing: 8) {
                             Image(systemName: "play.fill")
@@ -203,7 +185,6 @@ struct VehicleInspectionView: View {
                     .buttonStyle(PrimaryButtonStyle())
                 }
             } else {
-                // Not all items checked yet
                 Button {} label: {
                     HStack(spacing: 8) {
                         Image(systemName: "checklist")
@@ -303,60 +284,5 @@ struct VehicleInspectionView: View {
                 .font(.caption.weight(.bold))
                 .foregroundStyle(AppTheme.primaryGreen)
         }
-    }
-
-    // MARK: - History
-    @ViewBuilder
-    private var historyContent: some View {
-        if vm.history.isEmpty {
-            EmptyStateView(
-                icon: "clock.arrow.circlepath",
-                title: "No History",
-                message: "Completed inspections will appear here."
-            )
-            .padding(.top, 40)
-        } else {
-            ForEach(vm.history) { inspection in
-                historyCard(inspection)
-            }
-        }
-    }
-
-    private func historyCard(_ inspection: Inspection) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label(inspection.type.rawValue, systemImage: inspection.type.systemImage)
-                    .font(.subheadline.weight(.semibold))
-                Spacer()
-                StatusBadge(
-                    text: inspection.overallStatus,
-                    color: inspection.failCount > 0 ? AppTheme.statusDanger : AppTheme.primaryGreen
-                )
-            }
-
-            HStack(spacing: 16) {
-                Label("\(inspection.passCount) Pass", systemImage: "checkmark.circle")
-                    .font(.caption)
-                    .foregroundStyle(AppTheme.primaryGreen)
-                if inspection.failCount > 0 {
-                    Label("\(inspection.failCount) Fail", systemImage: "xmark.circle")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.statusDanger)
-                }
-                Spacer()
-                Text(inspection.date.formatted(date: .abbreviated, time: .shortened))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            if !inspection.overallNotes.isEmpty {
-                Text(inspection.overallNotes)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-        }
-        .padding(16)
-        .cardStyle()
     }
 }

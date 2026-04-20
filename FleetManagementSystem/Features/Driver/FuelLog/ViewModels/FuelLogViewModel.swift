@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import Supabase
 
 // MARK: - Fuel Log ViewModel
 @MainActor
@@ -10,7 +11,6 @@ final class FuelLogViewModel: ObservableObject {
     @Published private(set) var averageCost: Double = 0
     @Published private(set) var estimatedMPG: Double?
 
-    // New log form
     @Published var gallons: String = ""
     @Published var costPerGallon: String = ""
     @Published var location: String = ""
@@ -18,7 +18,7 @@ final class FuelLogViewModel: ObservableObject {
 
     private let user: User
     private let fuelService = FuelService.shared
-    private let vehicleService = VehicleService.shared
+    private var resolvedVehicleId: UUID?
 
     init(user: User) {
         self.user = user
@@ -30,8 +30,45 @@ final class FuelLogViewModel: ObservableObject {
         totalGallons = fuelService.totalGallons(forDriver: user.id)
         averageCost = fuelService.averageCostPerGallon(forDriver: user.id)
 
-        if let vehicle = vehicleService.assignedVehicle(forDriver: user.id) {
-            estimatedMPG = fuelService.estimatedMPG(forVehicle: vehicle.id)
+        Task { await resolveVehicle() }
+    }
+
+    private func resolveVehicle() async {
+        guard resolvedVehicleId == nil else {
+            if let vid = resolvedVehicleId {
+                estimatedMPG = fuelService.estimatedMPG(forVehicle: vid)
+            }
+            return
+        }
+
+        do {
+            let driverRes = try await SupabaseManager.shared.client
+                .from("drivers")
+                .select("driver_id")
+                .eq("user_id", value: user.id)
+                .single()
+                .execute()
+
+            let driverData = try JSONDecoder().decode([String: String].self, from: driverRes.data)
+            guard let driverId = driverData["driver_id"] else { return }
+
+            let tripRes = try await SupabaseManager.shared.client
+                .from("trips")
+                .select("vehicle_id")
+                .eq("driver_id", value: driverId)
+                .in("status", values: ["assigned", "in_progress"])
+                .limit(1)
+                .execute()
+
+            struct VehicleIdOnly: Decodable { let vehicle_id: String? }
+            let rows = try JSONDecoder().decode([VehicleIdOnly].self, from: tripRes.data)
+
+            if let vidStr = rows.first?.vehicle_id, let vid = UUID(uuidString: vidStr) {
+                resolvedVehicleId = vid
+                estimatedMPG = fuelService.estimatedMPG(forVehicle: vid)
+            }
+        } catch {
+            print("❌ FuelLogViewModel resolveVehicle error:", error)
         }
     }
 
@@ -41,17 +78,16 @@ final class FuelLogViewModel: ObservableObject {
     }
 
     func addFuelLog() {
-        guard let g = Double(gallons), let c = Double(costPerGallon),
-              let vehicle = vehicleService.assignedVehicle(forDriver: user.id) else { return }
+        guard let g = Double(gallons), let c = Double(costPerGallon) else { return }
+        let vehicleId = resolvedVehicleId ?? UUID()
 
         let log = FuelLog(
-            id: UUID(), vehicleId: vehicle.id, driverId: user.id,
+            id: UUID(), vehicleId: vehicleId, driverId: user.id,
             date: Date(), gallons: g, costPerGallon: c, totalCost: g * c,
-            mileageAtFill: vehicle.mileage, location: location.trimmingCharacters(in: .whitespaces)
+            mileageAtFill: 0, location: location.trimmingCharacters(in: .whitespaces)
         )
         fuelService.addFuelLog(log)
 
-        // Reset form
         gallons = ""
         costPerGallon = ""
         location = ""
