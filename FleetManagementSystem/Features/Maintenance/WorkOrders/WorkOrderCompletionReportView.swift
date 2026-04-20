@@ -140,7 +140,7 @@ struct WorkOrderCompletionReportView: View {
                                     ReportRowView(label: "Hours Worked", value: String(format: "%.1f hrs", workOrder.hoursWorked ?? 0.0))
                                         .padding()
                                     Divider().padding(.leading, 16)
-                                    ReportRowView(label: "Estimated Cost", value: String(format: "$%.2f", workOrder.estCost ?? 0.0))
+                                    ReportRowView(label: "Estimated Cost", value: String(format: "₹%.2f", workOrder.estCost ?? 0.0))
                                         .padding()
                                 }
                                 .background(Color(uiColor: .systemBackground))

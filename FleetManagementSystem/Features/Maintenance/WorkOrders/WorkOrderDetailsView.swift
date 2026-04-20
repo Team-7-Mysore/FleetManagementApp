@@ -616,7 +616,7 @@ struct WorkEntryAndDocumentationView: View {
                         }
                         
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("LABOUR COST ($)")
+                            Text("LABOUR COST (₹)")
                                 .font(.caption2)
                                 .fontWeight(.medium)
                                 .foregroundColor(.secondary)
@@ -704,7 +704,7 @@ struct LiveCostTotalsView: View {
                     .fontWeight(.bold)
                     .foregroundColor(.primary)
                 Spacer()
-                Text(String(format: "$%.2f", total))
+                Text(String(format: "₹%.2f", total))
                     .font(.title3)
                     .fontWeight(.bold)
                     .foregroundColor(.green)
@@ -726,7 +726,7 @@ struct LiveCostRow: View {
                 .font(.subheadline)
                 .foregroundColor(.secondary)
             Spacer()
-            Text(String(format: "$%.2f", value))
+            Text(String(format: "₹%.2f", value))
                 .font(.headline)
                 .foregroundColor(.primary)
         }
@@ -771,7 +771,7 @@ struct PartDetailRowView: View {
                 Text(part.name)
                     .font(.subheadline)
                     .fontWeight(.medium)
-                Text(String(format: "$%.2f ea", part.unitCost))
+                Text(String(format: "₹%.2f ea", part.unitCost))
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
