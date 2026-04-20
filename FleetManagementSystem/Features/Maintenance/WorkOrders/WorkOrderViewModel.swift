@@ -20,24 +20,25 @@ final class WorkOrderViewModel: ObservableObject {
     func fetchWorkOrders() async {
         isLoading = true
         errorMessage = nil
-
+        
         do {
             let fetchedOrders: [WorkOrder] = try await SupabaseManager.shared.client
                 .from("work_orders")
                 .select()
+                .order("created_at", ascending: false)
                 .execute()
                 .value
-
+            
             self.workOrders = fetchedOrders
             self.inProgressOrders = fetchedOrders.filter { $0.status == .inProgress }
             self.pendingOrders = fetchedOrders.filter { $0.status == .pending }
             self.completedOrders = fetchedOrders.filter { $0.status == .completed }
-
+            
         } catch {
             print("ERROR:", error)
             self.errorMessage = "Failed to fetch work orders: \(error.localizedDescription)"
         }
-
+        
         isLoading = false
     }
 
