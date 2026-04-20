@@ -57,9 +57,11 @@ struct LoginView: View {
                             .font(.headline)
 
                         ZStack(alignment: .leading) {
+
                             if viewModel.email.isEmpty {
                                 Text("Enter your email")
                                     .foregroundStyle(.gray)
+
                                     .padding(.horizontal, 16)
                             }
 
@@ -91,7 +93,7 @@ struct LoginView: View {
                             ZStack(alignment: .leading) {
                                 if viewModel.password.isEmpty {
                                     Text("Password")
-                                        .foregroundStyle(.gray)
+                                        .foregroundStyle(Color(.systemGray).opacity(0.7))
                                 }
 
                                 if isPasswordVisible {

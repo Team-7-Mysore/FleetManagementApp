@@ -1,9 +1,3 @@
-//
-//  FleetManagementSystemApp.swift
-//  FleetManagementSystem
-//
-//  Created by harshwardhan patil on 15/04/26.
-//
 import SwiftUI
 import Supabase
 
@@ -11,56 +5,125 @@ import Supabase
 struct FleetManagementSystemApp: App {
 
     @State private var showSetPassword = false
+    @State private var userRole: String? = nil
+    @State private var isLoading = true
 
     var body: some Scene {
         WindowGroup {
-            RootView()
+            Group {
+                if isLoading {
+                    ProgressView("Loading...")
+                } else if showSetPassword {
+                    SetPasswordView {
+                        showSetPassword = false
+                    }
+                } else if let role = userRole {
+                    switch role {
+                    case "driver":
+                       LoginView()
+                    case "maintenance":
+                        MaintenanceHomeView()
+                    case "fleet_manager":
+                        FleetManagerTabView()
+                    default:
+                        LoginView()
+                    }
+                } else {
+                    LoginView()
+                }
+            }
+            .tint(Color(hex: "#A3352A"))
+            .onAppear {
+                Task {
+                    await checkSession()
+                }
+            }
             .onOpenURL { url in
                 handleDeepLink(url)
-            }
-            .fullScreenCover(isPresented: $showSetPassword) {
-                SetPasswordView {
-                    showSetPassword = false
-                }
             }
         }
     }
 
-    private func handleDeepLink(_ url: URL) {
-        print("📩 Received deep link:", url)
+    // MARK: - Session Check
+    private func checkSession() async {
+        do {
+            let session = try await SupabaseManager.shared.client.auth.session
 
+            if session != nil {
+                await fetchUserRole()
+            } else {
+                isLoading = false
+            }
+        } catch {
+            print("❌ Session error:", error)
+            isLoading = false
+        }
+    }
+
+    // MARK: - Fetch Role
+    private func fetchUserRole() async {
+        do {
+            let user = try await SupabaseManager.shared.client.auth.user()
+
+            let response = try await SupabaseManager.shared.client
+                .from("users")
+                .select("role")
+                .eq("user_id", value: user.id)
+                .single()
+                .execute()
+
+            if let json = try JSONSerialization.jsonObject(with: response.data) as? [String: Any],
+               let role = json["role"] as? String {
+
+                await MainActor.run {
+                    self.userRole = role
+                    self.isLoading = false
+                }
+            } else {
+                await MainActor.run {
+                    self.isLoading = false
+                }
+            }
+
+        } catch {
+            print("❌ Role fetch error:", error)
+            await MainActor.run {
+                self.isLoading = false
+            }
+        }
+    }
+
+    // MARK: - Deep Link
+    private func handleDeepLink(_ url: URL) {
         Task {
             do {
                 let params = authParams(from: url)
 
                 if let accessToken = params["access_token"],
-                   let refreshToken = params["refresh_token"],
-                   !accessToken.isEmpty,
-                   !refreshToken.isEmpty {
+                   let refreshToken = params["refresh_token"] {
                     try await SupabaseManager.shared.client.auth.setSession(
                         accessToken: accessToken,
                         refreshToken: refreshToken
                     )
-                    print("✅ Session restored from tokens")
                 } else if params["code"] != nil {
                     _ = try await SupabaseManager.shared.client.auth.session(from: url)
-                    print("✅ Session restored from auth code")
-                } else {
-                    print("❌ Deep link did not contain usable auth data")
-                    return
                 }
 
                 let isInvite = params["type"] == "invite"
+
                 await MainActor.run {
                     showSetPassword = isInvite
-                    print(isInvite ? "🔄 Switching to SetPasswordView" : "🔄 Staying on LoginView")
                 }
+
+                await fetchUserRole()
+
             } catch {
-                print("❌ Error restoring session:", error)
+                print("❌ Deep link error:", error)
             }
         }
     }
 
+    // MARK: - URL Params
     private func authParams(from url: URL) -> [String: String] {
         var result: [String: String] = [:]
 

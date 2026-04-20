@@ -1,108 +1,70 @@
 import Foundation
 
-// MARK: - Vehicle Status
-enum VehicleStatus: String, Codable, CaseIterable, Identifiable {
-    case available    = "Available"
-    case inUse        = "In Use"
-    case maintenance  = "In Maintenance"
-    case outOfService = "Out of Service"
 
-    var id: String { rawValue }
+struct Vehicle: Identifiable, Codable {
+    var id: UUID
+    var name: String
+    var registrationNumber: String
+    var brand: String?
+    var model: String?
+    var imageURL: String?
+    var vehicleType: String
+    var fuelType: String?
+    var modelYear: String?
 
-    var systemImage: String {
-        switch self {
-        case .available:    return "checkmark.circle.fill"
-        case .inUse:        return "location.fill"
-        case .maintenance:  return "wrench.fill"
-        case .outOfService: return "xmark.circle.fill"
+    enum CodingKeys: String, CodingKey {
+        case id = "vehicle_id"
+        case name = "vehicle_name"
+        case registrationNumber = "number_plate"
+        case brand
+        case model
+        case imageURL = "image_url"
+        case vehicleType = "vehicle_type"
+        case fuelType = "fuel_type"
+        case modelYear = "model_year"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        registrationNumber = try container.decode(String.self, forKey: .registrationNumber)
+        brand = try container.decodeIfPresent(String.self, forKey: .brand)
+        model = try container.decodeIfPresent(String.self, forKey: .model)
+        imageURL = try container.decodeIfPresent(String.self, forKey: .imageURL)
+        vehicleType = try container.decode(String.self, forKey: .vehicleType)
+        fuelType = try container.decodeIfPresent(String.self, forKey: .fuelType)
+
+        if let stringYear = try container.decodeIfPresent(String.self, forKey: .modelYear) {
+            modelYear = stringYear
+        } else if let intYear = try container.decodeIfPresent(Int.self, forKey: .modelYear) {
+            modelYear = String(intYear)
+        } else {
+            modelYear = nil
         }
     }
-}
 
-// MARK: - Fuel Type
-enum FuelType: String, Codable, CaseIterable, Identifiable {
-    case gasoline = "Gasoline"
-    case diesel   = "Diesel"
-    case electric = "Electric"
-    case hybrid   = "Hybrid"
-    case cng      = "CNG"
+    init(
+        id: UUID,
+        name: String,
+        registrationNumber: String,
+        brand: String?,
+        model: String?,
+        imageURL: String?,
+        vehicleType: String,
+        fuelType: String?,
+        modelYear: String?
+    ) {
+        self.id = id
+        self.name = name
+        self.registrationNumber = registrationNumber
+        self.brand = brand
+        self.model = model
+        self.imageURL = imageURL
+        self.vehicleType = vehicleType
+        self.fuelType = fuelType
+        self.modelYear = modelYear
 
-    var id: String { rawValue }
-}
-
-// MARK: - Vehicle
-struct Vehicle: Identifiable, Codable, Hashable {
-    let id: UUID
-    var name: String
-    var make: String
-    var model: String
-    var year: Int
-    var vin: String
-    var licensePlate: String
-    var registrationNumber: String
-    var status: VehicleStatus
-    var mileage: Double
-    var fuelLevel: Double              // 0.0 – 1.0
-    var fuelType: FuelType
-    var assignedDriverId: UUID?
-    var lastMaintenanceDate: Date?
-    var nextMaintenanceDate: Date?
-    var imageSystemName: String        // SF Symbol name
-
-    var displayTitle: String {
-        "\(make) \(model)"
-    }
-
-    var fuelPercentage: Int {
-        Int(fuelLevel * 100)
-    }
-
-    var formattedMileage: String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        return (formatter.string(from: NSNumber(value: Int(mileage))) ?? "\(Int(mileage))") + " mi"
-    }
-}
-// MARK: - Vehicle DTO init
-extension Vehicle {
-    init(dto: VehicleDTO) {
-        self.id               = UUID(uuidString: dto.vehicleId) ?? UUID()
-        self.name             = dto.vehicleName ?? "Unknown Vehicle"
-        self.make             = dto.brand ?? dto.manufacturer ?? "Unknown"
-        self.model            = dto.model ?? "Unknown"
-        self.year             = dto.modelYear ?? 0
-        self.vin              = ""
-        self.licensePlate     = dto.numberPlate ?? "—"
-        self.registrationNumber = dto.numberPlate ?? "—"
-        self.status           = {
-            switch dto.status?.lowercased() {
-            case "active":       return .available
-            case "in_use":       return .inUse
-            case "maintenance":  return .maintenance
-            default:             return .available
-            }
-        }()
-        self.mileage          = 0
-        self.fuelLevel        = 0
-        self.fuelType         = {
-            switch dto.fuelType?.lowercased() {
-            case "diesel":   return .diesel
-            case "electric": return .electric
-            case "hybrid":   return .hybrid
-            case "cng":      return .cng
-            default:         return .gasoline
-            }
-        }()
-        self.assignedDriverId    = nil
-        self.lastMaintenanceDate = nil
-        self.nextMaintenanceDate = nil
-        self.imageSystemName     = {
-            switch dto.vehicleType?.lowercased() {
-            case "truck":  return "truck.box.fill"
-            case "bus":    return "bus.fill"
-            case "van":    return "van.fill"
-            default:       return "car.fill"
-            }
-        }()
     }
 }
