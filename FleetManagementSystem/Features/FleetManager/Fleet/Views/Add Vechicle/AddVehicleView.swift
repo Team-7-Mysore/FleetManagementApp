@@ -33,10 +33,10 @@ struct AddVehicleView: View {
                 Text("Add Vehicle").font(.headline)
             }
             ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: { dismiss() }) {
-                    Image(systemName: "arrow.left")
-                        .foregroundColor(Color(.label))
+                Button("Cancel") {
+                    dismiss()
                 }
+                .foregroundColor(.blue)
             }
         }
         .alert(item: Binding(

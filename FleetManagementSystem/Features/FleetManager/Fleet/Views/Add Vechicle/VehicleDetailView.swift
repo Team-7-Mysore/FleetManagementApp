@@ -48,6 +48,7 @@ struct VehicleDetailView: View {
         }
         .navigationTitle("Vehicle")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(isEditing)
         .toolbar {
             if isEditing {
                 ToolbarItem(placement: .navigationBarLeading) {
