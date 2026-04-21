@@ -1,8 +1,10 @@
 import SwiftUI
 import Combine
+import UniformTypeIdentifiers
 
 struct VehicleDetailView: View {
     let vehicleId: UUID
+    @Environment(\.dismiss) var dismiss
     
     @StateObject private var vm = VehicleDetailViewModel()
     
@@ -12,6 +14,9 @@ struct VehicleDetailView: View {
     
     @State private var showImagePicker = false
     @State private var sourceType: UIImagePickerController.SourceType = .photoLibrary
+    
+    @State private var isImportingDocument = false
+    @State private var activeDocumentType: String?
 
     var body: some View {
         ScrollView {
@@ -83,18 +88,39 @@ struct VehicleDetailView: View {
                 }
             }
         }
+        .fileImporter(
+            isPresented: $isImportingDocument,
+            allowedContentTypes: [.item],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first, let type = activeDocumentType {
+                    Task {
+                        await vm.uploadDocument(fileURL: url, type: type)
+                    }
+                }
+            case .failure(let error):
+                print("Import failed: \(error.localizedDescription)")
+            }
+        }
     }
 
     private func saveChanges() async {
         guard let draft = draftVehicle else { return }
-        isSaving = true
+        
+        // 1. Immediately transition UI to View Mode (matching 'Cancel' behavior)
         vm.vehicle = draft
+        isEditing = false
+        draftVehicle = nil
+        
+        // 2. Perform save in the background
+        isSaving = true
         let success = await vm.updateVehicle()
-        isSaving = false
         if success {
-            isEditing = false
-            draftVehicle = nil
+            await vm.fetchVehicle(vehicleId: vehicleId)
         }
+        isSaving = false
     }
 
     // MARK: - IMAGE
@@ -187,36 +213,78 @@ struct VehicleDetailView: View {
                 .foregroundColor(.secondary)
 
             VStack(spacing: 0) {
-
-                if let documentsErrorMessage = vm.documentsErrorMessage {
-                    Text(documentsErrorMessage)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(16)
-                } else if vm.documents.isEmpty {
-                    Text("No documents uploaded yet.")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(16)
-                } else {
-                    ForEach(vm.documents) { document in
-                        if let url = URL(string: document.fileURL) {
+                let requiredTypes = ["RC", "INSURANCE", "PUC"]
+                
+                ForEach(requiredTypes, id: \.self) { type in
+                    let doc = vm.documents.first(where: { $0.type.uppercased() == type })
+                    
+                    if isEditing {
+                        Button {
+                            activeDocumentType = type
+                            isImportingDocument = true
+                        } label: {
+                            Group {
+                                if let doc = doc {
+                                    DocumentRow(document: doc, isEditing: true)
+                                } else {
+                                    missingDocumentRow(type: type)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    } else if let doc = doc {
+                        if let url = URL(string: doc.fileURL) {
                             Link(destination: url) {
-                                DocumentRow(document: document)
+                                DocumentRow(document: doc)
                             }
                             .buttonStyle(.plain)
                         } else {
-                            DocumentRow(document: document)
+                            DocumentRow(document: doc)
                         }
+                    } else {
+                        missingDocumentRow(type: type)
+                    }
+                    
+                    if type != requiredTypes.last && (isEditing || doc != nil) {
+                        Divider()
+                            .padding(.leading, 64)
                     }
                 }
-
             }
             .background(Color.white)
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
+    }
+
+    private func missingDocumentRow(type: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: type == "RC" ? "doc.text.fill" : (type == "INSURANCE" ? "shield.lefthalf.filled" : "doc.badge.gearshape"))
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(.secondary)
+                .frame(width: 30, height: 30)
+                .background(Color.gray.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(type)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.primary)
+
+                Text("Not uploaded")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+            
+            if isEditing {
+                Image(systemName: "plus.circle.fill")
+                    .font(.title3)
+                    .foregroundColor(.blue)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
     }
 
     private func binding(_ keyPath: WritableKeyPath<Vehicle, String>) -> Binding<String> {
@@ -265,6 +333,7 @@ struct InfoRow: View {
 
 struct DocumentRow: View {
     let document: VehicleDocument
+    var isEditing: Bool = false
 
     var body: some View {
         HStack(spacing: 12) {
@@ -287,20 +356,27 @@ struct DocumentRow: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(.primary)
 
-                Text(isImageDocument ? "Image Document" : "Open Document")
+                Text(document.fileName ?? (isImageDocument ? "Image Document" : "Open Document"))
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .lineLimit(1)
             }
 
             Spacer()
 
-            Text(document.statusText)
-                .font(.caption.weight(.semibold))
-                .foregroundColor(statusColor)
+            if isEditing {
+                Image(systemName: "pencil.circle.fill")
+                    .font(.title3)
+                    .foregroundColor(.blue)
+            } else {
+                Text(document.statusText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(statusColor)
 
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundColor(.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.secondary)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)

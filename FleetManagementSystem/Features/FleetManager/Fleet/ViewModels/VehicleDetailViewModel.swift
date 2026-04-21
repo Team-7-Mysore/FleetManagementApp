@@ -7,6 +7,7 @@ struct VehicleDocument: Identifiable, Hashable {
     let id: String
     let type: String
     var fileURL: String
+    var fileName: String? = nil
 
     var title: String {
         switch type.uppercased() {
@@ -167,12 +168,13 @@ class VehicleDetailViewModel: ObservableObject {
     }
 
     func uploadDocument(fileURL: URL, type: String) async {
+        let originalName = fileURL.lastPathComponent
         do {
             let data = try Data(contentsOf: fileURL)
             let fileExtension = fileURL.pathExtension.isEmpty ? "pdf" : fileURL.pathExtension
-            let fileName = "\(UUID().uuidString).\(fileExtension)"
+            let uniqueName = "\(UUID().uuidString).\(fileExtension)"
 
-            guard let url = URL(string: "\(SUPABASE_URL)/storage/v1/object/vehicle-documents/\(fileName)") else {
+            guard let url = URL(string: "\(SUPABASE_URL)/storage/v1/object/vehicle-documents/\(uniqueName)") else {
                 throw URLError(.badURL)
             }
 
@@ -187,8 +189,8 @@ class VehicleDetailViewModel: ObservableObject {
                 throw URLError(.badServerResponse)
             }
 
-            let publicURL = "\(SUPABASE_URL)/storage/v1/object/public/vehicle-documents/\(fileName)"
-            setDocumentURL(publicURL, for: type)
+            let publicURL = "\(SUPABASE_URL)/storage/v1/object/public/vehicle-documents/\(uniqueName)"
+            setDocumentURL(publicURL, for: type, fileName: originalName)
         } catch {
             print("Document upload failed for \(type):", error)
             errorMessage = error.localizedDescription
@@ -199,12 +201,20 @@ class VehicleDetailViewModel: ObservableObject {
         documents.first { $0.type.uppercased() == type.uppercased() }
     }
 
-    func setDocumentURL(_ url: String, for type: String) {
+    func setDocumentURL(_ url: String, for type: String, fileName: String? = nil) {
         let normalizedType = type.uppercased()
+        let resolvedFileName = fileName ?? URL(string: url)?.lastPathComponent
+        
         if let index = documents.firstIndex(where: { $0.type.uppercased() == normalizedType }) {
             documents[index].fileURL = url
+            documents[index].fileName = resolvedFileName
         } else {
-            documents.append(VehicleDocument(id: normalizedType, type: normalizedType, fileURL: url))
+            documents.append(VehicleDocument(
+                id: normalizedType, 
+                type: normalizedType, 
+                fileURL: url,
+                fileName: resolvedFileName
+            ))
         }
         documents = Self.sortDocuments(documents)
     }
@@ -340,7 +350,8 @@ private extension VehicleDetailViewModel {
             return VehicleDocument(
                 id: type.uppercased(),
                 type: type.uppercased(),
-                fileURL: fileURL
+                fileURL: fileURL,
+                fileName: row["file_name"] as? String ?? URL(string: fileURL)?.lastPathComponent
             )
         }
 
