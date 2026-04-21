@@ -166,6 +166,39 @@ class VehicleDetailViewModel: ObservableObject {
         }
     }
 
+    func uploadDocument(fileURL: URL, type: String) async {
+        do {
+            let data = try Data(contentsOf: fileURL)
+            let fileExtension = fileURL.pathExtension.isEmpty ? "pdf" : fileURL.pathExtension
+            let fileName = "\(UUID().uuidString).\(fileExtension)"
+
+            guard let url = URL(string: "\(SUPABASE_URL)/storage/v1/object/vehicle-documents/\(fileName)") else {
+                throw URLError(.badURL)
+            }
+
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
+            request.addValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+
+            let (_, response) = try await URLSession.shared.upload(for: request, from: data)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  200..<300 ~= httpResponse.statusCode else {
+                throw URLError(.badServerResponse)
+            }
+
+            let publicURL = "\(SUPABASE_URL)/storage/v1/object/public/vehicle-documents/\(fileName)"
+            setDocumentURL(publicURL, for: type)
+        } catch {
+            print("Document upload failed for \(type):", error)
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func document(for type: String) -> VehicleDocument? {
+        documents.first { $0.type.uppercased() == type.uppercased() }
+    }
+
     func setDocumentURL(_ url: String, for type: String) {
         let normalizedType = type.uppercased()
         if let index = documents.firstIndex(where: { $0.type.uppercased() == normalizedType }) {

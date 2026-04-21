@@ -43,13 +43,57 @@ struct VehicleDetailView: View {
         }
         .navigationTitle("Vehicle")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if isEditing {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        isEditing = false
+                        draftVehicle = nil
+                    }
+                }
+
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") {
+                        Task {
+                            await saveChanges()
+                        }
+                    }
+                    .fontWeight(.bold)
+                    .disabled(isSaving)
+                }
+            } else {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Edit") {
+                        draftVehicle = vm.vehicle
+                        isEditing = true
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(vm.vehicle == nil)
+                }
+            }
+        }
         
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(sourceType: sourceType) { image in
                 Task {
                     await vm.uploadImage(image: image, type: "VEHICLE")
+                    if let newURL = vm.vehicle?.imageURL {
+                        draftVehicle?.imageURL = newURL
+                    }
                 }
             }
+        }
+    }
+
+    private func saveChanges() async {
+        guard let draft = draftVehicle else { return }
+        isSaving = true
+        vm.vehicle = draft
+        let success = await vm.updateVehicle()
+        isSaving = false
+        if success {
+            isEditing = false
+            draftVehicle = nil
         }
     }
 
@@ -72,8 +116,21 @@ struct VehicleDetailView: View {
         }
         .frame(height: 200)
         .clipShape(RoundedRectangle(cornerRadius: 20))
-        .onTapGesture {
-            showImagePicker = true
+        .overlay {
+            if isEditing {
+                Button {
+                    sourceType = .camera
+                    showImagePicker = true
+                } label: {
+                    ZStack {
+                        Color.black.opacity(0.3)
+                        Image(systemName: "camera.fill")
+                            .foregroundColor(.white)
+                            .font(.title)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+            }
         }
     }
 
@@ -81,12 +138,23 @@ struct VehicleDetailView: View {
     
     private func vehicleHeader(_ vehicle: Vehicle) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(vehicle.name)
-                .font(.title.bold())
+            if isEditing {
+                TextField("Vehicle Name", text: binding(\.name))
+                    .font(.title.bold())
+                    .textFieldStyle(.plain)
 
-            Text(vehicle.registrationNumber)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+                TextField("Registration Number", text: binding(\.registrationNumber))
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .textFieldStyle(.plain)
+            } else {
+                Text(vehicle.name)
+                    .font(.title.bold())
+
+                Text(vehicle.registrationNumber)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
         }
     }
 
@@ -99,10 +167,10 @@ struct VehicleDetailView: View {
                 .foregroundColor(.secondary)
 
             VStack(spacing: 10) {
-                InfoRow(title: "Brand", value: vehicle.brand ?? "—")
-                InfoRow(title: "Model", value: vehicle.model ?? "—")
-                InfoRow(title: "Year", value: vehicle.modelYear ?? "—")
-                InfoRow(title: "Fuel", value: vehicle.fuelType ?? "—")
+                InfoRow(title: "Brand", value: vehicle.brand ?? "—", isEditing: isEditing, text: binding(\.brand))
+                InfoRow(title: "Model", value: vehicle.model ?? "—", isEditing: isEditing, text: binding(\.model))
+                InfoRow(title: "Year", value: vehicle.modelYear ?? "—", isEditing: isEditing, text: binding(\.modelYear))
+                InfoRow(title: "Fuel", value: vehicle.fuelType ?? "—", isEditing: isEditing, text: binding(\.fuelType))
             }
             .padding()
             .background(Color.white)
@@ -150,6 +218,20 @@ struct VehicleDetailView: View {
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
     }
+
+    private func binding(_ keyPath: WritableKeyPath<Vehicle, String>) -> Binding<String> {
+        Binding(
+            get: { draftVehicle?[keyPath: keyPath] ?? "" },
+            set: { draftVehicle?[keyPath: keyPath] = $0 }
+        )
+    }
+
+    private func binding(_ keyPath: WritableKeyPath<Vehicle, String?>) -> Binding<String> {
+        Binding(
+            get: { draftVehicle?[keyPath: keyPath] ?? "" },
+            set: { draftVehicle?[keyPath: keyPath] = $0.isEmpty ? nil : $0 }
+        )
+    }
 }
 
 // MARK: - Info Row
@@ -157,14 +239,23 @@ struct VehicleDetailView: View {
 struct InfoRow: View {
     let title: String
     let value: String
+    var isEditing: Bool = false
+    var text: Binding<String>? = nil
 
     var body: some View {
         HStack {
             Text(title)
                 .foregroundColor(.secondary)
             Spacer()
-            Text(value)
-                .fontWeight(.medium)
+            if isEditing, let text {
+                TextField(title, text: text)
+                    .textFieldStyle(.plain)
+                    .multilineTextAlignment(.trailing)
+                    .font(.body.weight(.medium))
+            } else {
+                Text(value)
+                    .fontWeight(.medium)
+            }
         }
         .padding(.vertical, 6)
     }
