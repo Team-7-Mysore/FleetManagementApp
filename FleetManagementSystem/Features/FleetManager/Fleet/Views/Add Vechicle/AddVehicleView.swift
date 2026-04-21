@@ -8,7 +8,8 @@ struct AddVehicleView: View {
     @State private var showImagePicker = false
     @StateObject var vm = AddVehicleViewModel()
     @Environment(\.dismiss) var dismiss
-    
+    @State private var sourceType: UIImagePickerController.SourceType = .photoLibrary
+    @State private var showImageOptionsPopover = false
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
@@ -32,7 +33,7 @@ struct AddVehicleView: View {
             }
             ToolbarItem(placement: .navigationBarLeading) {
                 Button(action: { dismiss() }) {
-                    Image(systemName: "chevron.left").foregroundColor(Color(.label))
+                    Image(systemName: "arrow.left").foregroundColor(Color(.label))
                 }
             }
         }
@@ -43,7 +44,7 @@ struct AddVehicleView: View {
             Alert(title: Text("Error"), message: Text(wrapper.message))
         }
         .sheet(isPresented: $showImagePicker) {
-            ImagePicker { image in
+            ImagePicker(sourceType: sourceType) { image in
                 vm.localVehicleImage = image
                 Task {
                     await vm.uploadImage(image: image, type: "VEHICLE")
@@ -55,10 +56,9 @@ struct AddVehicleView: View {
     // MARK: - Sub-Views
     
     private var imageUploadSection: some View {
-        VStack {
-            Button {
-                showImagePicker = true
-            } label: {
+        VStack(spacing: 12) {
+            // Use Button + Popover instead of Menu
+            Button(action: { showImageOptionsPopover = true }) {
                 if let image = vm.localVehicleImage {
                     Image(uiImage: image)
                         .resizable()
@@ -67,19 +67,47 @@ struct AddVehicleView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.TechBlue, lineWidth: 2))
                 } else {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Color(.systemGray5))
-                            .frame(width: 120, height: 120)
-                        
-                        Image(systemName: "camera.fill")
-                            .font(.system(size: 34))
-                            .foregroundColor(.gray)
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color(.systemGray5))
+                        .frame(width: 120, height: 120)
+                        .overlay(
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 40))
+                                .foregroundColor(.gray)
+                        )
+                }
+            }
+            .popover(isPresented: $showImageOptionsPopover, attachmentAnchor: .rect(.bounds), arrowEdge: .top) {
+                VStack(spacing: 0) {
+                    Button(action: {
+                        showImageOptionsPopover = false
+                        sourceType = .camera
+                        showImagePicker = true
+                    }) {
+                        Label("Take Photo", systemImage: "camera")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                    }
+                    
+                    Divider()
+                    
+                    Button(action: {
+                        showImageOptionsPopover = false
+                        sourceType = .photoLibrary
+                        showImagePicker = true
+                    }) {
+                        Label("Choose from Gallery", systemImage: "photo.on.rectangle")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
                     }
                 }
+                .padding(.vertical, 8)
+                .frame(width: 250)
+                .presentationCompactAdaptation(.popover)
             }
             .padding(.top, 10)
             
+            // Helper text stays outside the menu so it never hides
             Text("Upload Vehicle Image")
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -88,55 +116,48 @@ struct AddVehicleView: View {
     
     private var vehicleInfoSection: some View {
         FormCard(title: "Vehicle Info", icon: "car.fill") {
-            CustomTextField(title: "VEHICLE NAME", placeholder: "e.g. Silver Ghost V8", text: $vm.vehicleName)
+            CustomTextField(title: "Vehicle Name", placeholder: "Silver Ghost V8", text: $vm.vehicleName)
             CustomTextField(
-                title: "REGISTRATION NUMBER",
+                title: "Registration Number",
                 placeholder: "KA01AB1234",
                 text: Binding(
                     get: { vm.registrationNumber },
                     set: { vm.registrationNumber = vm.formatPlate($0) }
-                )
+                ),
+                hint: "Format: KA-01-AB-1234"
             )
-            HStack(spacing: 16) {
-                CustomDropdown(title: "VEHICLE TYPE", options: ["Truck", "Car", "Bike"], selection: $vm.vehicleType)
-                CustomDropdown(title: "FUEL TYPE", options: ["Diesel", "Petrol", "Electric"], selection: $vm.fuelType)
-            }
+            CustomDropdown(title: "Vehicle Type", options: ["Truck", "Car", "Bike"], selection: $vm.vehicleType)
+            CustomDropdown(title: "Fuel Type", options: ["Diesel", "Petrol", "Electric"], selection: $vm.fuelType, showDivider: false)
         }
     }
     
     private var manufacturerSection: some View {
-        // Consolidating the two "Basic Details" cards into one
         FormCard(title: "Manufacturer & Brand", icon: "gearshape.fill") {
-            HStack {
-                CustomTextField(title: "BRAND", placeholder: "e.g. Toyota", text: $vm.brand)
-                CustomTextField(title: "MANUFACTURER", placeholder: "Rolls Royce Heritage", text: $vm.manufacturer)
-            }
-            HStack {
-                CustomTextField(title: "MODEL", placeholder: "Phantom Edition", text: $vm.model)
-                CustomTextField(title: "MODEL YEAR", placeholder: "2024", text: $vm.modelYear)
-                    .keyboardType(.numberPad)
-            }
-            CustomDateField(title: "REGISTRATION DATE", date: $vm.registrationDate)
+            CustomTextField(title: "Brand", placeholder: "Toyota", text: $vm.brand)
+            CustomTextField(title: "Manufacturer", placeholder: "Rolls Royce Heritage", text: $vm.manufacturer, isOptional: true)
+            CustomTextField(title: "Model", placeholder: "Phantom Edition", text: $vm.model, isOptional: true)
+            CustomTextField(title: "Model Year", placeholder: "2024", text: $vm.modelYear, isOptional: true)
+                .keyboardType(.numberPad)
+            CustomDateField(title: "Registration Date", date: $vm.registrationDate, showDivider: false, allowPastOnly: true)
         }
     }
     
     private var identificationSection: some View {
-        // This is where the VIN (17-digit number) lives
         FormCard(title: "Vehicle Identification", icon: "barcode.viewfinder") {
             CustomTextField(
-                title: "VIN (VEHICLE ID NUMBER)",
+                title: "VIN (Vehicle ID Number)",
                 placeholder: "17-digit number",
-                text: $vm.vin
+                text: $vm.vin,
+                hint: "Exactly 17 characters",
+                showDivider: false
             )
         }
     }
     
     private var validitySection: some View {
         FormCard(title: "Validity", icon: "shield.fill") {
-            HStack(spacing: 16) {
-                CustomDateField(title: "PUC EXPIRY DATE", date: $vm.pucExpiry)
-                CustomDateField(title: "RC EXPIRY DATE", date: $vm.rcExpiry)
-            }
+            CustomDateField(title: "PUC Expiry Date", date: $vm.pucExpiry, allowFutureOnly: true)
+            CustomDateField(title: "RC Expiry Date", date: $vm.rcExpiry, showDivider: false, allowFutureOnly: true)
         }
     }
     
@@ -160,7 +181,7 @@ struct AddVehicleView: View {
                     .foregroundColor(.white)
                     .frame(maxWidth: .infinity)
                     .padding()
-                    .background(Color.TechBlue)
+                    .background(vm.isStep1Valid ? Color.TechBlue : Color.TechBlue.opacity(0.4))
                     .cornerRadius(25)
             }
             .padding()

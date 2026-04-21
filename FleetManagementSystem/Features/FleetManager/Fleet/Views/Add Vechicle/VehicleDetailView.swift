@@ -10,6 +10,10 @@ struct VehicleDetailView: View {
     let vehicleId: UUID
     @StateObject var vm = VehicleDetailViewModel()
     @State private var isEditing = false
+    @State private var draftVehicle: Vehicle?
+    @State private var isSaving = false
+    @State private var showImagePicker = false
+    @State private var sourceType: UIImagePickerController.SourceType = .photoLibrary
 
     var body: some View {
         ScrollView {
@@ -24,9 +28,14 @@ struct VehicleDetailView: View {
                     documentsSection
                 }
                 .padding()
-            } else if let errorMessage = vm.errorMessage {
+            } else if let errorMessage = vm.errorMessage, !isEditing {
                 ContentUnavailableView("Could Not Load Vehicle", systemImage: "exclamationmark.triangle.fill", description: Text(errorMessage))
                     .padding(.top, 60)
+            }
+        }
+        .onAppear {
+            Task {
+                await vm.fetchVehicle(vehicleId: vehicleId)
             }
         }
         .background(Color(.systemGroupedBackground))
@@ -44,26 +53,59 @@ struct VehicleDetailView: View {
             Text(vm.errorMessage ?? "")
         }
         .toolbar {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button("Edit") {
-                    isEditing = true
+            if isEditing {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        isEditing = false
+                        draftVehicle = nil
+                    }
                 }
-                .fontWeight(.semibold)
-                .disabled(vm.vehicle == nil)
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Save") {
+                        Task {
+                            await saveChanges()
+                        }
+                    }
+                    .fontWeight(.bold)
+                    .disabled(isSaving)
+                }
+            } else {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Edit") {
+                        draftVehicle = vm.vehicle
+                        isEditing = true
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(vm.vehicle == nil)
+                }
             }
         }
-        .onAppear {
-            Task {
-                await vm.fetchVehicle(vehicleId: vehicleId)
-            }
-        }
-        .sheet(isPresented: $isEditing) {
-            NavigationStack {
-                EditVehicleView(vm: vm)
+        .sheet(isPresented: $showImagePicker) {
+            ImagePicker(sourceType: sourceType) { image in
+                Task {
+                    await vm.uploadImage(image: image, type: "VEHICLE")
+                    if let newURL = vm.vehicle?.imageURL {
+                        draftVehicle?.imageURL = newURL
+                    }
+                }
             }
         }
     }
 
+    private func saveChanges() async {
+        guard let draft = draftVehicle else { return }
+        isSaving = true
+        vm.vehicle = draft
+        let success = await vm.updateVehicle()
+        isSaving = false
+        if success {
+            isEditing = false
+            draftVehicle = nil
+        }
+    }
+
+    @ViewBuilder
     private func vehicleImage(_ vehicle: Vehicle) -> some View {
         Group {
             if let urlString = vehicle.imageURL,
@@ -83,29 +125,59 @@ struct VehicleDetailView: View {
         .frame(maxWidth: .infinity)
         .background(Color.white)
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            if isEditing {
+                Button {
+                    sourceType = .camera // Default to camera for overlay
+                    showImagePicker = true
+                } label: {
+                    ZStack {
+                        Color.black.opacity(0.3)
+                        Image(systemName: "camera.fill")
+                            .foregroundColor(.white)
+                            .font(.title)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            }
+        }
     }
 
     private func placeholderImage(_ vehicleType: String?) -> some View {
         VehicleFallbackArtwork(vehicleType: vehicleType)
     }
 
+    @ViewBuilder
     private func vehicleHeader(_ vehicle: Vehicle) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(vehicle.registrationNumber)
-                .font(.system(size: 34, weight: .bold))
+            if isEditing {
+                TextField("Vehicle Name", text: binding(\.name))
+                    .font(.system(size: 34, weight: .bold))
+                    .textFieldStyle(.plain)
+                    .foregroundColor(.primary)
+                
+                TextField("Registration Number", text: binding(\.registrationNumber))
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .textFieldStyle(.plain)
+            } else {
+                Text(vehicle.name)
+                    .font(.system(size: 34, weight: .bold))
+                    .foregroundColor(.primary)
 
-            Text([vehicle.vehicleType, vehicle.fuelType]
-                .compactMap { value in
-                    guard let value else { return nil }
-                    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-                    return trimmed.isEmpty ? nil : trimmed
-                }
-                .joined(separator: " • "))
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+                Text([vehicle.registrationNumber, vehicle.vehicleType, vehicle.fuelType]
+                    .compactMap { (val: String?) -> String? in
+                        guard let val = val, !val.isEmpty else { return nil }
+                        return val
+                    }
+                    .joined(separator: " • "))
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
         }
     }
 
+    @ViewBuilder
     private func infoSection(_ vehicle: Vehicle) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("BASIC INFORMATION")
@@ -113,12 +185,11 @@ struct VehicleDetailView: View {
                 .foregroundColor(.secondary)
 
             VStack(spacing: 0) {
-                InfoRow(title: "Brand", value: vehicle.brand ?? "Not added")
-                InfoRow(title: "Vehicle Type", value: vehicle.vehicleType)
-                InfoRow(title: "Fuel Type", value: vehicle.fuelType ?? "Not added")
-                InfoRow(title: "Registration Number", value: vehicle.registrationNumber)
-                InfoRow(title: "Model", value: vehicle.model ?? "Not added")
-                InfoRow(title: "Model Year", value: vehicle.modelYear ?? "Not added")
+                InfoRow(title: "Brand", value: vehicle.brand ?? "Not added", isEditing: isEditing, text: binding(\.brand))
+                InfoRow(title: "Model", value: vehicle.model ?? "Not added", isEditing: isEditing, text: binding(\.model))
+                InfoRow(title: "Model Year", value: vehicle.modelYear ?? "Not added", isEditing: isEditing, text: binding(\.modelYear))
+                InfoRow(title: "Vehicle Type", value: vehicle.vehicleType, isEditing: isEditing, text: binding(\.vehicleType))
+                InfoRow(title: "Fuel Type", value: vehicle.fuelType ?? "Not added", isEditing: isEditing, text: binding(\.fuelType))
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
@@ -163,11 +234,27 @@ struct VehicleDetailView: View {
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
     }
+
+    private func binding(_ keyPath: WritableKeyPath<Vehicle, String>) -> Binding<String> {
+        Binding(
+            get: { draftVehicle?[keyPath: keyPath] ?? "" },
+            set: { draftVehicle?[keyPath: keyPath] = $0 }
+        )
+    }
+
+    private func binding(_ keyPath: WritableKeyPath<Vehicle, String?>) -> Binding<String> {
+        Binding(
+            get: { draftVehicle?[keyPath: keyPath] ?? "" },
+            set: { draftVehicle?[keyPath: keyPath] = $0.isEmpty ? nil : $0 }
+        )
+    }
 }
 
 struct InfoRow: View {
     let title: String
     let value: String
+    var isEditing: Bool = false
+    var text: Binding<String>? = nil
 
     var body: some View {
         HStack {
@@ -177,9 +264,18 @@ struct InfoRow: View {
 
             Spacer()
 
-            Text(value)
-                .fontWeight(.medium)
-                .multilineTextAlignment(.trailing)
+            if isEditing, let textBinding = text {
+                TextField(title, text: textBinding)
+                    .textFieldStyle(.plain)
+                    .multilineTextAlignment(.trailing)
+                    .font(.body.weight(.medium))
+                    .foregroundColor(.primary)
+            } else {
+                Text(value)
+                    .fontWeight(.medium)
+                    .multilineTextAlignment(.trailing)
+                    .foregroundColor(.primary)
+            }
         }
         .padding(.vertical, 14)
     }

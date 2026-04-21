@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FleetListView: View {
     @StateObject private var vm = FleetListViewModel()
+    @State private var showingAddVehicle = false
     
     var body: some View {
         NavigationStack {
@@ -61,7 +62,7 @@ struct FleetListView: View {
                 }
                 
                 // 🔥 Floating Add Button
-                NavigationLink(destination: AddVehicleView(fleetVM: vm)) {
+                Button(action: { showingAddVehicle = true }) {
                     Image(systemName: "plus")
                         .font(.title2.weight(.bold))
                         .foregroundColor(.white)
@@ -75,6 +76,11 @@ struct FleetListView: View {
             }
             .navigationTitle("Fleet")
             .navigationBarTitleDisplayMode(.large)
+            .sheet(isPresented: $showingAddVehicle) {
+                NavigationStack {
+                    AddVehicleView(fleetVM: vm)
+                }
+            }
             .task {
                 if vm.vehicles.isEmpty {
                     await vm.fetchVehicles()
