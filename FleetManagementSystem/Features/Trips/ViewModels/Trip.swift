@@ -144,7 +144,7 @@ struct Trip: Codable, Identifiable {
     }
 
     /// Normalised status for badge colouring
-    var normalisedStatus: TripStatus {
+    var normalisedStatus: TripDisplayStatus {
         guard let s = status?.lowercased().trimmingCharacters(in: .whitespaces) else {
             return .unknown
         }
@@ -184,7 +184,7 @@ struct Trip: Codable, Identifiable {
     }
 }
 
-enum TripStatus {
+enum TripDisplayStatus {
     case inTransit, inProgress, completed, scheduled, cancelled, unknown
 
     var label: String {

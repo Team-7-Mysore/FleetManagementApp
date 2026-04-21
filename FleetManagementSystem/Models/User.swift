@@ -1,21 +1,8 @@
 import Foundation
 
-// MARK: - User Role
-enum UserRole: String, Codable, CaseIterable, Identifiable {
-    case fleetManager  = "Fleet Manager"
-    case driver        = "Driver"
-    case maintenance   = "Maintenance"
-
-    var id: String { rawValue }
-
-    var systemImage: String {
-        switch self {
-        case .fleetManager: return "person.badge.shield.checkmark"
-        case .driver:       return "steeringwheel"
-        case .maintenance:  return "wrench.and.screwdriver"
-        }
-    }
-}
+// MARK: - User Role (Driver-side role model)
+// NOTE: Uses AppUserRole from AppUserRole.swift for role definition
+// This maps driver-domain role to the shared role enum
 
 // MARK: - User
 struct User: Identifiable, Codable, Hashable {
@@ -23,7 +10,7 @@ struct User: Identifiable, Codable, Hashable {
     var firstName: String
     var lastName: String
     var email: String
-    var role: UserRole
+    var role: AppUserRole
     var phone: String
     var isActive: Bool
     var joinDate: Date

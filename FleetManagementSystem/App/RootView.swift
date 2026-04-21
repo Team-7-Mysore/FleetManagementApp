@@ -20,7 +20,7 @@ struct RootView: View {
             DriverWorkspaceView(profile: profile) {
                 await appSession.signOut()
             }
-        case .manager:
+        case .fleetManager:
             FleetManagerDashboardView(profile: profile) {
                 await appSession.signOut()
             }

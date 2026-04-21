@@ -202,9 +202,12 @@ private struct StaffCard: View {
 
     private var accentColor: Color {
         switch staff.role {
-        case .driver:      return Color(red: 59/255,  green: 13/255,  blue: 17/255)
-        case .maintenance: return Color(red: 30/255,  green: 80/255,  blue: 160/255)
-        case .manager:     return Color(red: 40/255,  green: 120/255, blue: 70/255)
+        case .driver:
+            return Color(red: 59/255,  green: 13/255,  blue: 17/255)
+        case .maintenance:
+            return Color(red: 30/255,  green: 80/255,  blue: 160/255)
+        case .fleetManager:
+            return Color(red: 40/255,  green: 120/255, blue: 70/255)
         }
     }
 
@@ -291,8 +294,9 @@ private struct StaffCard: View {
 
 
 // MARK: - Status Badge
+// MARK: - Account Status Badge
 
-private struct StatusBadge: View {
+private struct AccountStatusBadge: View {
     let status: AccountStatus
 
     var body: some View {
@@ -376,7 +380,7 @@ struct StaffFilterSheet: View {
         }
     }
 
-    private func roleRow(_ role: UserRole) -> some View {
+    private func roleRow(_ role: AppUserRole) -> some View {
         HStack(spacing: 10) {
             Image(systemName: role.icon)
                 .font(.system(size: 14))
@@ -410,7 +414,7 @@ struct StaffFilterSheet: View {
 
                 // ── Role ──
                 Section("Role") {
-                    ForEach([UserRole.driver, UserRole.maintenance], id: \.self) { role in
+                    ForEach([AppUserRole.driver, AppUserRole.maintenance], id: \.self) { role in
                         roleRow(role)
                     }
                 }

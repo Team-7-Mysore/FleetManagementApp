@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct AppNotification: Identifiable {
+struct MaintenanceNotification: Identifiable {
     let id = UUID()
     let title: String
     let description: String
@@ -9,7 +9,7 @@ struct AppNotification: Identifiable {
 
 struct NotificationsView: View {
     // Current dummy implementation as no backend specified for notifications
-    @State private var notifications: [AppNotification] = []
+    @State private var notifications: [MaintenanceNotification] = []
     
     var body: some View {
         ZStack {

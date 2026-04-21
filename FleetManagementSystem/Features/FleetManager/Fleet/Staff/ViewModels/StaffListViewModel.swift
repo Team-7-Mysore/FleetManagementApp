@@ -22,7 +22,7 @@ final class StaffListViewModel: ObservableObject {
     // Filters
     @Published var searchText:    String         = ""
     @Published var selectedStatus: AccountStatus? = nil
-    @Published var selectedRole:   UserRole?      = nil
+    @Published var selectedRole:   AppUserRole?      = nil
 
     // ——— Derived filtered list ———
     var filteredStaff: [StaffUser] {

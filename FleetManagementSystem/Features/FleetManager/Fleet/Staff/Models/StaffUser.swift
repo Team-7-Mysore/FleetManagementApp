@@ -8,29 +8,6 @@
 
 import Foundation
 
-// Maps to the user_role enum in Supabase
-enum UserRole: String, Codable, CaseIterable {
-    case driver      = "driver"
-    case maintenance = "maintenance"
-    case manager     = "manager"
-
-    var displayName: String {
-        switch self {
-        case .driver:      return "Driver"
-        case .maintenance: return "Maintenance Staff"
-        case .manager:     return "Manager"
-        }
-    }
-
-    var icon: String {
-        switch self {
-        case .driver:      return "car.fill"
-        case .maintenance: return "wrench.and.screwdriver.fill"
-        case .manager:     return "person.badge.key.fill"
-        }
-    }
-}
-
 // Maps to an account_status enum — extend DB if needed
 enum AccountStatus: String, Codable, CaseIterable {
     case active   = "active"
@@ -52,7 +29,7 @@ struct StaffUser: Identifiable, Decodable {
     let user_id:    String
     let name:       String
     let email:      String
-    let role:       UserRole
+    let role:       AppUserRole
     let phone_no:   String?
     let username:   String?
     let status:     AccountStatus?

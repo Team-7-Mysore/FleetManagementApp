@@ -6,7 +6,6 @@ struct NotificationListView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var notifications: [AppNotification] = []
-    private let service = NotificationService.shared
 
     var body: some View {
         NavigationStack {
@@ -45,7 +44,10 @@ struct NotificationListView: View {
     }
 
     private func loadData() {
-        notifications = service.fetchNotifications(forUser: user.id)
+        // Notifications fetched from Supabase or local store when backend is ready.
+        // For now returns empty list — extend with a NotificationService once the
+        // notifications table is added to the DB schema.
+        notifications = []
     }
 
     private func notificationRow(_ notification: AppNotification) -> some View {
@@ -55,7 +57,7 @@ struct NotificationListView: View {
                 .foregroundStyle(notification.isRead ? .secondary : AppTheme.primaryGreen)
                 .frame(width: 40, height: 40)
                 .background(
-                    (notification.isRead ? Color(.systemGray5) : AppTheme.lightGreen)
+                    notification.isRead ? Color(.systemGray5) : AppTheme.lightGreen
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
@@ -82,9 +84,5 @@ struct NotificationListView: View {
         }
         .padding(14)
         .cardStyle()
-        .onTapGesture {
-            service.markAsRead(notificationId: notification.id)
-            loadData()
-        }
     }
 }

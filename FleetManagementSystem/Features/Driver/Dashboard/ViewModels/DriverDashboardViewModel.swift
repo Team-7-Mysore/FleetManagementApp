@@ -43,8 +43,6 @@ final class DriverDashboardViewModel: ObservableObject {
     @Published private(set) var fuelEfficiency: Double?
 
     private let user: User
-    private let inspectionService = InspectionService.shared
-    private let notificationService = NotificationService.shared
 
     init(user: User) {
         self.user = user
@@ -79,7 +77,7 @@ final class DriverDashboardViewModel: ObservableObject {
                     .eq("driver_id", value: driverId)
                     .execute()
 
-                print("📦 RAW TRIPS:", String(data: response.data, encoding: .utf8)!)
+                print("📦 RAW TRIPS:", String(data: response.data, encoding: .utf8) ?? "")
 
                 let decoder = JSONDecoder()
                 decoder.dateDecodingStrategy = .custom { decoder in
@@ -113,7 +111,7 @@ final class DriverDashboardViewModel: ObservableObject {
 
                 // Step 3: Get vehicle from first assigned or active trip
                 if let vehicleId = dtoTrips
-                    .first(where: { $0.status == "assigned" || $0.status == "active" })?
+                    .first(where: { $0.status == "assigned" || $0.status == "in_progress" })?
                     .vehicleId {
                     await fetchVehicle(vehicleId: vehicleId)
                 } else {
@@ -135,7 +133,7 @@ final class DriverDashboardViewModel: ObservableObject {
                 .single()
                 .execute()
 
-            print("📦 RAW VEHICLE:", String(data: response.data, encoding: .utf8)!)
+            print("📦 RAW VEHICLE:", String(data: response.data, encoding: .utf8) ?? "")
 
             let decoder = JSONDecoder()
             let dto = try decoder.decode(VehicleDTO.self, from: response.data)

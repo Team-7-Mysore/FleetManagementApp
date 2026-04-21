@@ -5,7 +5,31 @@ import SwiftUI
 // MARK: - App Routes
 enum AppRoute: Hashable {
     case activeTrip(TripMap)
-    case vehicleInspection(TripMap?, type: InspectionType = .preTrip)
+    case vehicleInspection(TripMap?, type: InspectionType)
+
+    // Custom Hashable implementation because associated values include optionals
+    func hash(into hasher: inout Hasher) {
+        switch self {
+        case .activeTrip(let trip):
+            hasher.combine(0)
+            hasher.combine(trip)
+        case .vehicleInspection(let trip, let type):
+            hasher.combine(1)
+            hasher.combine(trip)
+            hasher.combine(type.rawValue)
+        }
+    }
+
+    static func == (lhs: AppRoute, rhs: AppRoute) -> Bool {
+        switch (lhs, rhs) {
+        case (.activeTrip(let l), .activeTrip(let r)):
+            return l == r
+        case (.vehicleInspection(let lt, let li), .vehicleInspection(let rt, let ri)):
+            return lt == rt && li == ri
+        default:
+            return false
+        }
+    }
 }
 
 // MARK: - App Router

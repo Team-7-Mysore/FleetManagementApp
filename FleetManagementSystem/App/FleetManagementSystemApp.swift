@@ -4,8 +4,8 @@ import Supabase
 @main
 struct FleetManagementSystemApp: App {
 
+    @StateObject private var appSession = AppSession()
     @State private var showSetPassword = false
-    @State private var userRole: String? = nil
     @State private var isLoading = true
 
     var body: some Scene {
@@ -17,19 +17,23 @@ struct FleetManagementSystemApp: App {
                     SetPasswordView {
                         showSetPassword = false
                     }
-                } else if let role = userRole {
-                    switch role {
-                    case "driver":
-                       LoginView()
-                    case "maintenance":
-                        MaintenanceHomeView()
-                    case "fleet_manager":
-                        FleetManagerTabView()
-                    default:
-                        LoginView()
+                } else if let profile = appSession.profile {
+                    switch profile.role {
+                    case .driver:
+                        DriverWorkspaceView(profile: profile) {
+                            await appSession.signOut()
+                        }
+                    case .maintenance:
+                        MaintenanceHomeView(profile: profile) {
+                            await appSession.signOut()
+                        }
+                    case .fleetManager:
+                        FleetManagerTabView(profile: profile) {
+                            await appSession.signOut()
+                        }
                     }
                 } else {
-                    LoginView()
+                    LoginView(viewModel: AuthViewModel(appSession: appSession))
                 }
             }
             .tint(Color(hex: "#A3352A"))
@@ -48,48 +52,31 @@ struct FleetManagementSystemApp: App {
     private func checkSession() async {
         do {
             let session = try await SupabaseManager.shared.client.auth.session
-
             if session != nil {
-                await fetchUserRole()
-            } else {
-                isLoading = false
+                await fetchUserProfile()
             }
         } catch {
             print("❌ Session error:", error)
-            isLoading = false
         }
+        isLoading = false
     }
 
-    // MARK: - Fetch Role
-    private func fetchUserRole() async {
+    // MARK: - Fetch User Profile
+    private func fetchUserProfile() async {
         do {
             let user = try await SupabaseManager.shared.client.auth.user()
 
-            let response = try await SupabaseManager.shared.client
+            let profile: UserProfile = try await SupabaseManager.shared.client
                 .from("users")
-                .select("role")
+                .select()
                 .eq("user_id", value: user.id)
                 .single()
                 .execute()
+                .value
 
-            if let json = try JSONSerialization.jsonObject(with: response.data) as? [String: Any],
-               let role = json["role"] as? String {
-
-                await MainActor.run {
-                    self.userRole = role
-                    self.isLoading = false
-                }
-            } else {
-                await MainActor.run {
-                    self.isLoading = false
-                }
-            }
-
+            appSession.setAuthenticated(profile: profile)
         } catch {
-            print("❌ Role fetch error:", error)
-            await MainActor.run {
-                self.isLoading = false
-            }
+            print("❌ Profile fetch error:", error)
         }
     }
 
@@ -110,13 +97,8 @@ struct FleetManagementSystemApp: App {
                 }
 
                 let isInvite = params["type"] == "invite"
-
-                await MainActor.run {
-                    showSetPassword = isInvite
-                }
-
-                await fetchUserRole()
-
+                showSetPassword = isInvite
+                await fetchUserProfile()
             } catch {
                 print("❌ Deep link error:", error)
             }

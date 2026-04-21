@@ -22,8 +22,6 @@ struct DriverDashboardView: View {
                 // MARK: - Quick Actions
                 quickActionsRow
 
-
-
                 // MARK: - Vehicle Info
                 VStack(alignment: .leading, spacing: 12) {
                     AppTheme.sectionHeader("Assigned Vehicle")
@@ -48,7 +46,6 @@ struct DriverDashboardView: View {
         .navigationTitle("Hi \(user.firstName)")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
-
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 16) {
                     Button { showNotifications = true } label: {
@@ -88,6 +85,7 @@ struct DriverDashboardView: View {
         .onAppear { vm.loadData() }
     }
 
+    // MARK: - Route Summary Card
     @ViewBuilder
     private var routeSummaryCard: some View {
         if let trip = vm.activeTrip {
@@ -105,13 +103,11 @@ struct DriverDashboardView: View {
                 StatusBadge(text: "No Active Trip", color: .secondary)
                 Spacer()
             }
-
             Text("No route assigned right now")
                 .font(.subheadline.weight(.semibold))
             Text("Your next trip will appear here as soon as dispatch assigns one.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-
             HStack {
                 Image(systemName: "calendar.badge.clock")
                     .foregroundStyle(AppTheme.statusInfo)
@@ -134,22 +130,16 @@ struct DriverDashboardView: View {
             }
 
             HStack(alignment: .top) {
-                // Route path
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 10) {
                         Circle()
                             .stroke(AppTheme.primaryGreen, lineWidth: 2)
                             .frame(width: 12, height: 12)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("FROM")
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(.secondary)
-                            Text(trip.startLocation)
-                                .font(.subheadline.weight(.semibold))
+                            Text("FROM").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
+                            Text(trip.startLocation).font(.subheadline.weight(.semibold))
                         }
                     }
-
-                    // Dotted line
                     HStack(spacing: 10) {
                         Rectangle()
                             .fill(AppTheme.primaryGreen.opacity(0.3))
@@ -157,48 +147,30 @@ struct DriverDashboardView: View {
                             .padding(.leading, 5)
                         Spacer()
                     }
-
                     HStack(spacing: 10) {
-                        Image(systemName: "mappin.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.primaryGreen)
+                        Image(systemName: "mappin.circle.fill").font(.caption).foregroundStyle(AppTheme.primaryGreen)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("TO")
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(.secondary)
-                            Text(trip.endLocation)
-                                .font(.subheadline.weight(.semibold))
+                            Text("TO").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
+                            Text(trip.endLocation).font(.subheadline.weight(.semibold))
                         }
                     }
                 }
-
                 Spacer()
-
-                // Distance & ETA
                 VStack(alignment: .trailing, spacing: 12) {
                     VStack(alignment: .trailing, spacing: 1) {
-                        Text("DISTANCE")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
+                        Text("DISTANCE").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
                         HStack(alignment: .firstTextBaseline, spacing: 2) {
-                            Text("\(Int(trip.distance))")
-                                .font(.title3.weight(.bold))
-                            Text("mi")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.secondary)
+                            Text("\(Int(trip.distance))").font(.title3.weight(.bold))
+                            Text("mi").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
                         }
                     }
                     VStack(alignment: .trailing, spacing: 1) {
-                        Text("ETA")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
-                        Text(trip.formattedETA)
-                            .font(.subheadline.weight(.semibold))
+                        Text("ETA").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
+                        Text(trip.formattedETA).font(.subheadline.weight(.semibold))
                     }
                 }
             }
 
-            // End Trip Button
             NavigationLink(value: AppRoute.activeTrip(trip)) {
                 HStack {
                     Image(systemName: "location.fill")
@@ -216,32 +188,7 @@ struct DriverDashboardView: View {
         .cardStyle()
     }
 
-    private var vehicleEmptyCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "car.fill")
-                    .font(.title2)
-                    .foregroundStyle(AppTheme.primaryGreen)
-                    .frame(width: 48, height: 48)
-                    .background(AppTheme.lightGreen)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("No vehicle assigned")
-                        .font(.subheadline.weight(.semibold))
-                    Text("Contact your fleet manager for assignment details.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-            }
-        }
-        .padding(16)
-        .cardStyle()
-    }
-
-    // MARK: - Next Trip Card (when no active trip)
+    // MARK: - Next Trip Card
     @ViewBuilder
     private func nextTripCard(_ trip: TripMap) -> some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -260,14 +207,10 @@ struct DriverDashboardView: View {
                             .stroke(AppTheme.primaryGreen, lineWidth: 2)
                             .frame(width: 12, height: 12)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("FROM")
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(.secondary)
-                            Text(trip.startLocation)
-                                .font(.subheadline.weight(.semibold))
+                            Text("FROM").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
+                            Text(trip.startLocation).font(.subheadline.weight(.semibold))
                         }
                     }
-
                     HStack(spacing: 10) {
                         Rectangle()
                             .fill(AppTheme.primaryGreen.opacity(0.3))
@@ -275,48 +218,32 @@ struct DriverDashboardView: View {
                             .padding(.leading, 5)
                         Spacer()
                     }
-
                     HStack(spacing: 10) {
-                        Image(systemName: "mappin.circle.fill")
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.primaryGreen)
+                        Image(systemName: "mappin.circle.fill").font(.caption).foregroundStyle(AppTheme.primaryGreen)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("TO")
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(.secondary)
-                            Text(trip.endLocation)
-                                .font(.subheadline.weight(.semibold))
+                            Text("TO").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
+                            Text(trip.endLocation).font(.subheadline.weight(.semibold))
                         }
                     }
                 }
-
                 Spacer()
-
                 VStack(alignment: .trailing, spacing: 12) {
                     VStack(alignment: .trailing, spacing: 1) {
-                        Text("DISTANCE")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
+                        Text("DISTANCE").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
                         HStack(alignment: .firstTextBaseline, spacing: 2) {
-                            Text("\(Int(trip.distance))")
-                                .font(.title3.weight(.bold))
-                            Text("mi")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.secondary)
+                            Text("\(Int(trip.distance))").font(.title3.weight(.bold))
+                            Text("mi").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
                         }
                     }
                     VStack(alignment: .trailing, spacing: 1) {
-                        Text("ETA")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
-                        Text(trip.formattedETA)
-                            .font(.subheadline.weight(.semibold))
+                        Text("ETA").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
+                        Text(trip.formattedETA).font(.subheadline.weight(.semibold))
                     }
                 }
             }
 
-            // Start Inspection Button
-            NavigationLink(value: AppRoute.vehicleInspection(trip)) {
+            // ✅ Fixed: include type: parameter
+            NavigationLink(value: AppRoute.vehicleInspection(trip, type: .preTrip)) {
                 HStack(spacing: 8) {
                     Image(systemName: "checklist")
                     Text("START INSPECTION")
@@ -334,77 +261,21 @@ struct DriverDashboardView: View {
         .cardStyle()
     }
 
-    // MARK: - Report Issue Button
-    private var quickActionsRow: some View {
-        NavigationLink {
-            ReportIssueView(user: user, vehicle: vm.assignedVehicle)
-        } label: {
-            HStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .fill(AppTheme.statusDanger.opacity(0.1))
-                        .frame(width: 44, height: 44)
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.headline)
-                        .foregroundStyle(AppTheme.statusDanger)
-                }
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Report Issue")
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                    Text("Log defect or safety concern")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color(.tertiaryLabel))
+    // MARK: - Vehicle Empty Card
+    private var vehicleEmptyCard: some View {
+        HStack {
+            Image(systemName: "car.fill")
+                .font(.title2)
+                .foregroundStyle(AppTheme.primaryGreen)
+                .frame(width: 48, height: 48)
+                .background(AppTheme.lightGreen)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text("No vehicle assigned").font(.subheadline.weight(.semibold))
+                Text("Contact your fleet manager for assignment details.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
-            .padding(18)
-            .cardStyle()
-        }
-    }
-
-    // MARK: - Inspection Card
-    @ViewBuilder
-    private func inspectionCard(_ inspection: Inspection) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                // Progress circle
-                ZStack {
-                    Circle()
-                        .stroke(Color(.systemGray5), lineWidth: 3)
-                        .frame(width: 40, height: 40)
-                    Circle()
-                        .trim(from: 0, to: inspection.completionPercentage)
-                        .stroke(AppTheme.primaryGreen, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                        .frame(width: 40, height: 40)
-                        .rotationEffect(.degrees(-90))
-                    Text("\(Int(inspection.completionPercentage * 100))%")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(AppTheme.primaryGreen)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(inspection.type.rawValue) Inspection")
-                        .font(.subheadline.weight(.semibold))
-                    Text("\(inspection.pendingCount) item\(inspection.pendingCount == 1 ? "" : "s") remaining")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                NavigationLink(value: AppRoute.vehicleInspection(nil)) {
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-            }
+            Spacer()
         }
         .padding(16)
         .cardStyle()
@@ -423,13 +294,10 @@ struct DriverDashboardView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(vehicle.licensePlate)
-                        .font(.subheadline.weight(.semibold))
-                    Text("\(vehicle.make) \(vehicle.model) • \(String(vehicle.year))")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text(vehicle.licensePlate).font(.subheadline.weight(.semibold))
+                    Text("\(vehicle.make) \(vehicle.model ?? "") • \(vehicle.year > 0 ? String(vehicle.year) : "—")")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
-
                 Spacer()
             }
 
@@ -449,16 +317,36 @@ struct DriverDashboardView: View {
 
     private func vehicleInfoItem(icon: String, value: String, label: String) -> some View {
         VStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.caption)
-                .foregroundStyle(AppTheme.primaryGreen)
-            Text(value)
-                .font(.caption.weight(.semibold).monospacedDigit())
-            Text(label)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            Image(systemName: icon).font(.caption).foregroundStyle(AppTheme.primaryGreen)
+            Text(value).font(.caption.weight(.semibold).monospacedDigit())
+            Text(label).font(.caption2).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - Quick Actions (Report Issue)
+    private var quickActionsRow: some View {
+        NavigationLink {
+            ReportIssueView(user: user, vehicle: vm.assignedVehicle)
+        } label: {
+            HStack(spacing: 16) {
+                ZStack {
+                    Circle().fill(AppTheme.statusDanger.opacity(0.1)).frame(width: 44, height: 44)
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.headline).foregroundStyle(AppTheme.statusDanger)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Report Issue").font(.headline).foregroundStyle(.primary)
+                    Text("Log defect or safety concern").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color(.tertiaryLabel))
+            }
+            .padding(18)
+            .cardStyle()
+        }
     }
 
     // MARK: - Stats Row
@@ -485,11 +373,9 @@ struct DriverDashboardView: View {
 
             if vm.upcomingTrips.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("No upcoming trips")
-                        .font(.subheadline.weight(.semibold))
+                    Text("No upcoming trips").font(.subheadline.weight(.semibold))
                     Text("You are all caught up. New assignments will appear here.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(14)
@@ -517,21 +403,12 @@ struct DriverDashboardView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(trip.endLocation)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.primary)
+                Text(trip.endLocation).font(.subheadline.weight(.medium)).foregroundStyle(.primary)
                 HStack(spacing: 4) {
-                    Text("ETA")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(trip.scheduledStartTime, style: .time)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text("•")
-                        .foregroundStyle(.secondary)
-                    Text(trip.formattedDistance)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    Text("ETA").font(.caption).foregroundStyle(.secondary)
+                    Text(trip.scheduledStartTime, style: .time).font(.caption).foregroundStyle(.secondary)
+                    Text("•").foregroundStyle(.secondary)
+                    Text(trip.formattedDistance).font(.caption).foregroundStyle(.secondary)
                 }
             }
 
@@ -540,9 +417,7 @@ struct DriverDashboardView: View {
             if Calendar.current.isDateInToday(trip.scheduledStartTime) {
                 StatusBadge(text: "Today", color: AppTheme.primaryGreen)
             } else {
-                Text(trip.scheduledStartTime, style: .date)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Text(trip.scheduledStartTime, style: .date).font(.caption2).foregroundStyle(.secondary)
             }
         }
         .padding(14)

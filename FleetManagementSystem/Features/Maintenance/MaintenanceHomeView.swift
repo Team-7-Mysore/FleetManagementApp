@@ -1,13 +1,15 @@
 import SwiftUI
 
 struct MaintenanceHomeView: View {
+    let profile: UserProfile?
+    let onSignOut: () async -> Void
+    
     var body: some View {
         TabView {
-            WorkOrdersView()
+            WorkOrdersView(profile: profile, onSignOut: onSignOut)
                 .tabItem {
                     Label("Work Orders", systemImage: "list.bullet")
                 }
-
 
             InventoryView()
                 .tabItem {
@@ -23,5 +25,5 @@ struct MaintenanceHomeView: View {
 }
 
 #Preview {
-    MaintenanceHomeView()
+    MaintenanceHomeView(profile: nil, onSignOut: {})
 }

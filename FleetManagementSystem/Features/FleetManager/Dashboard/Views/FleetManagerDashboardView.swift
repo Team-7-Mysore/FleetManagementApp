@@ -55,7 +55,7 @@ struct FleetManagerDashboardView_Previews: PreviewProvider {
                 userId: UUID(),
                 name: "Fleet Manager",
                 email: "manager@fleet.com",
-                role: .manager,
+                role: .fleetManager,
                 phoneNumber: nil,
                 createdAt: nil,
                 createdBy: nil,

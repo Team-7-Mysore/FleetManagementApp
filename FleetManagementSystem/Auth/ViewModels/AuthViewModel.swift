@@ -33,11 +33,32 @@ final class AuthViewModel: ObservableObject {
         errorMessage = nil
 
         do {
+            print("🔐 Attempting sign in for: \(trimmedEmail)")
             let profile = try await authService.signIn(email: trimmedEmail, password: password)
+            print("✅ Sign in successful. Profile: \(profile.name), Role: \(profile.role.rawValue)")
             appSession.setAuthenticated(profile: profile)
             password = ""
         } catch {
-            errorMessage = "Invalid credentials or profile setup issue."
+            print("❌ Sign in error: \(error)")
+            print("❌ Error details: \(error.localizedDescription)")
+            
+            // Provide more specific error messages
+            if let decodingError = error as? DecodingError {
+                switch decodingError {
+                case .keyNotFound(let key, _):
+                    errorMessage = "Profile setup incomplete. Missing: \(key.stringValue)"
+                case .typeMismatch(let type, let context):
+                    errorMessage = "Profile data mismatch for: \(context.codingPath.last?.stringValue ?? "unknown")"
+                case .valueNotFound(let type, let context):
+                    errorMessage = "Missing required value: \(context.codingPath.last?.stringValue ?? "unknown")"
+                case .dataCorrupted(let context):
+                    errorMessage = "Profile data corrupted: \(context.debugDescription)"
+                @unknown default:
+                    errorMessage = "Profile decoding error: \(error.localizedDescription)"
+                }
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
 
         isSigningIn = false

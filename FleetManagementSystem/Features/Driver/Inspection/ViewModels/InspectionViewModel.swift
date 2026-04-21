@@ -2,6 +2,69 @@ import Foundation
 import Combine
 import Supabase
 
+// MARK: - Inspection Service (in-memory, local)
+// Handles all inspection logic locally since inspections table only stores metadata
+final class InspectionService {
+    static let shared = InspectionService()
+    private init() {}
+
+    private var inspections: [Inspection] = []
+
+    func currentInspection(forDriver driverId: UUID) -> Inspection? {
+        inspections.first { $0.driverId == driverId && !$0.isSubmitted }
+    }
+
+    func inspectionHistory(forDriver driverId: UUID) -> [Inspection] {
+        inspections.filter { $0.driverId == driverId && $0.isSubmitted }
+    }
+
+    func createNewInspection(vehicleId: UUID, driverId: UUID, type: InspectionType) -> Inspection {
+        let items = defaultChecklistItems(for: type)
+        let inspection = Inspection(
+            id: UUID(),
+            vehicleId: vehicleId,
+            driverId: driverId,
+            type: type,
+            date: Date(),
+            items: items,
+            overallNotes: "",
+            isSubmitted: false
+        )
+        inspections.append(inspection)
+        return inspection
+    }
+
+    func updateItemStatus(inspectionId: UUID, itemId: UUID, status: InspectionItemStatus, notes: String = "") {
+        guard let inspIdx = inspections.firstIndex(where: { $0.id == inspectionId }) else { return }
+        guard let itemIdx = inspections[inspIdx].items.firstIndex(where: { $0.id == itemId }) else { return }
+        inspections[inspIdx].items[itemIdx].status = status
+        if !notes.isEmpty {
+            inspections[inspIdx].items[itemIdx].notes = notes
+        }
+    }
+
+    func submitInspection(id: UUID, notes: String) {
+        guard let idx = inspections.firstIndex(where: { $0.id == id }) else { return }
+        inspections[idx].overallNotes = notes
+        inspections[idx].isSubmitted = true
+    }
+
+    private func defaultChecklistItems(for type: InspectionType) -> [InspectionItem] {
+        let prefix = type == .preTrip ? "Pre-trip: " : "Post-trip: "
+        return [
+            InspectionItem(id: UUID(), name: "\(prefix)Tires", category: "Exterior", status: .pending, notes: ""),
+            InspectionItem(id: UUID(), name: "\(prefix)Lights", category: "Exterior", status: .pending, notes: ""),
+            InspectionItem(id: UUID(), name: "\(prefix)Mirrors", category: "Exterior", status: .pending, notes: ""),
+            InspectionItem(id: UUID(), name: "\(prefix)Brakes", category: "Mechanical", status: .pending, notes: ""),
+            InspectionItem(id: UUID(), name: "\(prefix)Engine Oil", category: "Mechanical", status: .pending, notes: ""),
+            InspectionItem(id: UUID(), name: "\(prefix)Fuel Level", category: "Mechanical", status: .pending, notes: ""),
+            InspectionItem(id: UUID(), name: "\(prefix)Seat Belts", category: "Safety", status: .pending, notes: ""),
+            InspectionItem(id: UUID(), name: "\(prefix)Fire Extinguisher", category: "Safety", status: .pending, notes: ""),
+            InspectionItem(id: UUID(), name: "\(prefix)Documents", category: "Administrative", status: .pending, notes: ""),
+        ]
+    }
+}
+
 // MARK: - Inspection ViewModel
 @MainActor
 final class InspectionViewModel: ObservableObject {
@@ -27,16 +90,12 @@ final class InspectionViewModel: ObservableObject {
         history = service.inspectionHistory(forDriver: user.id)
     }
 
-    // MARK: - Auto-start inspection when coming from a trip
     func loadDataAndAutoStart(for trip: TripMap?, type: InspectionType = .preTrip) {
         currentInspection = service.currentInspection(forDriver: user.id)
         history = service.inspectionHistory(forDriver: user.id)
 
         guard trip != nil, currentInspection == nil else { return }
 
-        // Use trip's vehicleId if available, else fall back to placeholder
-        // InspectionService only needs vehicleId for record-keeping,
-        // all checklist items are hardcoded so this always works
         let vehicleId = (trip?.vehicleId != UUID(uuidString: "00000000-0000-0000-0000-000000000000"))
             ? (trip?.vehicleId ?? UUID())
             : UUID()
@@ -47,7 +106,6 @@ final class InspectionViewModel: ObservableObject {
             type: type
         )
 
-        // Reload after creation
         currentInspection = service.currentInspection(forDriver: user.id)
         history = service.inspectionHistory(forDriver: user.id)
     }
@@ -70,7 +128,6 @@ final class InspectionViewModel: ObservableObject {
     }
 
     func startNewInspection(type: InspectionType) {
-        // Always works — vehicle ID is just for record keeping
         let vehicleId = UUID()
         _ = service.createNewInspection(
             vehicleId: vehicleId,
@@ -84,7 +141,6 @@ final class InspectionViewModel: ObservableObject {
         guard let inspection = currentInspection else { return }
         service.submitInspection(id: inspection.id, notes: notes)
 
-        // Update trip status in Supabase
         Task {
             do {
                 try await SupabaseManager.shared.client
@@ -106,7 +162,6 @@ final class InspectionViewModel: ObservableObject {
         guard let inspection = currentInspection else { return }
         service.submitInspection(id: inspection.id, notes: notes)
 
-        // Mark trip as completed in Supabase after post-trip inspection.
         Task {
             do {
                 try await SupabaseManager.shared.client

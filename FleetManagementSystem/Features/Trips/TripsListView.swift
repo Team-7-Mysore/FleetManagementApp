@@ -1,7 +1,16 @@
 import SwiftUI
 
 struct TripsListView: View {
+    let profile: UserProfile?
+    let onSignOut: () async -> Void
+    
     @StateObject private var vm = TripListViewModel()
+    @State private var showingProfile = false
+    
+    init(profile: UserProfile? = nil, onSignOut: @escaping () async -> Void = {}) {
+        self.profile = profile
+        self.onSignOut = onSignOut
+    }
 
     private var displayedTrips: [Trip] {
         let trimmedSearch = vm.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -45,6 +54,13 @@ struct TripsListView: View {
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         toolbarIconButton(systemName: "calendar")
                         toolbarIconButton(systemName: "bell")
+                        Button(action: {
+                            showingProfile = true
+                        }) {
+                            Image(systemName: "person.circle")
+                                .font(.title3)
+                                .foregroundColor(.TechBlue)
+                        }
                     }
                 }
                 .task {
@@ -53,6 +69,11 @@ struct TripsListView: View {
                 }
                 .refreshable {
                     await vm.fetchTrips()
+                }
+                .sheet(isPresented: $showingProfile) {
+                    FleetManagerProfileView(profile: profile, onSignOut: onSignOut)
+                        .presentationDetents([.medium])
+                        .presentationDragIndicator(.visible)
                 }
 
                 floatingActionButton

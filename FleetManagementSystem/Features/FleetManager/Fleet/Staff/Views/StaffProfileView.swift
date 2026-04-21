@@ -15,7 +15,7 @@ struct StaffProfileView: View {
         switch staff.role {
         case .driver:      return Color(red: 59/255,  green: 13/255,  blue: 17/255)
         case .maintenance: return Color(red: 30/255,  green: 80/255,  blue: 160/255)
-        case .manager:     return Color(red: 40/255,  green: 120/255, blue: 70/255)
+        case .fleetManager:     return Color(red: 40/255,  green: 120/255, blue: 70/255)
         }
     }
 

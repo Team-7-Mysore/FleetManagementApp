@@ -6,7 +6,7 @@ struct Sender: SenderType {
     let displayName: String
 }
 
-struct Message: MessageKit.MessageType {
+struct MessageKitMessage: MessageKit.MessageType {
     let sender: SenderType
     let messageId: String
     let sentDate: Date

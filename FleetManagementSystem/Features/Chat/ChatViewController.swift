@@ -9,7 +9,7 @@ class ChatViewController: MessagesViewController {
     var otherUser: Sender
     var viewModel: ChatViewModel
     
-    private var messages: [Message] = []
+    private var messages: [MessageKitMessage] = []
     private var timer: Timer?
 
     init(chatRoomId: UUID, currentUser: Sender, otherUser: Sender, viewModel: ChatViewModel) {
@@ -65,7 +65,7 @@ class ChatViewController: MessagesViewController {
             await viewModel.fetchMessages(chatRoomId: chatRoomId)
             self.messages = viewModel.messages.map { msg in
                 let isCurrent = msg.senderId.uuidString == currentUser.senderId
-                return Message(chatMessage: msg, senderName: isCurrent ? currentUser.displayName : otherUser.displayName)
+                return MessageKitMessage(chatMessage: msg, senderName: isCurrent ? currentUser.displayName : otherUser.displayName)
             }
             messagesCollectionView.reloadData()
             messagesCollectionView.scrollToLastItem(animated: true)

@@ -1,7 +1,7 @@
 import Foundation
 
-// MARK: - Message
-struct Message: Identifiable, Codable {
+// MARK: - AppMessage
+struct AppMessage: Identifiable, Codable {
     let id: UUID
     var senderId: UUID
     var receiverId: UUID
@@ -18,6 +18,6 @@ struct Message: Identifiable, Codable {
 struct Conversation: Identifiable {
     let id: UUID
     let otherUser: User
-    let lastMessage: Message?
+    let lastMessage: AppMessage?
     let unreadCount: Int
 }

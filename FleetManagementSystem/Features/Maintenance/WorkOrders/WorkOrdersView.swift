@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct WorkOrdersView: View {
+    let profile: UserProfile?
+    let onSignOut: () async -> Void
+    
     // Injecting the ViewModel to get real data silently
     @StateObject private var viewModel = WorkOrderViewModel()
 
@@ -8,6 +11,7 @@ struct WorkOrdersView: View {
     @State private var selectedDetailOrder: WorkOrder?
     @State private var selectedReportOrder: WorkOrder?
     @State private var showingAddOrder: Bool = false
+    @State private var showingProfile: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -94,6 +98,17 @@ struct WorkOrdersView: View {
             }
             .navigationTitle("Work Orders")
             .background(Color(uiColor: .systemGroupedBackground))
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        showingProfile = true
+                    }) {
+                        Image(systemName: "person.circle")
+                            .font(.title3)
+                            .foregroundColor(Color(hex: "#A3352A"))
+                    }
+                }
+            }
             .task {
                 if viewModel.workOrders.isEmpty {
                     await viewModel.fetchWorkOrders()
@@ -150,6 +165,11 @@ struct WorkOrdersView: View {
                 NavigationStack {
                     AddEditWorkOrderView()
                 }
+            }
+            .sheet(isPresented: $showingProfile) {
+                MaintenanceProfileView(profile: profile, onSignOut: onSignOut)
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
             }
         }
     }
@@ -468,5 +488,5 @@ struct PriorityTagView: View {
 }
 
 #Preview {
-    WorkOrdersView()
+    WorkOrdersView(profile: nil, onSignOut: {})
 }
