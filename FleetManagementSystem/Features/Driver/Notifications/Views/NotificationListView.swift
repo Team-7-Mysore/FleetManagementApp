@@ -9,25 +9,28 @@ struct NotificationListView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 8) {
-                    if notifications.isEmpty {
-                        EmptyStateView(
-                            icon: "bell.slash",
-                            title: "No Notifications",
-                            message: "You're all caught up!"
-                        )
-                        .padding(.top, 60)
-                    } else {
-                        ForEach(notifications) { notification in
-                            notificationRow(notification)
+            ZStack {
+                AppTheme.pageBackground.ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 8) {
+                        if notifications.isEmpty {
+                            EmptyStateView(
+                                icon: "bell.slash",
+                                title: "No Notifications",
+                                message: "You're all caught up!"
+                            )
+                            .padding(.top, 60)
+                        } else {
+                            ForEach(notifications) { notification in
+                                notificationRow(notification)
+                            }
                         }
                     }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
                 }
-                .padding(.horizontal)
-                .padding(.top, 8)
             }
-            .background(AppTheme.pageBackground)
             .navigationTitle("Notifications")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
