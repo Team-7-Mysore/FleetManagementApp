@@ -73,13 +73,15 @@ class VehicleDetailViewModel: ObservableObject {
                     vehicle_type,
                     fuel_type,
                     model_year,
-                    documents:vehicle_documents(document_id, document_type, file_url, file_name, uploaded_at)
+                    vehicle_documents(document_id, document_type, file_url, file_name, uploaded_at)
                 """)
-                .eq("vehicle_id", value: vehicleId.uuidString.lowercased())
+                .eq("vehicle_id", value: vehicleId)
                 .single()
                 .execute()
 
+            print("Vehicle detail response:", String(data: response.data, encoding: .utf8) ?? "")
             let detail = try Self.parseVehicleDetail(from: response.data)
+            print("Vehicle documents count:", detail.documents.count)
             self.vehicle = detail.vehicle
             self.documents = detail.documents
         } catch {
@@ -203,7 +205,7 @@ private extension VehicleDetailViewModel {
         let vehicleData = try JSONSerialization.data(withJSONObject: row)
         let vehicle = try parseVehicle(from: vehicleData)
 
-        let nestedDocuments = row["documents"] ?? row["vehicle_documents"] ?? []
+        let nestedDocuments = row["vehicle_documents"] ?? []
         let documentData = try JSONSerialization.data(withJSONObject: nestedDocuments)
         let documents = try parseDocuments(from: documentData)
         return (vehicle, documents)
