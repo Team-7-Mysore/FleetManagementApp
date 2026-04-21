@@ -40,8 +40,15 @@ class AddVehicleViewModel: ObservableObject {
     @Published var vehicleImageURL: String?
     @Published var localVehicleImage: UIImage?
     
+    // Original Filenames for display
+    @Published var rcFileName: String?
+    @Published var insuranceFileName: String?
+    @Published var pucFileName: String?
+    var isStep2Valid: Bool {
+        return rcURL != nil && insuranceURL != nil
+    }
+    
     func validate() -> String? {
-        
         if vehicleName.trimmingCharacters(in: .whitespaces).isEmpty {
             return "Vehicle name is required"
         }
@@ -54,8 +61,30 @@ class AddVehicleViewModel: ObservableObject {
             return "RC document is required"
         }
         
+        if insuranceURL == nil {
+            return "Insurance document is required"
+        }
+        
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        
+        if calendar.startOfDay(for: rcExpiry) < today {
+            return "RC document is expired. Please provide a valid expiry date."
+        }
+        
+        if calendar.startOfDay(for: pucExpiry) < today {
+            return "PUC document is expired. Please provide a valid expiry date."
+        }
+        
         return nil
     }
+    var isStep1Valid: Bool {
+        !vehicleName.trimmingCharacters(in: .whitespaces).isEmpty &&
+        !brand.trimmingCharacters(in: .whitespaces).isEmpty &&
+        isValidPlate(registrationNumber) &&
+        vin.count == 17
+    }
+
     func validateStep1() -> String? {
         if vehicleName.trimmingCharacters(in: .whitespaces).isEmpty {
             return "Vehicle name is required"
@@ -64,11 +93,20 @@ class AddVehicleViewModel: ObservableObject {
             return "Registration number is required"
         }
         if !isValidPlate(registrationNumber) {
-               return "Enter valid number plate (e.g. KA01AB1234)"
-           }
+            return "Enter valid number plate (e.g. KA01AB1234)"
+        }
+        
+        if brand.trimmingCharacters(in: .whitespaces).isEmpty {
+            return "Brand is required"
+        }
+        
+        if vin.trimmingCharacters(in: .whitespaces).isEmpty {
+            return "VIN is required"
+        }
         if vin.count != 17 {
             return "VIN must be exactly 17 characters"
         }
+        
         return nil
     }
     func formatPlate(_ input: String) -> String {
@@ -123,10 +161,13 @@ extension AddVehicleViewModel {
                 switch type {
                 case "RC":
                     self.rcURL = publicURL
+                    self.rcFileName = "Photo_RC.jpg"
                 case "INSURANCE":
                     self.insuranceURL = publicURL
+                    self.insuranceFileName = "Photo_Insurance.jpg"
                 case "PUC":
                     self.pucURL = publicURL
+                    self.pucFileName = "Photo_PUC.jpg"
                 case "VEHICLE":
                     self.vehicleImageURL = publicURL
                 default:
@@ -181,10 +222,17 @@ extension AddVehicleViewModel {
             let publicURL = "\(SUPABASE_URL)/storage/v1/object/public/vehicle-documents/\(fileName)"
             
             DispatchQueue.main.async {
+                let originalName = fileURL.lastPathComponent
                 switch type {
-                case "RC": self.rcURL = publicURL
-                case "INSURANCE": self.insuranceURL = publicURL
-                case "PUC": self.pucURL = publicURL
+                case "RC":
+                    self.rcURL = publicURL
+                    self.rcFileName = originalName
+                case "INSURANCE":
+                    self.insuranceURL = publicURL
+                    self.insuranceFileName = originalName
+                case "PUC":
+                    self.pucURL = publicURL
+                    self.pucFileName = originalName
                 default: break
                 }
             }
@@ -229,13 +277,36 @@ extension AddVehicleViewModel {
                     image_url: vehicleImageURL?.nilIfBlank
                 )
 
-                try await SupabaseManager.shared.client
+                let response = try await SupabaseManager.shared.client
                     .from("vehicles")
                     .insert(newVehicle)
+                    .select("vehicle_id")
+                    .single()
                     .execute()
+                
+                // Get the generated ID
+                guard let row = try JSONSerialization.jsonObject(with: response.data) as? [String: Any],
+                      let idString = row["vehicle_id"] as? String,
+                      let vehicleId = UUID(uuidString: idString) else {
+                    throw NSError(domain: "AddVehicle", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to retrieve vehicle ID after insert"])
+                }
+                
+                // Now insert documents
+                let docs = [
+                    rcURL != nil ? ["vehicle_id": vehicleId.uuidString, "document_type": "RC", "file_url": rcURL!] : nil,
+                    insuranceURL != nil ? ["vehicle_id": vehicleId.uuidString, "document_type": "INSURANCE", "file_url": insuranceURL!] : nil,
+                    pucURL != nil ? ["vehicle_id": vehicleId.uuidString, "document_type": "PUC", "file_url": pucURL!] : nil
+                ].compactMap { $0 }
+                
+                if !docs.isEmpty {
+                    try await SupabaseManager.shared.client
+                        .from("vehicle_documents")
+                        .insert(docs)
+                        .execute()
+                }
             } catch {
                 let errorText = error.localizedDescription.lowercased()
-                if errorText.contains("row-level security") {
+                if errorText.contains("row-level security") || errorText.contains("403") {
                     try await saveVehicleViaEdgeFunction()
                 } else {
                     throw error
@@ -259,9 +330,9 @@ extension AddVehicleViewModel {
         }
 
         let documents = [
-            rcURL != nil ? ["type": "RC", "url": rcURL!] : nil,
-            insuranceURL != nil ? ["type": "INSURANCE", "url": insuranceURL!] : nil,
-            pucURL != nil ? ["type": "PUC", "url": pucURL!] : nil
+            rcURL != nil ? ["document_type": "RC", "type": "RC", "file_url": rcURL!, "url": rcURL!] : nil,
+            insuranceURL != nil ? ["document_type": "INSURANCE", "type": "INSURANCE", "file_url": insuranceURL!, "url": insuranceURL!] : nil,
+            pucURL != nil ? ["document_type": "PUC", "type": "PUC", "file_url": pucURL!, "url": pucURL!] : nil
         ].compactMap { $0 }
 
         let payload: [String: Any] = [

@@ -6,20 +6,16 @@
 //
 
 import SwiftUI
+
 struct CustomDropdown: View {
-    
     let title: String
     let options: [String]
     @Binding var selection: String
-    
-    
+    var isOptional: Bool = false
+    var showDivider: Bool = true
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            
-            Text(title)
-                .font(.caption)
-                .foregroundColor(Color(.systemGray))
+        VStack(spacing: 0) {
             Menu {
                 ForEach(options, id: \.self) { option in
                     Button(option) {
@@ -28,22 +24,33 @@ struct CustomDropdown: View {
                 }
             } label: {
                 HStack {
-                    Text(selection)
-                        .foregroundColor(.primary)
-                        .font(.subheadline)
+                    HStack(spacing: 4) {
+                        Text(title)
+                            .font(.subheadline)
+                            .foregroundColor(.primary)
+                        
+                        if isOptional {
+                            Text("(optional)")
+                                .font(.caption2)
+                                .foregroundColor(Color(.placeholderText))
+                        }
+                    }
+                    
                     Spacer()
-                    Image(systemName: "chevron.up.chevron.down")
-                        .foregroundColor(Color(.systemGray))
-                        .font(.caption)
+                    
+                    HStack(spacing: 4) {
+                        Text(selection)
+                            .foregroundColor(.TechBlue)
+                            .font(.body)
+                    }
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(Color(.systemBackground))
-                .cornerRadius(6)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color(.systemGray4), lineWidth: 0.5)
-                )
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+            }
+            
+            if showDivider {
+                Divider()
+                    .padding(.leading, 16)
             }
         }
     }

@@ -1,6 +1,6 @@
 import SwiftUI
+
 struct FormCard<Content: View>: View {
-    
     let title: String
     let icon: String
     let content: Content
@@ -12,21 +12,27 @@ struct FormCard<Content: View>: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            
-            HStack {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .foregroundColor(Color.TechBlue)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
                 
                 Text(title)
-                    .font(.headline)
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
             }
+            .padding(.leading, 24)
+            .padding(.top, 10)
             
-            content
+            VStack(spacing: 0) {
+                content
+            }
+            .padding(.vertical, 8)
+            .background(Color(.systemBackground))
+            .cornerRadius(20)
+            .padding(.horizontal)
         }
-        .padding()
-        .background(Color.white)
-        .cornerRadius(20)
-        .padding(.horizontal)
     }
 }

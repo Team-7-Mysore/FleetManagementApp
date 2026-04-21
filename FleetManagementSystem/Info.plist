@@ -2,13 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleDocumentTypes</key>
-	<array>
-		<dict>
-			<key>LSHandlerRank</key>
-			<string>Default</string>
-		</dict>
-	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs photo library access to upload vehicle documents.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>This app needs camera access to capture vehicle documents.</string>
+	<key>CFBundleIdentifier</key>
+	<string></string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
