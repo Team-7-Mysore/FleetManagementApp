@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct MaintenanceHomeView: View {
+    @StateObject private var inventoryViewModel = InventoryViewModel()
+
     var body: some View {
         TabView {
             WorkOrdersView()
@@ -9,7 +11,7 @@ struct MaintenanceHomeView: View {
                 }
 
 
-            InventoryView()
+            InventoryView(viewModel: inventoryViewModel)
                 .tabItem {
                     Label("Inventory", systemImage: "cube.box")
                 }
@@ -19,6 +21,7 @@ struct MaintenanceHomeView: View {
                     Label("Chat", systemImage: "message")
                 }
         }
+        .tint(Color(red: 163/255, green: 53/255, blue: 42/255))
     }
 }
 

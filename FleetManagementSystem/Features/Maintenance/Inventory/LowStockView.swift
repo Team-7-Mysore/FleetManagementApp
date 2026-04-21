@@ -3,6 +3,8 @@ import SwiftUI
 struct LowStockView: View {
     @ObservedObject var viewModel: InventoryViewModel
     @State private var selectedItem: InventoryItem?
+    @State private var showDeleteAlert = false
+    @State private var itemToDelete: InventoryItem?
     
     var lowStockItems: [InventoryItem] {
         viewModel.items.filter { $0.quantity <= 10 }
@@ -28,19 +30,28 @@ struct LowStockView: View {
                         .padding(.horizontal, 40)
                 }
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 12) {
-                        ForEach(lowStockItems) { item in
-                            Button {
+                List {
+                    ForEach(lowStockItems) { item in
+                        inventoryRow(for: item)
+                            .padding(.horizontal, 16)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
                                 selectedItem = item
-                            } label: {
-                                inventoryRow(for: item)
                             }
-                            .buttonStyle(PlainButtonStyle())
+                            .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                itemToDelete = item
+                                showDeleteAlert = true
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
                         }
                     }
-                    .padding(16)
                 }
+                .listStyle(.plain)
             }
         }
         .navigationTitle("Low Stock")
@@ -48,6 +59,39 @@ struct LowStockView: View {
             NavigationStack {
                 PartDetailView(viewModel: viewModel, item: item)
             }
+        }
+        .onAppear {
+            if viewModel.items.isEmpty {
+                Task {
+                    await viewModel.fetchInventory()
+                }
+            }
+        }
+        .alert("Delete Part", isPresented: $showDeleteAlert) {
+            Button("Delete", role: .destructive) {
+                if let item = itemToDelete {
+                    Task {
+                        do {
+                            try await viewModel.deleteInventoryItem(id: item.inventoryId)
+                        } catch {
+                            print("DELETE ERROR:", error.localizedDescription)
+                        }
+                        itemToDelete = nil
+                    }
+                }
+            }
+            Button("Cancel", role: .cancel) { 
+                itemToDelete = nil
+            }
+        } message: {
+            Text("Are you sure you want to delete this part? This action cannot be undone.")
+        }
+        .alert(item: $viewModel.deleteErrorMessage) { alertItem in
+            Alert(
+                title: Text("Cannot Delete"),
+                message: Text(alertItem.message),
+                dismissButton: .default(Text("OK"))
+            )
         }
     }
     
