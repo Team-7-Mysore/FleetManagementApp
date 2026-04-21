@@ -120,13 +120,28 @@ struct VehicleDetailView: View {
 
             VStack(spacing: 0) {
 
-                if vm.documents.isEmpty {
-                    Text("No documents")
-                        .padding()
+                if let documentsErrorMessage = vm.documentsErrorMessage {
+                    Text(documentsErrorMessage)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
+                } else if vm.documents.isEmpty {
+                    Text("No documents uploaded yet.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(16)
                 } else {
-                    ForEach(vm.documents) { doc in
-                        DocumentRow(document: doc)
+                    ForEach(vm.documents) { document in
+                        if let url = URL(string: document.fileURL) {
+                            Link(destination: url) {
+                                DocumentRow(document: document)
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            DocumentRow(document: document)
+                        }
                     }
                 }
 
@@ -161,12 +176,96 @@ struct DocumentRow: View {
     let document: VehicleDocument
 
     var body: some View {
-        HStack {
-            Text(document.title)
+        HStack(spacing: 12) {
+            if isImageDocument, let url = URL(string: document.fileURL) {
+                AsyncImage(url: url) { image in
+                    image
+                        .resizable()
+                        .scaledToFill()
+                } placeholder: {
+                    iconBadge
+                }
+                .frame(width: 54, height: 54)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else {
+                iconBadge
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(document.title)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.primary)
+
+                Text(isImageDocument ? "Image Document" : "Open Document")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+
             Spacer()
-            Text("View")
-                .foregroundColor(.blue)
+
+            Text(document.statusText)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(statusColor)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.secondary)
         }
-        .padding()
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+    }
+
+    private var isImageDocument: Bool {
+        guard let url = URL(string: document.fileURL) else { return false }
+        let ext = url.pathExtension.lowercased()
+        return ["jpg", "jpeg", "png", "webp", "heic"].contains(ext)
+    }
+
+    private var iconBadge: some View {
+        Image(systemName: iconName)
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundColor(iconColor)
+            .frame(width: 30, height: 30)
+            .background(iconColor.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var iconName: String {
+        switch document.type.uppercased() {
+        case "RC":
+            return "doc.text.fill"
+        case "INSURANCE":
+            return "shield.lefthalf.filled"
+        case "PUC":
+            return "doc.badge.gearshape"
+        default:
+            return "doc.fill"
+        }
+    }
+
+    private var iconColor: Color {
+        switch document.type.uppercased() {
+        case "RC":
+            return .green
+        case "INSURANCE":
+            return .orange
+        case "PUC":
+            return .red
+        default:
+            return .blue
+        }
+    }
+
+    private var statusColor: Color {
+        switch document.type.uppercased() {
+        case "RC":
+            return .green
+        case "INSURANCE":
+            return .orange
+        case "PUC":
+            return .red
+        default:
+            return .secondary
+        }
     }
 }

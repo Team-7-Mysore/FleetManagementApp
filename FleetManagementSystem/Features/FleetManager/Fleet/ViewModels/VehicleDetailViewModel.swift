@@ -3,24 +3,39 @@ import Combine
 import Supabase
 import UIKit
 
-// MARK: - Model
 struct VehicleDocument: Identifiable, Hashable {
     let id: String
     let type: String
     var fileURL: String
 
     var title: String {
-        switch type {
-        case "RC": return "RC"
-        case "INSURANCE": return "Insurance"
-        case "PUC": return "PUC"
-        default: return type
+        switch type.uppercased() {
+        case "RC":
+            return "RC"
+        case "INSURANCE":
+            return "Insurance"
+        case "PUC":
+            return "PUC"
+        default:
+            return type.capitalized
+        }
+    }
+
+    var statusText: String {
+        switch type.uppercased() {
+        case "RC":
+            return "Valid"
+        case "INSURANCE":
+            return "Expiring Soon"
+        case "PUC":
+            return "Expired"
+        default:
+            return "Available"
         }
     }
 }
 
-// MARK: - Update Payload (FIX FOR ENCODABLE ERROR)
-struct VehicleUpdatePayload: Encodable {
+private struct VehicleUpdatePayload: Encodable {
     let vehicle_name: String
     let number_plate: String
     let brand: String?
@@ -31,7 +46,6 @@ struct VehicleUpdatePayload: Encodable {
     let model_year: String?
 }
 
-// MARK: - ViewModel
 @MainActor
 class VehicleDetailViewModel: ObservableObject {
 
@@ -39,53 +53,49 @@ class VehicleDetailViewModel: ObservableObject {
     @Published var documents: [VehicleDocument] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var documentsErrorMessage: String?
 
-    // MARK: - FETCH VEHICLE
     func fetchVehicle(vehicleId: UUID) async {
         isLoading = true
         errorMessage = nil
-        documents = []
+        documentsErrorMessage = nil
 
         do {
             let response = try await SupabaseManager.shared.client
                 .from("vehicles")
-                .select("*")
+                .select("""
+                    vehicle_id,
+                    vehicle_name,
+                    number_plate,
+                    brand,
+                    model,
+                    image_url,
+                    vehicle_type,
+                    fuel_type,
+                    model_year,
+                    documents:vehicle_documents(document_id, document_type, file_url, file_name, uploaded_at)
+                """)
                 .eq("vehicle_id", value: vehicleId.uuidString.lowercased())
                 .single()
                 .execute()
 
-            self.vehicle = try Self.parseVehicle(from: response.data)
-            await fetchDocuments(vehicleId: vehicleId)
-
+            let detail = try Self.parseVehicleDetail(from: response.data)
+            self.vehicle = detail.vehicle
+            self.documents = detail.documents
         } catch {
+            print("Error fetching vehicle:", error)
             errorMessage = error.localizedDescription
+            documents = []
         }
 
         isLoading = false
     }
 
-    // MARK: - FETCH DOCUMENTS
-    private func fetchDocuments(vehicleId: UUID) async {
-        do {
-            let response = try await SupabaseManager.shared.client
-                .from("vehicle_documents")
-                .select("*")
-                .eq("vehicle_id", value: vehicleId.uuidString.lowercased())
-                .execute()
-
-            self.documents = try Self.parseDocuments(from: response.data)
-
-        } catch {
-            print("❌ Document fetch error:", error)
-            self.documents = []
-        }
-    }
-
-    // MARK: - UPDATE VEHICLE (FIXED)
     func updateVehicle() async -> Bool {
         guard let vehicle else { return false }
 
         do {
+            errorMessage = nil
             let payload = VehicleUpdatePayload(
                 vehicle_name: vehicle.name,
                 number_plate: vehicle.registrationNumber,
@@ -100,14 +110,13 @@ class VehicleDetailViewModel: ObservableObject {
             try await SupabaseManager.shared.client
                 .from("vehicles")
                 .update(payload)
-                .eq("vehicle_id", value: vehicle.id.uuidString.lowercased())
+                .eq("vehicle_id", value: vehicle.id)
                 .execute()
 
             try await syncDocuments(for: vehicle.id)
-
             return true
-
         } catch {
+            print("Update failed:", error)
             errorMessage = error.localizedDescription
             return false
         }
@@ -145,30 +154,34 @@ class VehicleDetailViewModel: ObservableObject {
         }
     }
 
-    // MARK: - 🔥 FIXED MISSING FUNCTION
     func setDocumentURL(_ url: String, for type: String) {
-        if let index = documents.firstIndex(where: { $0.type == type }) {
+        let normalizedType = type.uppercased()
+        if let index = documents.firstIndex(where: { $0.type.uppercased() == normalizedType }) {
             documents[index].fileURL = url
         } else {
-            documents.append(VehicleDocument(id: type, type: type, fileURL: url))
+            documents.append(VehicleDocument(id: normalizedType, type: normalizedType, fileURL: url))
         }
+        documents = Self.sortDocuments(documents)
     }
 
-    // MARK: - SYNC DOCUMENTS
     func syncDocuments(for vehicleID: UUID) async throws {
         try await SupabaseManager.shared.client
             .from("vehicle_documents")
             .delete()
-            .eq("vehicle_id", value: vehicleID.uuidString.lowercased())
+            .eq("vehicle_id", value: vehicleID)
             .execute()
 
-        let records = documents.map {
+        let records = documents
+            .filter { !$0.fileURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            .map {
             [
-                "vehicle_id": vehicleID.uuidString.lowercased(),
+                "vehicle_id": vehicleID.uuidString,
                 "document_type": $0.type,
                 "file_url": $0.fileURL
             ]
         }
+
+        guard !records.isEmpty else { return }
 
         try await SupabaseManager.shared.client
             .from("vehicle_documents")
@@ -177,33 +190,119 @@ class VehicleDetailViewModel: ObservableObject {
     }
 }
 
-// MARK: - Parsing
 private extension VehicleDetailViewModel {
+    static func parseVehicleDetail(from data: Data) throws -> (vehicle: Vehicle, documents: [VehicleDocument]) {
+        guard let row = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw NSError(
+                domain: "VehicleDetail",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Vehicle response was not a JSON object."]
+            )
+        }
+
+        let vehicleData = try JSONSerialization.data(withJSONObject: row)
+        let vehicle = try parseVehicle(from: vehicleData)
+
+        let nestedDocuments = row["documents"] ?? row["vehicle_documents"] ?? []
+        let documentData = try JSONSerialization.data(withJSONObject: nestedDocuments)
+        let documents = try parseDocuments(from: documentData)
+        return (vehicle, documents)
+    }
 
     static func parseVehicle(from data: Data) throws -> Vehicle {
-        let row = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        guard let row = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw NSError(
+                domain: "VehicleDetail",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Vehicle response was not a JSON object."]
+            )
+        }
+
+        guard let idString = stringValue(row["vehicle_id"]),
+              let id = UUID(uuidString: idString) else {
+            throw NSError(
+                domain: "VehicleDetail",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Vehicle record is missing a valid id."]
+            )
+        }
+
+        let plate = stringValue(row["number_plate"])
+        let name = stringValue(row["vehicle_name"])
+        let type = stringValue(row["vehicle_type"])
 
         return Vehicle(
-            id: UUID(uuidString: row["vehicle_id"] as! String)!,
-            name: row["vehicle_name"] as? String ?? "",
-            registrationNumber: row["number_plate"] as? String ?? "",
-            brand: row["brand"] as? String,
-            model: row["model"] as? String,
-            imageURL: row["image_url"] as? String,
-            vehicleType: row["vehicle_type"] as? String ?? "",
-            fuelType: row["fuel_type"] as? String,
-            modelYear: (row["model_year"] as? NSNumber)?.stringValue
+            id: id,
+            name: preferredText(name, fallback: plate, defaultValue: "Unnamed Vehicle"),
+            registrationNumber: preferredText(plate, fallback: nil, defaultValue: "No Plate"),
+            brand: stringValue(row["brand"]),
+            model: stringValue(row["model"]),
+            imageURL: stringValue(row["image_url"]),
+            vehicleType: preferredText(type, fallback: nil, defaultValue: "Unknown"),
+            fuelType: stringValue(row["fuel_type"]),
+            modelYear: stringValue(row["model_year"])
         )
     }
 
     static func parseDocuments(from data: Data) throws -> [VehicleDocument] {
-        let rows = try JSONSerialization.jsonObject(with: data) as! [[String: Any]]
+        guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            return []
+        }
 
-        return rows.compactMap {
-            guard let type = $0["document_type"] as? String,
-                  let url = $0["file_url"] as? String else { return nil }
+        let parsed: [VehicleDocument] = rows.compactMap { row in
+            guard let type = stringValue(row["document_type"])?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !type.isEmpty,
+                  let fileURL = stringValue(row["file_url"])?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !fileURL.isEmpty else {
+                return nil
+            }
 
-            return VehicleDocument(id: type, type: type, fileURL: url)
+            return VehicleDocument(
+                id: type.uppercased(),
+                type: type.uppercased(),
+                fileURL: fileURL
+            )
+        }
+
+        return sortDocuments(parsed)
+    }
+
+    static func stringValue(_ value: Any?) -> String? {
+        switch value {
+        case let string as String:
+            return string
+        case let number as NSNumber:
+            return number.stringValue
+        case is NSNull, nil:
+            return nil
+        default:
+            return String(describing: value!)
+        }
+    }
+
+    static func preferredText(_ primary: String?, fallback: String?, defaultValue: String) -> String {
+        let primaryTrimmed = primary?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let primaryTrimmed, !primaryTrimmed.isEmpty {
+            return primaryTrimmed
+        }
+
+        let fallbackTrimmed = fallback?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let fallbackTrimmed, !fallbackTrimmed.isEmpty {
+            return fallbackTrimmed
+        }
+
+        return defaultValue
+    }
+
+    static func sortDocuments(_ documents: [VehicleDocument]) -> [VehicleDocument] {
+        let ordering = ["RC": 0, "INSURANCE": 1, "PUC": 2]
+        return documents.sorted { lhs, rhs in
+            let lhsOrder = ordering[lhs.type.uppercased()] ?? 99
+            let rhsOrder = ordering[rhs.type.uppercased()] ?? 99
+            if lhsOrder == rhsOrder {
+                return lhs.title < rhs.title
+            }
+            return lhsOrder < rhsOrder
         }
     }
 }
