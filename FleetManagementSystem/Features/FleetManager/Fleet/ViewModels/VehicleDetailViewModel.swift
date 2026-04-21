@@ -59,6 +59,7 @@ class VehicleDetailViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
         documentsErrorMessage = nil
+        print("Opening vehicle detail id:", vehicleId.uuidString)
 
         do {
             let response = try await SupabaseManager.shared.client
@@ -72,18 +73,27 @@ class VehicleDetailViewModel: ObservableObject {
                     image_url,
                     vehicle_type,
                     fuel_type,
-                    model_year,
-                    vehicle_documents(document_id, document_type, file_url, file_name, uploaded_at)
+                    model_year
                 """)
-                .eq("vehicle_id", value: vehicleId)
+                .eq("vehicle_id", value: vehicleId.uuidString.lowercased())
                 .single()
                 .execute()
 
             print("Vehicle detail response:", String(data: response.data, encoding: .utf8) ?? "")
-            let detail = try Self.parseVehicleDetail(from: response.data)
-            print("Vehicle documents count:", detail.documents.count)
-            self.vehicle = detail.vehicle
-            self.documents = detail.documents
+            self.vehicle = try Self.parseVehicle(from: response.data)
+
+            do {
+                let documentsData = try await fetchVehicleDocumentsData(vehicleId: vehicleId)
+                print("Vehicle documents response:", String(data: documentsData, encoding: .utf8) ?? "")
+                let fetchedDocuments = try Self.parseDocuments(from: documentsData)
+                print("Vehicle documents count:", fetchedDocuments.count)
+                self.documents = fetchedDocuments
+                self.documentsErrorMessage = nil
+            } catch {
+                print("Error fetching vehicle documents:", error)
+                self.documents = []
+                self.documentsErrorMessage = error.localizedDescription
+            }
         } catch {
             print("Error fetching vehicle:", error)
             errorMessage = error.localizedDescription
@@ -193,6 +203,41 @@ class VehicleDetailViewModel: ObservableObject {
 }
 
 private extension VehicleDetailViewModel {
+    func fetchVehicleDocumentsData(vehicleId: UUID) async throws -> Data {
+        guard var components = URLComponents(string: "\(SUPABASE_URL)/rest/v1/vehicle_documents") else {
+            throw URLError(.badURL)
+        }
+
+        components.queryItems = [
+            URLQueryItem(name: "select", value: "document_id,document_type,file_url,file_name,uploaded_at"),
+            URLQueryItem(name: "vehicle_id", value: "eq.\(vehicleId.uuidString.lowercased())")
+        ]
+
+        guard let url = components.url else {
+            throw URLError(.badURL)
+        }
+
+        var request = URLRequest(url: url)
+        request.addValue(SUPABASE_ANON_KEY, forHTTPHeaderField: "apikey")
+        request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        guard 200..<300 ~= httpResponse.statusCode else {
+            let message = String(data: data, encoding: .utf8) ?? "Failed to fetch vehicle documents"
+            throw NSError(
+                domain: "VehicleDetail",
+                code: httpResponse.statusCode,
+                userInfo: [NSLocalizedDescriptionKey: message]
+            )
+        }
+
+        return data
+    }
+
     static func parseVehicleDetail(from data: Data) throws -> (vehicle: Vehicle, documents: [VehicleDocument]) {
         guard let row = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw NSError(

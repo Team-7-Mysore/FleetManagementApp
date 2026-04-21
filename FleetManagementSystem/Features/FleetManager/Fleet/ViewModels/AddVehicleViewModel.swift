@@ -265,18 +265,19 @@ extension AddVehicleViewModel {
         }
 
         do {
-            do {
-                let newVehicle = VehicleInsert(
-                    vehicle_name: vehicleName.trimmingCharacters(in: .whitespacesAndNewlines),
-                    number_plate: registrationNumber.trimmingCharacters(in: .whitespacesAndNewlines),
-                    brand: brand.nilIfBlank,
-                    model_year: Int(modelYear.trimmingCharacters(in: .whitespacesAndNewlines)),
-                    vehicle_type: vehicleType.trimmingCharacters(in: .whitespacesAndNewlines),
-                    fuel_type: fuelType.nilIfBlank,
-                    model: model.nilIfBlank,
-                    image_url: vehicleImageURL?.nilIfBlank
-                )
+            let newVehicle = VehicleInsert(
+                vehicle_name: vehicleName.trimmingCharacters(in: .whitespacesAndNewlines),
+                number_plate: registrationNumber.trimmingCharacters(in: .whitespacesAndNewlines),
+                brand: brand.nilIfBlank,
+                model_year: Int(modelYear.trimmingCharacters(in: .whitespacesAndNewlines)),
+                vehicle_type: vehicleType.trimmingCharacters(in: .whitespacesAndNewlines),
+                fuel_type: fuelType.nilIfBlank,
+                model: model.nilIfBlank,
+                image_url: vehicleImageURL?.nilIfBlank
+            )
 
+            let vehicleId: UUID
+            do {
                 let response = try await SupabaseManager.shared.client
                     .from("vehicles")
                     .insert(newVehicle)
@@ -287,29 +288,46 @@ extension AddVehicleViewModel {
                 // Get the generated ID
                 guard let row = try JSONSerialization.jsonObject(with: response.data) as? [String: Any],
                       let idString = row["vehicle_id"] as? String,
-                      let vehicleId = UUID(uuidString: idString) else {
+                      let parsedVehicleId = UUID(uuidString: idString) else {
                     throw NSError(domain: "AddVehicle", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to retrieve vehicle ID after insert"])
                 }
-                
-                // Now insert documents
-                let docs = [
-                    rcURL != nil ? ["vehicle_id": vehicleId.uuidString, "document_type": "RC", "file_url": rcURL!] : nil,
-                    insuranceURL != nil ? ["vehicle_id": vehicleId.uuidString, "document_type": "INSURANCE", "file_url": insuranceURL!] : nil,
-                    pucURL != nil ? ["vehicle_id": vehicleId.uuidString, "document_type": "PUC", "file_url": pucURL!] : nil
-                ].compactMap { $0 }
-                
-                if !docs.isEmpty {
-                    try await SupabaseManager.shared.client
-                        .from("vehicle_documents")
-                        .insert(docs)
-                        .execute()
-                }
+
+                print("Created vehicle id:", parsedVehicleId.uuidString)
+                vehicleId = parsedVehicleId
             } catch {
                 let errorText = error.localizedDescription.lowercased()
                 if errorText.contains("row-level security") || errorText.contains("403") {
                     try await saveVehicleViaEdgeFunction()
+                    DispatchQueue.main.async {
+                        self.isSuccess = true
+                    }
+                    return
                 } else {
                     throw error
+                }
+            }
+
+            let docs = [
+                rcURL != nil ? ["vehicle_id": vehicleId.uuidString, "document_type": "RC", "file_url": rcURL!] : nil,
+                insuranceURL != nil ? ["vehicle_id": vehicleId.uuidString, "document_type": "INSURANCE", "file_url": insuranceURL!] : nil,
+                pucURL != nil ? ["vehicle_id": vehicleId.uuidString, "document_type": "PUC", "file_url": pucURL!] : nil
+            ].compactMap { $0 }
+
+            print("Document insert payload count:", docs.count)
+
+            if !docs.isEmpty {
+                do {
+                    try await SupabaseManager.shared.client
+                        .from("vehicle_documents")
+                        .insert(docs)
+                        .execute()
+                } catch {
+                    print("❌ Failed to insert vehicle documents for \(vehicleId):", error)
+                    throw NSError(
+                        domain: "AddVehicle",
+                        code: 4,
+                        userInfo: [NSLocalizedDescriptionKey: "Vehicle was created, but documents could not be linked. Please try again or edit the vehicle documents."]
+                    )
                 }
             }
 
