@@ -9,7 +9,6 @@ import Supabase
 
 @main
 struct FleetManagementSystemApp: App {
-
     @State private var showSetPassword = false
 
     var body: some Scene {
