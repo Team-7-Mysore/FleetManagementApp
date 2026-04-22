@@ -1,67 +1,54 @@
 import SwiftUI
 
+// MARK: - Models
+struct VehicleCategory: Identifiable {
+    let id = UUID()
+    let name: String
+    let icon: String
+    let type: String
+}
+
+// MARK: - Main Fleet View
 struct FleetListView: View {
     @StateObject private var vm = FleetListViewModel()
     @State private var showingAddVehicle = false
     
+    let columns = [
+        GridItem(.flexible(), spacing: 16),
+        GridItem(.flexible(), spacing: 16)
+    ]
+    
+    let categories: [VehicleCategory] = [
+        .init(name: "Bikes", icon: "bicycle", type: "bike"),
+        .init(name: "Cars", icon: "car.fill", type: "car"),
+        .init(name: "Buses", icon: "bus.fill", type: "bus"),
+        .init(name: "Trucks", icon: "box.truck.fill", type: "truck")
+    ]
+    
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottomTrailing) {
-                
                 Color(.systemGroupedBackground)
                     .ignoresSafeArea()
                 
-                // 🔷 Content
                 ScrollView {
-                    VStack(spacing: 16) {
-                        
-                        if vm.isLoading {
-                            ProgressView()
-                                .padding()
-                            
-                        } else if let errorMessage = vm.errorMessage {
-                            VStack(spacing: 12) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.system(size: 52))
-                                    .foregroundColor(.orange)
-                                
-                                Text("Could Not Load Vehicles")
-                                    .font(.headline)
-                                
-                                Text(errorMessage)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .padding(.top, 40)
+                    VStack(alignment: .leading, spacing: 20) {
+                        Text("Categories")
+                            .font(.title2.weight(.bold))
                             .padding(.horizontal)
-                            
-                        } else if vm.vehicles.isEmpty {
-                            VStack(spacing: 12) {
-                                Image(systemName: "car.fill")
-                                    .font(.system(size: 50))
-                                    .foregroundColor(.secondary)
-                                
-                                Text("No Vehicles")
-                                    .font(.headline)
-                                
-                                Text("Add vehicles to see them here.")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.top, 40)
-                            
-                        } else {
-                            ForEach(vm.vehicles) { vehicle in
-                                VehicleCardView(vehicle: vehicle)
-                                    .padding(.horizontal)
+                        
+                        LazyVGrid(columns: columns, spacing: 16) {
+                            ForEach(categories) { category in
+                                NavigationLink(destination: VehicleCategoryDetailView(category: category, vm: vm)) {
+                                    CategoryCardView(category: category)
+                                }
                             }
                         }
+                        .padding(.horizontal)
                     }
                     .padding(.vertical)
                 }
                 
-                // 🔥 Floating Add Button
                 Button(action: { showingAddVehicle = true }) {
                     Image(systemName: "plus")
                         .font(.title2.weight(.bold))
@@ -75,7 +62,6 @@ struct FleetListView: View {
                 .padding(.bottom, 24)
             }
             .navigationTitle("Fleet")
-            .navigationBarTitleDisplayMode(.large)
             .sheet(isPresented: $showingAddVehicle) {
                 NavigationStack {
                     AddVehicleView(fleetVM: vm)
@@ -90,67 +76,114 @@ struct FleetListView: View {
     }
 }
 
-struct VehicleCardView: View {
+// MARK: - Grid Card Component
+struct CategoryCardView: View {
+    let category: VehicleCategory
+    
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: category.icon)
+                .font(.system(size: 36))
+                .foregroundColor(.blue)
+                .frame(height: 50)
+            
+            Text(category.name)
+                .font(.headline)
+                .foregroundColor(.primary)
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 140)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color(.secondarySystemGroupedBackground))
+        )
+        .shadow(color: .black.opacity(0.04), radius: 5, x: 0, y: 2)
+    }
+}
+
+// MARK: - Category Detail View
+struct VehicleCategoryDetailView: View {
+    let category: VehicleCategory
+    @ObservedObject var vm: FleetListViewModel
+    
+    var filteredVehicles: [Vehicle] {
+        vm.vehicles.filter { $0.vehicleType.lowercased() == category.type.lowercased() }
+    }
+    
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 12) {
+                if filteredVehicles.isEmpty {
+                    ContentUnavailableView(
+                        "No \(category.name)",
+                        systemImage: category.icon,
+                        description: Text("You haven't added any \(category.name.lowercased()) yet.")
+                    )
+                    .padding(.top, 40)
+                } else {
+                    ForEach(filteredVehicles) { vehicle in
+                        NavigationLink(destination: VehicleDetailView(vehicleId: vehicle.id)) {
+                            CompactVehicleRow(vehicle: vehicle)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal)
+                    }
+                }
+            }
+            .padding(.vertical)
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationTitle(category.name)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Compact Vehicle Row
+struct CompactVehicleRow: View {
     let vehicle: Vehicle
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            
-            // 🔷 Image
+        HStack(spacing: 16) {
             AsyncImage(url: URL(string: vehicle.imageURL ?? "")) { image in
                 image
                     .resizable()
                     .scaledToFill()
             } placeholder: {
-                Color.gray.opacity(0.15)
-            }
-            .frame(height: 140)
-            .frame(maxWidth: .infinity)
-            .clipped()
-            .cornerRadius(12)
-            
-            // 🔷 Title + Subtitle
-            VStack(alignment: .leading, spacing: 4) {
-                Text(vehicle.registrationNumber)
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(.primary)
-                
-                Text(
-                    [vehicle.brand, vehicle.model]
-                        .compactMap { $0 }
-                        .joined(separator: " ")
-                )
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            }
-            
-            // 🔷 Bottom Row
-            HStack {
-                NavigationLink {
-                    VehicleDetailView(vehicleId: vehicle.id)
-                } label: {
-                    Text("Details")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.blue)
+                ZStack {
+                    Color.gray.opacity(0.1)
+                    Image(systemName: vehicle.imageSystemName)
+                        .foregroundColor(.gray.opacity(0.3))
                 }
-                
-                Spacer()
-                
-                Image(systemName: "map.fill")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(10)
-                    .background(
-                        Circle()
-                            .fill(Color(.tertiarySystemGroupedBackground))
-                    )
             }
+            .frame(width: 70, height: 70)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(vehicle.name)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                
+                Text(vehicle.registrationNumber)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(.blue)
+                
+                Text("\(vehicle.brand ?? "") \(vehicle.model ?? "")")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            // FIXED: Changed .tertiaryLabel to .tertiary
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.bold))
+                .foregroundStyle(.tertiary)
         }
-        .padding(14)
+        .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color(.secondarySystemGroupedBackground))
         )
-        .shadow(color: .black.opacity(0.04), radius: 6, x: 0, y: 2)
+        .shadow(color: .black.opacity(0.03), radius: 4, x: 0, y: 2)
     }
 }

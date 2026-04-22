@@ -17,6 +17,9 @@ struct VehicleDetailView: View {
     
     @State private var isImportingDocument = false
     @State private var activeDocumentType: String?
+    
+    // State for maintenance assignment via chat/notification
+    @State private var showStaffSelection = false
 
     var body: some View {
         ScrollView {
@@ -32,6 +35,9 @@ struct VehicleDetailView: View {
                     infoSection(vehicle)
                     documentsSection
                     
+                    // Maintenance Section
+                    maintenanceButton(vehicle)
+                    
                 }
                 .padding()
                 
@@ -41,6 +47,7 @@ struct VehicleDetailView: View {
                     .padding(.top, 60)
             }
         }
+        .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .onAppear {
             Task {
                 await vm.fetchVehicle(vehicleId: vehicleId)
@@ -78,7 +85,9 @@ struct VehicleDetailView: View {
                 }
             }
         }
-        
+        .sheet(isPresented: $showStaffSelection) {
+            MaintenanceStaffPickerView(vehicle: vm.vehicle!)
+        }
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(sourceType: sourceType) { image in
                 Task {
@@ -109,13 +118,9 @@ struct VehicleDetailView: View {
 
     private func saveChanges() async {
         guard let draft = draftVehicle else { return }
-        
-        // 1. Immediately transition UI to View Mode (matching 'Cancel' behavior)
         vm.vehicle = draft
         isEditing = false
         draftVehicle = nil
-        
-        // 2. Perform save in the background
         isSaving = true
         let success = await vm.updateVehicle()
         if success {
@@ -124,21 +129,23 @@ struct VehicleDetailView: View {
         isSaving = false
     }
 
-    // MARK: - IMAGE
-
+    // MARK: - UI COMPONENTS
+    
     private func vehicleImage(_ vehicle: Vehicle) -> some View {
         Group {
-            if let urlString = vehicle.imageURL,
-               let url = URL(string: urlString) {
-                
+            if let urlString = vehicle.imageURL, let url = URL(string: urlString) {
                 AsyncImage(url: url) { image in
                     image.resizable().scaledToFill()
                 } placeholder: {
                     Color.gray.opacity(0.2)
                 }
-                
             } else {
-                Color.gray.opacity(0.2)
+                ZStack {
+                    Color.gray.opacity(0.1)
+                    Image(systemName: vehicle.imageSystemName)
+                        .font(.largeTitle)
+                        .foregroundColor(.gray.opacity(0.4))
+                }
             }
         }
         .frame(height: 200)
@@ -161,8 +168,6 @@ struct VehicleDetailView: View {
         }
     }
 
-    // MARK: - HEADER
-    
     private func vehicleHeader(_ vehicle: Vehicle) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             if isEditing {
@@ -185,8 +190,6 @@ struct VehicleDetailView: View {
         }
     }
 
-    // MARK: - INFO
-
     private func infoSection(_ vehicle: Vehicle) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Basic Info")
@@ -200,12 +203,10 @@ struct VehicleDetailView: View {
                 InfoRow(title: "Fuel", value: vehicle.fuelType ?? "—", isEditing: isEditing, text: binding(\.fuelType))
             }
             .padding()
-            .background(Color.white)
+            .background(Color(.secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
     }
-
-    // MARK: - DOCUMENTS
 
     private var documentsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -215,46 +216,64 @@ struct VehicleDetailView: View {
 
             VStack(spacing: 0) {
                 let requiredTypes = ["RC", "INSURANCE", "PUC"]
-                
                 ForEach(requiredTypes, id: \.self) { type in
                     let doc = vm.documents.first(where: { $0.type.uppercased() == type })
-                    
                     if isEditing {
                         Button {
                             activeDocumentType = type
                             isImportingDocument = true
                         } label: {
                             Group {
-                                if let doc = doc {
-                                    DocumentRow(document: doc, isEditing: true)
-                                } else {
-                                    missingDocumentRow(type: type)
-                                }
+                                if let doc = doc { DocumentRow(document: doc, isEditing: true) }
+                                else { missingDocumentRow(type: type) }
                             }
                         }
                         .buttonStyle(.plain)
                     } else if let doc = doc {
                         if let url = URL(string: doc.fileURL) {
-                            Link(destination: url) {
-                                DocumentRow(document: doc)
-                            }
-                            .buttonStyle(.plain)
-                        } else {
-                            DocumentRow(document: doc)
-                        }
-                    } else {
-                        missingDocumentRow(type: type)
-                    }
+                            Link(destination: url) { DocumentRow(document: doc) }.buttonStyle(.plain)
+                        } else { DocumentRow(document: doc) }
+                    } else { missingDocumentRow(type: type) }
                     
                     if type != requiredTypes.last && (isEditing || doc != nil) {
-                        Divider()
-                            .padding(.leading, 64)
+                        Divider().padding(.leading, 64)
                     }
                 }
             }
-            .background(Color.white)
+            .background(Color(.secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
+    }
+
+    private func maintenanceButton(_ vehicle: Vehicle) -> some View {
+        Button {
+            showStaffSelection = true
+        } label: {
+            HStack {
+                Image(systemName: "wrench.and.screwdriver.fill")
+                    .font(.title3)
+                    .foregroundColor(.orange)
+                    .frame(width: 40, height: 40)
+                    .background(Color.orange.opacity(0.1))
+                    .clipShape(Circle())
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Notify Maintenance")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    Text("Assign technician via chat notification")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Image(systemName: "person.badge.plus.fill")
+                    .foregroundColor(.blue)
+            }
+            .padding()
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
     }
 
     private func missingDocumentRow(type: String) -> some View {
@@ -264,46 +283,28 @@ struct VehicleDetailView: View {
                 .foregroundColor(.secondary)
                 .frame(width: 30, height: 30)
                 .background(Color.gray.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(type)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(.primary)
-
-                Text("Not uploaded")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                Text(type).font(.subheadline.weight(.semibold))
+                Text("Not uploaded").font(.caption).foregroundColor(.secondary)
             }
-
             Spacer()
-            
-            if isEditing {
-                Image(systemName: "plus.circle.fill")
-                    .font(.title3)
-                    .foregroundColor(.blue)
-            }
+            if isEditing { Image(systemName: "plus.circle.fill").foregroundColor(.blue) }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 16).padding(.vertical, 14)
     }
 
     private func binding(_ keyPath: WritableKeyPath<Vehicle, String>) -> Binding<String> {
-        Binding(
-            get: { draftVehicle?[keyPath: keyPath] ?? "" },
-            set: { draftVehicle?[keyPath: keyPath] = $0 }
-        )
+        Binding(get: { draftVehicle?[keyPath: keyPath] ?? "" }, set: { draftVehicle?[keyPath: keyPath] = $0 })
     }
 
     private func binding(_ keyPath: WritableKeyPath<Vehicle, String?>) -> Binding<String> {
-        Binding(
-            get: { draftVehicle?[keyPath: keyPath] ?? "" },
-            set: { draftVehicle?[keyPath: keyPath] = $0.isEmpty ? nil : $0 }
-        )
+        Binding(get: { draftVehicle?[keyPath: keyPath] ?? "" }, set: { draftVehicle?[keyPath: keyPath] = $0.isEmpty ? nil : $0 })
     }
 }
 
-// MARK: - Info Row
+// MARK: - RE-ADDED MISSING COMPONENTS
 
 struct InfoRow: View {
     let title: String
@@ -313,8 +314,7 @@ struct InfoRow: View {
 
     var body: some View {
         HStack {
-            Text(title)
-                .foregroundColor(.secondary)
+            Text(title).foregroundColor(.secondary)
             Spacer()
             if isEditing, let text {
                 TextField(title, text: text)
@@ -322,15 +322,12 @@ struct InfoRow: View {
                     .multilineTextAlignment(.trailing)
                     .font(.body.weight(.medium))
             } else {
-                Text(value)
-                    .fontWeight(.medium)
+                Text(value).fontWeight(.medium)
             }
         }
         .padding(.vertical, 6)
     }
 }
-
-// MARK: - Document Row
 
 struct DocumentRow: View {
     let document: VehicleDocument
@@ -340,9 +337,7 @@ struct DocumentRow: View {
         HStack(spacing: 12) {
             if isImageDocument, let url = URL(string: document.fileURL) {
                 AsyncImage(url: url) { image in
-                    image
-                        .resizable()
-                        .scaledToFill()
+                    image.resizable().scaledToFill()
                 } placeholder: {
                     iconBadge
                 }
@@ -353,87 +348,30 @@ struct DocumentRow: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(document.title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundColor(.primary)
-
-                Text(document.fileName ?? (isImageDocument ? "Image Document" : "Open Document"))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+                Text(document.title).font(.subheadline.weight(.semibold))
+                Text(document.fileName ?? "Document").font(.caption).foregroundColor(.secondary).lineLimit(1)
             }
-
             Spacer()
-
             if isEditing {
-                Image(systemName: "pencil.circle.fill")
-                    .font(.title3)
-                    .foregroundColor(.blue)
+                Image(systemName: "pencil.circle.fill").foregroundColor(.blue)
             } else {
-                Text(document.statusText)
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(statusColor)
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.secondary)
+                Image(systemName: "chevron.right").font(.caption.bold()).foregroundColor(.secondary)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 16).padding(.vertical, 14)
     }
 
     private var isImageDocument: Bool {
-        guard let url = URL(string: document.fileURL) else { return false }
-        let ext = url.pathExtension.lowercased()
-        return ["jpg", "jpeg", "png", "webp", "heic"].contains(ext)
+        let ext = URL(string: document.fileURL)?.pathExtension.lowercased() ?? ""
+        return ["jpg", "jpeg", "png", "heic"].contains(ext)
     }
 
     private var iconBadge: some View {
-        Image(systemName: iconName)
+        Image(systemName: "doc.fill")
             .font(.system(size: 16, weight: .semibold))
-            .foregroundColor(iconColor)
+            .foregroundColor(.blue)
             .frame(width: 30, height: 30)
-            .background(iconColor.opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private var iconName: String {
-        switch document.type.uppercased() {
-        case "RC":
-            return "doc.text.fill"
-        case "INSURANCE":
-            return "shield.lefthalf.filled"
-        case "PUC":
-            return "doc.badge.gearshape"
-        default:
-            return "doc.fill"
-        }
-    }
-
-    private var iconColor: Color {
-        switch document.type.uppercased() {
-        case "RC":
-            return .green
-        case "INSURANCE":
-            return .orange
-        case "PUC":
-            return .red
-        default:
-            return .blue
-        }
-    }
-
-    private var statusColor: Color {
-        switch document.type.uppercased() {
-        case "RC":
-            return .green
-        case "INSURANCE":
-            return .orange
-        case "PUC":
-            return .red
-        default:
-            return .secondary
-        }
+            .background(Color.blue.opacity(0.12))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 }
