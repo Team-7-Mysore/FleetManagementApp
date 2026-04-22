@@ -208,6 +208,9 @@ struct VehicleCategoryDetailView: View {
     @State private var vehicleToDelete: Vehicle?
     @State private var showingDeleteConfirmation = false
     
+    // NEW: Tracks which vehicle ID is selected for the modal
+    @State private var selectedVehicleId: UUID?
+    
     var filteredVehicles: [Vehicle] {
         vm.vehicles.filter { $0.vehicleType.lowercased() == category.type.lowercased() }
     }
@@ -219,15 +222,13 @@ struct VehicleCategoryDetailView: View {
             } else {
                 List {
                     ForEach(filteredVehicles) { vehicle in
-                        ZStack {
-                            // NavigationLink with 0 opacity to hide the standard arrow and keep custom row UI
-                            NavigationLink(destination: VehicleDetailView(vehicleId: vehicle.id)) {
-                                EmptyView()
-                            }
-                            .opacity(0)
-                            
+                        // Changed from NavigationLink to Button for Modal trigger
+                        Button {
+                            selectedVehicleId = vehicle.id
+                        } label: {
                             CompactVehicleRow(vehicle: vehicle)
                         }
+                        .buttonStyle(.plain)
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
@@ -247,16 +248,19 @@ struct VehicleCategoryDetailView: View {
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle(category.name)
-        // Confirmation Alert
+        // MODAL PRESENTATION
+        .sheet(item: $selectedVehicleId) { id in
+            NavigationStack {
+                VehicleDetailView(vehicleId: id)
+            }
+        }
         .confirmationDialog(
             "Are you sure?",
             isPresented: $showingDeleteConfirmation,
             presenting: vehicleToDelete
         ) { vehicle in
             Button("Delete \(vehicle.name)", role: .destructive) {
-                Task {
-                    await vm.deleteVehicle(vehicle)
-                }
+                Task { await vm.deleteVehicle(vehicle) }
             }
             Button("Cancel", role: .cancel) { vehicleToDelete = nil }
         } message: { vehicle in
@@ -323,4 +327,7 @@ struct CompactVehicleRow: View {
         )
         .shadow(color: .black.opacity(0.02), radius: 5, x: 0, y: 2)
     }
+}
+extension UUID: Identifiable {
+    public var id: UUID { self }
 }
