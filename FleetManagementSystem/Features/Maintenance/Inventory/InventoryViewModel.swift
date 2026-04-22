@@ -47,8 +47,11 @@ final class InventoryViewModel: ObservableObject {
     
     @Published var showLowStockBanner: Bool = true
     @Published var deleteErrorMessage: AlertItem?
+    @Published var notifications: [NotificationItem] = []
+
 
     private let placeholderInventoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
+
     private var deletedInventoryIDs = Set<UUID>()
     
     var lowStockItems: [InventoryItem] {
@@ -89,7 +92,6 @@ final class InventoryViewModel: ObservableObject {
 
             self.items = sanitizedItems
             self.filterItems()
-            
         } catch {
             print("ERROR:", error)
         }
@@ -155,7 +157,9 @@ final class InventoryViewModel: ObservableObject {
             .execute()
             
         await fetchInventory()
+        await syncLowStockNotifications()
     }
+
     
     func addInventoryItem(partName: String, vehicleCategory: String?, categoryDescription: String?, supplier: String?, quantity: Int, costPerUnit: Double?, sku: String?, location: String?, imageUrl: String?) async throws {
         let insertItem = InventoryItemInsert(
@@ -176,7 +180,9 @@ final class InventoryViewModel: ObservableObject {
             .execute()
         
         await fetchInventory()
+        await syncLowStockNotifications()
     }
+
     
     func deleteInventoryItem(id: UUID) async throws {
         print("Attempting delete id:", id.uuidString)
@@ -211,6 +217,8 @@ final class InventoryViewModel: ObservableObject {
                 self.items.removeAll { $0.inventoryId == id }
                 self.filterItems()
             }
+
+            await fetchNotifications()
         } catch {
             if let pgError = error as? PostgrestError, pgError.code == "23503" {
                 deleteErrorMessage = AlertItem(message: "This part is used in a work order and cannot be deleted.")
@@ -241,8 +249,86 @@ final class InventoryViewModel: ObservableObject {
             .execute()
             
         await fetchInventory()
+        await syncLowStockNotifications()
     }
+
+    
+
+    func fetchNotifications() async {
+        do {
+            let data: [NotificationItem] = try await SupabaseManager.shared.client
+                .from("notifications")
+                .select()
+                .order("created_at", ascending: false)
+                .execute()
+                .value
+
+            self.notifications = data
+        } catch {
+            print("Error fetching notifications:", error)
+        }
+    }
+
+    func createNotification(for item: InventoryItem) async -> Bool {
+        if notifications.contains(where: { $0.inventoryId == item.inventoryId }) {
+            return false
+        }
+
+        do {
+            let newNotification = [
+                "inventory_id": item.inventoryId.uuidString,
+                "title": "Low Stock Alert",
+                "message": "\(item.partName) is low in stock (Qty: \(item.quantity))"
+            ]
+
+            try await SupabaseManager.shared.client
+                .from("notifications")
+                .insert(newNotification)
+                .execute()
+
+            return true
+        } catch {
+            print("Insert notification error:", error)
+            return false
+        }
+    }
+
+    func deleteNotification(for item: InventoryItem) async {
+        do {
+            try await SupabaseManager.shared.client
+                .from("notifications")
+                .delete()
+                .eq("inventory_id", value: item.inventoryId.uuidString)
+                .execute()
+        } catch {
+            print("Delete notification error:", error)
+        }
+    }
+
+    func syncLowStockNotifications() async {
+        await fetchNotifications()
+        
+        for item in items {
+            if item.quantity <= 10 {
+                let didCreateNotification = await createNotification(for: item)
+
+                if didCreateNotification {
+                    NotificationManager.shared.sendLowStockNotification(
+                        partName: item.partName,
+                        quantity: item.quantity
+                    )
+                }
+            } else {
+                await deleteNotification(for: item)
+            }
+        }
+
+        await fetchNotifications()
+    }
+
+
 }
+
 
 struct InventoryItemInsert: Codable {
     var partName: String

@@ -53,5 +53,7 @@ struct NotificationsView: View {
             }
         }
         .navigationTitle("Notifications")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear()
     }
 }

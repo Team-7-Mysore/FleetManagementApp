@@ -67,6 +67,7 @@ struct FleetManagementSystemApp: App {
             
             .tint(Color(hex: "#A3352A"))
             .onAppear {
+                NotificationManager.shared.requestPermission()
                 Task {
                     await checkSession()
                 }

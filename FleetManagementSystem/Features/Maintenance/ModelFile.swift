@@ -277,3 +277,6 @@ struct ChatParticipantWithRoom: Codable {
 extension Color {
     static let TechBlue = Color(red: 0/255, green: 89/255, blue: 184/255)
 }
+
+
+

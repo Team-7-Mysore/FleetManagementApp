@@ -12,6 +12,7 @@ struct InventoryView: View {
     @State private var navigateToScanned = false
     @State private var scannedName: String?
     @State private var scannedQuantity: Int?
+    @State private var showNotifications = false
     
     var body: some View {
         NavigationStack {
@@ -19,18 +20,6 @@ struct InventoryView: View {
                 Color(.systemGroupedBackground).ignoresSafeArea()
                 
                 List {
-                    // Header
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Inventory")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-                    }
-                    .padding(.top, 40)
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .padding(.horizontal, 16)
-                    
                     // Categories
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Categories")
@@ -87,28 +76,113 @@ struct InventoryView: View {
                 .listStyle(.plain)
                 .refreshable {
                     await viewModel.fetchInventory()
+                    await viewModel.syncLowStockNotifications()
+                }
+            }
+            .navigationTitle("Inventory")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    HStack(spacing: 12) {
+                        // 🔔 Notification Bell
+                        Button {
+                            showNotifications = true
+                        } label: {
+                            ZStack {
+                                Image(systemName: "bell")
+                                    .font(.system(size: 18, weight: .medium))
+                                    .foregroundColor(.primary)
+                                
+                                if viewModel.notifications.count > 0 {
+                                    Text("\(viewModel.notifications.count)")
+                                        .font(.caption2)
+                                        .foregroundColor(.white)
+                                        .padding(4)
+                                        .background(Color.red)
+                                        .clipShape(Circle())
+                                        .offset(x: 8, y: -8)
+                                }
+                            }
+                        }
+
+                        // 👤 Profile Icon
+                        Button {
+                            // placeholder for future profile action
+                        } label: {
+                            Image(systemName: "person.circle")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(.primary)
+                        }
+                    }
+                    .padding(10)
+                    .background(Color(.systemGray6))
+                    .clipShape(Capsule())
                 }
             }
             .overlay(alignment: .bottomTrailing) {
-                Button {
-                    showOptions = true
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                        .foregroundColor(.white)
-                        .frame(width: 60, height: 60)
-                        .background(Color(hex: "#A3352A"))
-                        .clipShape(Circle())
-                        .shadow(color: Color(hex: "#A3352A").opacity(0.3), radius: 10, x: 0, y: 5)
+                ZStack(alignment: .bottomTrailing) {
+                    if showOptions {
+                        VStack(spacing: 8) {
+                            // 🔺 Arrow pointing to + button
+                            Triangle()
+                                .fill(Color(.systemBackground))
+                                .frame(width: 20, height: 10)
+                                .offset(x: -20) // Adjust to align with + button
+
+                            VStack(spacing: 12) {
+                                Button {
+                                    showOptions = false
+                                    showScanner = true
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "doc.text.viewfinder")
+                                        Text("Scan Invoice")
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                }
+                                
+                                Divider()
+
+                                Button {
+                                    showOptions = false
+                                    navigateToManual = true
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "pencil.and.outline")
+                                        Text("Add Manually")
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                }
+                            }
+                            .padding()
+                            .frame(width: 180)
+                            .background(Color(.systemBackground))
+                            .cornerRadius(16)
+                            .shadow(radius: 10)
+                        }
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 80)
+                        .transition(.scale.combined(with: .opacity))
+                    }
+
+                    Button {
+                        withAnimation(.spring()) {
+                            showOptions.toggle()
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                            .frame(width: 60, height: 60)
+                            .background(Color(hex: "#A3352A"))
+                            .clipShape(Circle())
+                            .rotationEffect(.degrees(showOptions ? 45 : 0))
+                            .shadow(color: Color(hex: "#A3352A").opacity(0.3), radius: 10, x: 0, y: 5)
+                    }
+                    .padding(.trailing, 20)
+                    .padding(.bottom, 20)
                 }
-                .padding(.trailing, 20)
-                .padding(.bottom, 20)
-            }
-            .confirmationDialog("Add New Part", isPresented: $showOptions) {
-                Button("Scan Invoice") { showScanner = true }
-                Button("Add Manually") { navigateToManual = true }
-                Button("Cancel", role: .cancel) { }
             }
             .navigationDestination(isPresented: $navigateToManual) {
                 AddPartView(viewModel: viewModel)
@@ -120,6 +194,13 @@ struct InventoryView: View {
                     prefilledQuantity: scannedQuantity
                 )
             }
+            .navigationDestination(isPresented: $showNotifications) {
+                NotificationView(
+                    notifications: viewModel.notifications,
+                    viewModel: viewModel
+                )
+            }
+
             .fullScreenCover(isPresented: $showScanner) {
                 DocumentScanner(showScanner: $showScanner) { images in
                     guard let firstImage = images.first else { return }
@@ -141,7 +222,7 @@ struct InventoryView: View {
                 }
                 .ignoresSafeArea()
             }
-            .navigationBarHidden(true) // Using custom header
+            .navigationBarTitleDisplayMode(.large)
             .navigationDestination(item: $navigatedCategory) { category in
                 VehiclePartsView(viewModel: viewModel, category: category)
             }
@@ -179,15 +260,27 @@ struct InventoryView: View {
             .onAppear {
                 viewModel.selectedVehicleFilter = "All"
                 viewModel.searchText = "" // Ensure search is cleared when returning to main screen
-                if viewModel.items.isEmpty {
-                    Task {
-                        await viewModel.fetchInventory()
-                    }
-                }
+            }
+            .task {
+                await viewModel.fetchInventory()
+                await viewModel.syncLowStockNotifications()
             }
         }
     }
 }
+
+// 🔺 Triangle Shape for pointing
+struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: 0))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+}
+
 
 
 #Preview {
