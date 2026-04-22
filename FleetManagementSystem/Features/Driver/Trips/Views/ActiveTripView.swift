@@ -18,6 +18,8 @@ struct ActiveTripView: View {
     @State private var route: MKRoute?
     @State private var cameraPosition: MapCameraPosition = .automatic
     @StateObject private var locationManager = LocationManager()
+    @State private var distance: Double = 0
+    @State private var eta: Double = 0
     
     // Database points with fallbacks to demonstration points
     var startPoint: CLLocationCoordinate2D {
@@ -32,6 +34,25 @@ struct ActiveTripView: View {
             return CLLocationCoordinate2D(latitude: coord.latitude, longitude: coord.longitude)
         }
         return CLLocationCoordinate2D(latitude: 12.9716, longitude: 77.5946)
+    }
+    
+    private var formattedDistance: String {
+        guard distance > 0 else { return "--" }
+        return String(format: "%.1f km", distance / 1000)
+    }
+
+    private var formattedETA: String {
+        guard eta > 0 else { return "--" }
+        
+        let minutes = Int(eta / 60)
+        let hours = minutes / 60
+        let remainingMinutes = minutes % 60
+        
+        if hours > 0 {
+            return "\(hours)h \(remainingMinutes)m"
+        } else {
+            return "\(minutes)m"
+        }
     }
 
     var body: some View {
@@ -67,9 +88,9 @@ struct ActiveTripView: View {
             VStack(spacing: 16) {
                 // Trip info bar
                 HStack(spacing: 24) {
-                    tripInfoItem(value: trip.formattedDistance, label: "Distance")
+                    tripInfoItem(value: formattedDistance, label: "Distance")
                     Divider().frame(height: 36)
-                    tripInfoItem(value: trip.formattedETA, label: "ETA")
+                    tripInfoItem(value: formattedETA, label: "ETA")
                     Divider().frame(height: 36)
                     tripInfoItem(value: formattedElapsed, label: "Elapsed")
                 }
@@ -177,7 +198,6 @@ struct ActiveTripView: View {
         .onDisappear { stopTimer() }
     }
 
-
     private func tripInfoItem(value: String, label: String) -> some View {
         VStack(spacing: 2) {
             Text(value)
@@ -248,6 +268,8 @@ struct ActiveTripView: View {
             
             DispatchQueue.main.async {
                 self.route = route
+                self.distance = route.distance
+                self.eta = route.expectedTravelTime
                 let rect = route.polyline.boundingMapRect
                 let paddedRect = rect.insetBy(dx: -rect.size.width * 0.12,
                                               dy: -rect.size.height * 0.12)
