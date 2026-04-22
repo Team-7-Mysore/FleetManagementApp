@@ -825,6 +825,7 @@ struct PartDetailRowView: View {
             vehicleType: .truck,
             priority: .high,
             status: .inProgress,
+            isApproved: false,
             issueTitle: "Engine System Fault",
             issueDescription: "Operator reports intermittent power loss and check engine light.",
             hoursWorked: 2.5,

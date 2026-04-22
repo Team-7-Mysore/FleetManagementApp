@@ -122,6 +122,7 @@ struct WorkOrder: Identifiable, Codable {
     var vehicleType: VehicleType
     var priority: WorkOrderPriority
     var status: WorkOrderStatus
+    let isApproved: Bool
     var issueTitle: String
     var issueDescription: String?
     var hoursWorked: Double?
@@ -143,6 +144,7 @@ struct WorkOrder: Identifiable, Codable {
         case vehicleType = "vehicle_type" // Added to coding keys!
         case priority
         case status
+        case isApproved = "is_approved"
         case issueTitle = "issue_title"
         case issueDescription = "issue_description"
         case hoursWorked = "hours_worked"
