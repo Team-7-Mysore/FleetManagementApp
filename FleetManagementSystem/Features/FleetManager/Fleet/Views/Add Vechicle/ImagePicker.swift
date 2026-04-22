@@ -2,12 +2,11 @@ import SwiftUI
 import UIKit
 
 struct ImagePicker: UIViewControllerRepresentable {
-    var sourceType: UIImagePickerController.SourceType = .camera
+    var sourceType: UIImagePickerController.SourceType = .photoLibrary
     var onImagePicked: (UIImage) -> Void
     
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let picker = UIImagePickerController()
-        // Safety check for Simulator or devices without a camera
         if sourceType == .camera && !UIImagePickerController.isSourceTypeAvailable(.camera) {
             picker.sourceType = .photoLibrary
         } else {
@@ -34,11 +33,6 @@ struct ImagePicker: UIViewControllerRepresentable {
             if let image = info[.originalImage] as? UIImage {
                 onImagePicked(image)
             }
-            picker.dismiss(animated: true)
-        }
-        
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            picker.dismiss(animated: true)
         }
     }
 }
