@@ -9,18 +9,32 @@ struct MaintenanceStaffPickerView: View {
     @State private var staff: [AppUser] = []
     @State private var isLoading = true
     @State private var errorMessage: String?
+    
+    @State private var issueSummary = ""
     @State private var taskDescription = ""
     @State private var isProcessing = false
     
     var body: some View {
         NavigationStack {
             Form {
-                Section("Issue Description") {
-                    TextField("What needs repair?", text: $taskDescription)
+                Section("Issue Details") {
+                    TextField("Summary (e.g. Engine Overheating)", text: $issueSummary)
                         .autocorrectionDisabled()
+                    
+                    TextEditor(text: $taskDescription)
+                        .frame(minHeight: 100)
+                        .overlay(alignment: .topLeading) {
+                            if taskDescription.isEmpty {
+                                Text("Detailed description of the problem...")
+                                    .foregroundColor(.gray.opacity(0.5))
+                                    .padding(.top, 8)
+                                    .padding(.leading, 5)
+                                    .allowsHitTesting(false)
+                            }
+                        }
                 }
                 
-                Section("Assign Technician") {
+                Section("Assign Maintenance Personnel") {
                     if isLoading {
                         HStack { Spacer(); ProgressView(); Spacer() }
                     } else if let error = errorMessage {
@@ -45,7 +59,7 @@ struct MaintenanceStaffPickerView: View {
                                     }
                                 }
                             }
-                            .disabled(isProcessing || taskDescription.isEmpty)
+                            .disabled(isProcessing || taskDescription.isEmpty || issueSummary.isEmpty)
                         }
                     }
                 }
@@ -57,9 +71,14 @@ struct MaintenanceStaffPickerView: View {
                     Button("Cancel") { dismiss() }
                 }
             }
-            .task { await fetchMaintenanceStaff() }
+            .task {
+                // FIX 1: Ensure this function exists below
+                await fetchMaintenanceStaff()
+            }
         }
     }
+    
+    // MARK: - Networking Functions
     
     private func fetchMaintenanceStaff() async {
         await MainActor.run { isLoading = true; errorMessage = nil }
@@ -83,7 +102,7 @@ struct MaintenanceStaffPickerView: View {
     }
     
     private func assignTechnician(_ technician: AppUser) {
-        guard !taskDescription.isEmpty else { return }
+        guard !taskDescription.isEmpty && !issueSummary.isEmpty else { return }
         isProcessing = true
         Task { await saveMaintenanceTask(technician: technician) }
     }
@@ -92,26 +111,24 @@ struct MaintenanceStaffPickerView: View {
         do {
             let taskId = UUID()
             
-            // 1. Create the task record
-            let taskData: [String: AnyEncodable] = [
-                "id": AnyEncodable(taskId),
+            // FIX 2: AnyEncodable is used here, defined at the bottom
+            let issueData: [String: AnyEncodable] = [
+                "issue_id": AnyEncodable(taskId),
                 "vehicle_id": AnyEncodable(vehicle.id),
-                "technician_id": AnyEncodable(technician.id),
+                "maintenance_personnel_id": AnyEncodable(technician.id),
                 "description": AnyEncodable(taskDescription),
-                "status": AnyEncodable("pending")
+                "issue_summary": AnyEncodable(issueSummary)
             ]
-            try await supabase.from("maintenance_tasks").insert(taskData).execute()
+            try await supabase.from("maintenance_issues").insert(issueData).execute()
             
-            // 2. Update the vehicle status
             try await supabase.from("vehicles")
                 .update(["status": AnyEncodable("under_maintenance")])
                 .eq("vehicle_id", value: vehicle.id)
                 .execute()
             
-            // 3. Send Notification to Technician
             let notificationData: [String: AnyEncodable] = [
                 "user_id": AnyEncodable(technician.id),
-                "title": AnyEncodable("New Maintenance Task"),
+                "title": AnyEncodable("New Task: \(issueSummary)"),
                 "message": AnyEncodable("You have been assigned to repair \(vehicle.name)"),
                 "related_entity_id": AnyEncodable(taskId),
                 "is_read": AnyEncodable(false)
@@ -126,9 +143,10 @@ struct MaintenanceStaffPickerView: View {
             }
         }
     }
-}
+} // End of MaintenanceStaffPickerView
 
-// MARK: - Helper Type to fix "AnyEncodable" Error
+// MARK: - Helpers
+// FIX 3: AnyEncodable MUST be outside the View struct to be easily found by the compiler
 struct AnyEncodable: Encodable {
     private let _encode: (Encoder) throws -> Void
     init<T: Encodable>(_ value: T) {

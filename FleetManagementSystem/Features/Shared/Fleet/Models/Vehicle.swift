@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 struct Vehicle: Identifiable, Codable {
     var id: UUID
@@ -10,6 +11,7 @@ struct Vehicle: Identifiable, Codable {
     var vehicleType: String
     var fuelType: String?
     var modelYear: String?
+    var status: String?
 
     // Additional display properties (computed from existing fields)
     var make: String { brand ?? "Unknown" }
@@ -17,7 +19,32 @@ struct Vehicle: Identifiable, Codable {
     var year: Int { Int(modelYear ?? "") ?? 0 }
     var fuelPercentage: Int { 75 } // Placeholder - extend DB if needed
     var formattedMileage: String { "N/A" } // Placeholder - extend DB if needed
+    // MARK: - Status Visual Logic
+    var statusColor: Color {
+        switch status?.lowercased() {
+        case "active":
+            return .green
+        case "maintenance":
+            return .orange
+        case "inactive":
+            return .gray
+        case "out_of_service":
+            return .red
+        default:
+            return .blue
+        }
+    }
 
+    var statusDisplayName: String {
+        guard let status = status else { return "UNKNOWN" }
+        switch status.lowercased() {
+        case "active": return "ACTIVE"
+        case "maintenance": return "MAINTENANCE"
+        case "inactive": return "INACTIVE"
+        case "out_of_service": return "OUT OF SERVICE"
+        default: return status.uppercased()
+        }
+    }
     var imageSystemName: String {
         let type = vehicleType.lowercased()
         if type.contains("bike") || type.contains("motor") {
@@ -30,16 +57,16 @@ struct Vehicle: Identifiable, Codable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id = "vehicle_id"
-        case name = "vehicle_name"
-        case registrationNumber = "number_plate"
-        case brand
-        case model
-        case imageURL = "image_url"
-        case vehicleType = "vehicle_type"
-        case fuelType = "fuel_type"
-        case modelYear = "model_year"
-    }
+            case id = "vehicle_id"
+            case name = "vehicle_name"
+            case registrationNumber = "number_plate"
+            
+            case brand, model, status
+            case imageURL = "image_url"
+            case vehicleType = "vehicle_type"
+            case fuelType = "fuel_type"
+            case modelYear = "model_year"
+        }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -48,6 +75,7 @@ struct Vehicle: Identifiable, Codable {
         name = try container.decode(String.self, forKey: .name)
         registrationNumber = try container.decode(String.self, forKey: .registrationNumber)
         brand = try container.decodeIfPresent(String.self, forKey: .brand)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
         model = try container.decodeIfPresent(String.self, forKey: .model)
         imageURL = try container.decodeIfPresent(String.self, forKey: .imageURL)
         vehicleType = (try container.decodeIfPresent(String.self, forKey: .vehicleType)) ?? "Unknown"
