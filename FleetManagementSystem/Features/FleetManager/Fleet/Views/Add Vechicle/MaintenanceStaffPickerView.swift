@@ -3,7 +3,6 @@ import Supabase
 
 struct MaintenanceStaffPickerView: View {
     let vehicle: Vehicle
-    private let supabase = SupabaseManager.shared.client
     @Environment(\.dismiss) var dismiss
     
     @State private var staff: [AppUser] = []
@@ -83,7 +82,7 @@ struct MaintenanceStaffPickerView: View {
     private func fetchMaintenanceStaff() async {
         await MainActor.run { isLoading = true; errorMessage = nil }
         do {
-            let fetchedStaff: [AppUser] = try await supabase
+            let fetchedStaff: [AppUser] = try await SupabaseManager.shared.client
                 .from("users")
                 .select()
                 .eq("role", value: "maintenance")
@@ -119,9 +118,9 @@ struct MaintenanceStaffPickerView: View {
                 "description": AnyEncodable(taskDescription),
                 "issue_summary": AnyEncodable(issueSummary)
             ]
-            try await supabase.from("maintenance_issues").insert(issueData).execute()
+            try await SupabaseManager.shared.client.from("maintenance_issues").insert(issueData).execute()
             
-            try await supabase.from("vehicles")
+            try await SupabaseManager.shared.client.from("vehicles")
                 .update(["status": AnyEncodable("under_maintenance")])
                 .eq("vehicle_id", value: vehicle.id)
                 .execute()
@@ -133,7 +132,7 @@ struct MaintenanceStaffPickerView: View {
                 "related_entity_id": AnyEncodable(taskId),
                 "is_read": AnyEncodable(false)
             ]
-            try await supabase.from("notifications").insert(notificationData).execute()
+            try await SupabaseManager.shared.client.from("notifications").insert(notificationData).execute()
             
             await MainActor.run { dismiss() }
         } catch {

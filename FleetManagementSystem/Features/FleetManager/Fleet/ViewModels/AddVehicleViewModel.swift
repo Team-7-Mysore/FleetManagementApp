@@ -1,227 +1,203 @@
 import SwiftUI
 import Combine
-import Foundation
+import UIKit
 import Supabase
-
-private struct VehicleInsert: Encodable {
-    let vehicle_name: String
-    let number_plate: String
-    let brand: String?
-    let model_year: Int?
-    let vehicle_type: String
-    let fuel_type: String?
-    let model: String?
-    let image_url: String?
-}
 
 class AddVehicleViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var isSuccess = false
-    @Published var vin = ""
-    @Published var brand = ""
-    @Published var modelYear = ""
+    
+    // MARK: - Form Fields
     @Published var vehicleName = ""
-    @Published var registrationNumber = ""
+    @Published var licensePlate = ""
+    @Published var vin = ""
+    @Published var rcNumber = ""
+    @Published var brand = ""
+    @Published var manufacturer = ""
+    @Published var model = ""
+    @Published var modelYear = ""
     @Published var vehicleType = "Truck"
     @Published var fuelType = "Diesel"
     
-    @Published var manufacturer = ""
-    @Published var model = ""
-    
+    // MARK: - Dates
     @Published var registrationDate = Date()
     @Published var pucExpiry = Date()
     @Published var rcExpiry = Date()
     
+    // MARK: - Asset URLs (Supabase Storage)
+    @Published var vehicleImageURL: String?
     @Published var rcURL: String?
     @Published var insuranceURL: String?
     @Published var pucURL: String?
     
-    @Published var vehicleImageURL: String?
+    // MARK: - Local UI State (Files/Images)
     @Published var localVehicleImage: UIImage?
-    
-    // Original Filenames for display
     @Published var rcFileName: String?
     @Published var insuranceFileName: String?
     @Published var pucFileName: String?
-    var isStep2Valid: Bool {
-        return rcURL != nil && insuranceURL != nil
-    }
+
+    // MARK: - Validation Logic
     
-    func validate() -> String? {
-        if vehicleName.trimmingCharacters(in: .whitespaces).isEmpty {
-            return "Vehicle name is required"
-        }
-        
-        if registrationNumber.trimmingCharacters(in: .whitespaces).isEmpty {
-            return "Registration number is required"
-        }
-        
-        if rcURL == nil {
-            return "RC document is required"
-        }
-        
-        if insuranceURL == nil {
-            return "Insurance document is required"
-        }
-        
-        let calendar = Calendar.current
-        let today = calendar.startOfDay(for: Date())
-        
-        if calendar.startOfDay(for: rcExpiry) < today {
-            return "RC document is expired. Please provide a valid expiry date."
-        }
-        
-        if calendar.startOfDay(for: pucExpiry) < today {
-            return "PUC document is expired. Please provide a valid expiry date."
-        }
-        
-        return nil
-    }
-    var isStep1Valid: Bool {
-        !vehicleName.trimmingCharacters(in: .whitespaces).isEmpty &&
-        !brand.trimmingCharacters(in: .whitespaces).isEmpty &&
-        isValidPlate(registrationNumber) &&
-        vin.count == 17
+    /// Controls UI feedback (e.g., Save button color)
+    var isFormValid: Bool {
+        !vehicleName.isEmpty &&
+        isValidPlate(licensePlate) &&
+        vin.count == 17 &&
+        isValidRC(rcNumber) &&
+        rcURL != nil &&            // RC is compulsory
+        insuranceURL != nil        // Insurance is compulsory
     }
 
-    func validateStep1() -> String? {
-        if vehicleName.trimmingCharacters(in: .whitespaces).isEmpty {
-            return "Vehicle name is required"
-        }
-        if registrationNumber.trimmingCharacters(in: .whitespaces).isEmpty {
-            return "Registration number is required"
-        }
-        if !isValidPlate(registrationNumber) {
-            return "Enter valid number plate (e.g. KA01AB1234)"
-        }
+    /// Explicit validation before attempting to save
+    func validate() -> String? {
+        if vehicleName.trimmingCharacters(in: .whitespaces).isEmpty { return "Vehicle Name is required." }
+        if !isValidPlate(licensePlate) { return "Invalid License Plate. Use format: XX-00-XX-0000" }
+        if vin.count != 17 { return "VIN must be exactly 17 characters." }
+        if !isValidRC(rcNumber) { return "Invalid RC Number (8-20 alphanumeric characters)." }
         
-        if brand.trimmingCharacters(in: .whitespaces).isEmpty {
-            return "Brand is required"
-        }
+        // Document requirements
+        if rcURL == nil { return "RC Document upload is compulsory." }
+        if insuranceURL == nil { return "Insurance Policy upload is compulsory." }
         
-        if vin.trimmingCharacters(in: .whitespaces).isEmpty {
-            return "VIN is required"
-        }
-        if vin.count != 17 {
-            return "VIN must be exactly 17 characters"
-        }
+        // Date Logic
+        if registrationDate > Date() { return "Registration date cannot be in the future." }
         
         return nil
     }
+
+    // MARK: - Formatting Helpers
+    
     func formatPlate(_ input: String) -> String {
-        let normalized = input
-            .uppercased()
-            .replacingOccurrences(of: " ", with: "")
-            .replacingOccurrences(of: "-", with: "")
-        
+        let normalized = input.uppercased().replacingOccurrences(of: "[^A-Z0-9]", with: "", options: .regularExpression)
         var result = ""
-        
         for (index, char) in normalized.enumerated() {
-            if index == 2 || index == 4 || index == 6 {
-                result.append("-")
-            }
+            if index == 2 || index == 4 || index == 6 { result.append("-") }
             result.append(char)
         }
-        
         return result
     }
-}
 
+    private func isValidPlate(_ input: String) -> Bool {
+        let regex = "^[A-Z]{2}-[0-9]{2}-[A-Z]{1,2}-[0-9]{4}$"
+        return NSPredicate(format: "SELF MATCHES %@", regex).evaluate(with: input)
+    }
 
+    private func isValidRC(_ input: String) -> Bool {
+        let rcRegex = "^[A-Z0-9/]{8,20}$"
+        return NSPredicate(format: "SELF MATCHES %@", rcRegex).evaluate(with: input.uppercased())
+    }
 
-extension AddVehicleViewModel {
+    // MARK: - Persistence (Save to Supabase)
+    
+    func saveVehicle() async {
+        if let error = validate() {
+            await MainActor.run { self.errorMessage = error }
+            return
+        }
+
+        await MainActor.run {
+            self.isLoading = true
+            self.errorMessage = nil
+        }
+        
+        let sqlDateFormatter = DateFormatter()
+        sqlDateFormatter.dateFormat = "yyyy-MM-dd"
+
+        let payload: [String: Any] = [
+            "image_url": vehicleImageURL ?? "",
+            "vehicleName": vehicleName,
+            "registrationNumber": licensePlate,
+            "vin": vin.uppercased(),
+            "rc_number": rcNumber.uppercased(),
+            "brand": brand,
+            "manufacturer": manufacturer,
+            "model": model,
+            "model_year": Int(modelYear) ?? 0,
+            "vehicleType": vehicleType,
+            "fuelType": fuelType,
+            // Date Integration
+            "registrationDate": sqlDateFormatter.string(from: registrationDate),
+            "pucExpiry": sqlDateFormatter.string(from: pucExpiry),
+            "rcExpiry": sqlDateFormatter.string(from: rcExpiry),
+            // Document Array Construction
+            "documents": [
+                rcURL != nil ? ["type": "RC", "url": rcURL!, "name": rcFileName ?? "RC_Doc"] : nil,
+                insuranceURL != nil ? ["type": "INSURANCE", "url": insuranceURL!, "name": insuranceFileName ?? "Insurance_Doc"] : nil,
+                pucURL != nil ? ["type": "PUC", "url": pucURL!, "name": pucFileName ?? "PUC_Doc"] : nil
+            ].compactMap { $0 }
+        ]
+
+        do {
+            let functionURL = URL(string: "https://qisdvwaldlghndrudbvr.supabase.co/functions/v1/bright-action")!
+            var request = URLRequest(url: functionURL)
+            request.httpMethod = "POST"
+            request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
+            request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
+                await MainActor.run { self.isSuccess = true }
+            } else {
+                let errorObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+                let message = errorObj?["error"] as? String ?? "Failed to save vehicle details."
+                throw NSError(domain: "", code: 0, userInfo: [NSLocalizedDescriptionKey: message])
+            }
+        } catch {
+            await MainActor.run { self.errorMessage = error.localizedDescription }
+        }
+        
+        await MainActor.run { self.isLoading = false }
+    }
+    
+    // MARK: - Upload Methods (Storage)
+        
     func uploadImage(image: UIImage, type: String) async {
-        // Convert image to data
         guard let data = image.jpegData(compressionQuality: 0.7) else { return }
-        
-        let fileName = UUID().uuidString + ".jpg"
-        
-        let bucketName = (type == "VEHICLE") ? "vehicle-images" : "vehicle-documents"
-        
-        
-        let storageURL = "\(SUPABASE_URL)/storage/v1/object/\(bucketName)/\(fileName)"
-        
-        guard let url = URL(string: storageURL) else { return }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
-        request.addValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        let fileName = "\(UUID().uuidString).jpg"
+        let bucket = (type == "VEHICLE") ? "vehicle-images" : "vehicle-documents"
         
         do {
+            let storage = SupabaseManager.shared.client.storage.from(bucket)
+            try await storage.upload(path: fileName, file: data, options: FileOptions(contentType: "image/jpeg"))
             
-            _ = try await URLSession.shared.upload(for: request, from: data)
+            let publicURL = "\(SUPABASE_URL)/storage/v1/object/public/\(bucket)/\(fileName)"
             
-            
-            let publicURL = "\(SUPABASE_URL)/storage/v1/object/public/\(bucketName)/\(fileName)"
-            
-         
-            DispatchQueue.main.async {
+            await MainActor.run {
                 switch type {
                 case "RC":
                     self.rcURL = publicURL
                     self.rcFileName = "Photo_RC.jpg"
                 case "INSURANCE":
                     self.insuranceURL = publicURL
-                    self.insuranceFileName = "Photo_Insurance.jpg"
+                    self.insuranceFileName = "Photo_INS.jpg"
                 case "PUC":
                     self.pucURL = publicURL
                     self.pucFileName = "Photo_PUC.jpg"
                 case "VEHICLE":
                     self.vehicleImageURL = publicURL
-                default:
-                    break
+                default: break
                 }
             }
-            
         } catch {
-            print("Upload failed for \(type):", error)
+            await MainActor.run { self.errorMessage = "Upload failed: \(error.localizedDescription)" }
         }
     }
-    
-    func isValidPlate(_ input: String) -> Bool {
-        let normalized = input
-            .uppercased()
-            .replacingOccurrences(of: " ", with: "")
-            .replacingOccurrences(of: "-", with: "")
-        
-        let regex = "^[A-Z]{2}[0-9]{1,2}[A-Z]{1,3}[0-9]{3,4}$"
-        
-        return NSPredicate(format: "SELF MATCHES %@", regex)
-            .evaluate(with: normalized)
-    }
+
     func uploadFile(fileURL: URL, type: String) async {
-        
         do {
+            // Start accessing security-scoped resource if coming from DocumentPicker
             let data = try Data(contentsOf: fileURL)
-            print("File size:", data.count)
+            let fileName = "\(UUID().uuidString).\(fileURL.pathExtension)"
+            let storage = SupabaseManager.shared.client.storage.from("vehicle-documents")
             
-            let fileExtension = fileURL.pathExtension
-            let fileName = UUID().uuidString + "." + fileExtension
-            
-            let storageURL = "\(SUPABASE_URL)/storage/v1/object/vehicle-documents/\(fileName)"
-            
-            guard let url = URL(string: storageURL) else { return }
-            
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
-            request.addValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-            
-            let (responseData, response) = try await URLSession.shared.upload(for: request, from: data)
-            
-            if let httpResponse = response as? HTTPURLResponse {
-                print("UPLOAD STATUS:", httpResponse.statusCode)
-            }
-            
-            if let responseString = String(data: responseData, encoding: .utf8) {
-                print("UPLOAD RESPONSE:", responseString)
-            }
+            try await storage.upload(path: fileName, file: data)
             
             let publicURL = "\(SUPABASE_URL)/storage/v1/object/public/vehicle-documents/\(fileName)"
             
-            DispatchQueue.main.async {
+            await MainActor.run {
                 let originalName = fileURL.lastPathComponent
                 switch type {
                 case "RC":
@@ -236,164 +212,8 @@ extension AddVehicleViewModel {
                 default: break
                 }
             }
-            
         } catch {
-            print("❌ FILE READ ERROR:", error)
+            await MainActor.run { self.errorMessage = "File error: \(error.localizedDescription)" }
         }
-    }
-}
-
-extension AddVehicleViewModel {
-    
-    func saveVehicle() async {
-        if let error = validate() {
-            DispatchQueue.main.async {
-                self.errorMessage = error
-            }
-            return
-        }
-
-        DispatchQueue.main.async {
-            self.isLoading = true
-            self.errorMessage = nil
-        }
-        
-        defer {
-            DispatchQueue.main.async {
-                self.isLoading = false
-            }
-        }
-
-        do {
-            let newVehicle = VehicleInsert(
-                vehicle_name: vehicleName.trimmingCharacters(in: .whitespacesAndNewlines),
-                number_plate: registrationNumber.trimmingCharacters(in: .whitespacesAndNewlines),
-                brand: brand.nilIfBlank,
-                model_year: Int(modelYear.trimmingCharacters(in: .whitespacesAndNewlines)),
-                vehicle_type: vehicleType.trimmingCharacters(in: .whitespacesAndNewlines),
-                fuel_type: fuelType.nilIfBlank,
-                model: model.nilIfBlank,
-                image_url: vehicleImageURL?.nilIfBlank
-            )
-
-            let vehicleId: UUID
-            do {
-                let response = try await SupabaseManager.shared.client
-                    .from("vehicles")
-                    .insert(newVehicle)
-                    .select("vehicle_id")
-                    .single()
-                    .execute()
-                
-                // Get the generated ID
-                guard let row = try JSONSerialization.jsonObject(with: response.data) as? [String: Any],
-                      let idString = row["vehicle_id"] as? String,
-                      let parsedVehicleId = UUID(uuidString: idString) else {
-                    throw NSError(domain: "AddVehicle", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to retrieve vehicle ID after insert"])
-                }
-
-                print("Created vehicle id:", parsedVehicleId.uuidString)
-                vehicleId = parsedVehicleId
-            } catch {
-                let errorText = error.localizedDescription.lowercased()
-                if errorText.contains("row-level security") || errorText.contains("403") {
-                    try await saveVehicleViaEdgeFunction()
-                    DispatchQueue.main.async {
-                        self.isSuccess = true
-                    }
-                    return
-                } else {
-                    throw error
-                }
-            }
-
-            let docs = [
-                rcURL != nil ? ["vehicle_id": vehicleId.uuidString, "document_type": "RC", "file_url": rcURL!] : nil,
-                insuranceURL != nil ? ["vehicle_id": vehicleId.uuidString, "document_type": "INSURANCE", "file_url": insuranceURL!] : nil,
-                pucURL != nil ? ["vehicle_id": vehicleId.uuidString, "document_type": "PUC", "file_url": pucURL!] : nil
-            ].compactMap { $0 }
-
-            print("Document insert payload count:", docs.count)
-
-            if !docs.isEmpty {
-                do {
-                    try await SupabaseManager.shared.client
-                        .from("vehicle_documents")
-                        .insert(docs)
-                        .execute()
-                } catch {
-                    print("❌ Failed to insert vehicle documents for \(vehicleId):", error)
-                    throw NSError(
-                        domain: "AddVehicle",
-                        code: 4,
-                        userInfo: [NSLocalizedDescriptionKey: "Vehicle was created, but documents could not be linked. Please try again or edit the vehicle documents."]
-                    )
-                }
-            }
-
-            DispatchQueue.main.async {
-                self.isSuccess = true
-            }
-        } catch {
-            print("❌ Failed to save vehicle: \(error)")
-            DispatchQueue.main.async {
-                self.errorMessage = error.localizedDescription
-            }
-        }
-    }
-
-    private func saveVehicleViaEdgeFunction() async throws {
-        guard let url = URL(string: "https://qisdvwaldlghndrudbvr.supabase.co/functions/v1/bright-action") else {
-            throw URLError(.badURL)
-        }
-
-        let documents = [
-            rcURL != nil ? ["document_type": "RC", "type": "RC", "file_url": rcURL!, "url": rcURL!] : nil,
-            insuranceURL != nil ? ["document_type": "INSURANCE", "type": "INSURANCE", "file_url": insuranceURL!, "url": insuranceURL!] : nil,
-            pucURL != nil ? ["document_type": "PUC", "type": "PUC", "file_url": pucURL!, "url": pucURL!] : nil
-        ].compactMap { $0 }
-
-        let payload: [String: Any] = [
-            "image_url": vehicleImageURL ?? "",
-            "vehicleName": vehicleName,
-            "registrationNumber": registrationNumber,
-            "vin": vin.uppercased(),
-            "brand": brand,
-            "model_year": Int(modelYear) ?? 0,
-            "vehicleType": vehicleType,
-            "fuelType": fuelType,
-            "manufacturer": manufacturer,
-            "model": model,
-            "registrationDate": ISO8601DateFormatter().string(from: registrationDate),
-            "pucExpiry": ISO8601DateFormatter().string(from: pucExpiry),
-            "rcExpiry": ISO8601DateFormatter().string(from: rcExpiry),
-            "documents": documents
-        ]
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw URLError(.badServerResponse)
-        }
-
-        guard 200..<300 ~= httpResponse.statusCode else {
-            let message = String(data: data, encoding: .utf8) ?? "Edge function failed"
-            throw NSError(domain: "AddVehicle", code: httpResponse.statusCode, userInfo: [
-                NSLocalizedDescriptionKey: message
-            ])
-        }
-    }
-}
-
-private extension String {
-    var nilIfBlank: String? {
-        let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
     }
 }

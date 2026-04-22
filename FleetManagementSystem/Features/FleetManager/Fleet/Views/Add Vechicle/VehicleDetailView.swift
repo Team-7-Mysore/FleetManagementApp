@@ -33,6 +33,7 @@ struct VehicleDetailView: View {
                     vehicleImage(vehicle)
                     vehicleHeader(vehicle)
                     infoSection(vehicle)
+                    registrationSection(vehicle)
                     documentsSection
                     
                     // Maintenance Section
@@ -48,13 +49,16 @@ struct VehicleDetailView: View {
             }
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
-        .onAppear {
-            Task {
-                await vm.fetchVehicle(vehicleId: vehicleId)
+        .task {
+            await vm.fetchVehicle(vehicleId: vehicleId)
+        }
+        .navigationTitle(vm.vehicle?.name ?? "Vehicle")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Close") { dismiss() }
             }
         }
-        .navigationTitle("Vehicle")
-        .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(isEditing)
         .toolbar {
             if isEditing {
@@ -201,6 +205,25 @@ struct VehicleDetailView: View {
                 InfoRow(title: "Model", value: vehicle.model ?? "—", isEditing: isEditing, text: binding(\.model))
                 InfoRow(title: "Year", value: vehicle.modelYear ?? "—", isEditing: isEditing, text: binding(\.modelYear))
                 InfoRow(title: "Fuel", value: vehicle.fuelType ?? "—", isEditing: isEditing, text: binding(\.fuelType))
+            }
+            .padding()
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+    }
+
+    private func registrationSection(_ vehicle: Vehicle) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Registration Details")
+                .font(.caption.bold())
+                .foregroundColor(.secondary)
+
+            VStack(spacing: 10) {
+                InfoRow(title: "VIN", value: vehicle.vin.isEmpty ? "—" : vehicle.vin, isEditing: isEditing, text: binding(\.vin))
+                InfoRow(title: "RC Number", value: vehicle.rcNumber.isEmpty ? "—" : vehicle.rcNumber, isEditing: isEditing, text: binding(\.rcNumber))
+                InfoRow(title: "Reg. Date", value: vehicle.registrationDate.isEmpty ? "—" : vehicle.registrationDate)
+                InfoRow(title: "RC Expiry", value: vehicle.rcExpiryDate.isEmpty ? "—" : vehicle.rcExpiryDate)
+                InfoRow(title: "PUC Expiry", value: vehicle.pucExpiryDate.isEmpty ? "—" : vehicle.pucExpiryDate)
             }
             .padding()
             .background(Color(.secondarySystemGroupedBackground))

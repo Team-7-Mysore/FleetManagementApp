@@ -1,56 +1,35 @@
-//
-//  CustomDropdown.swift
-//  FleetManagementSystem
-//
-//  Created by Disha Jain on 16/04/26.
-//
-
 import SwiftUI
 
 struct CustomDropdown: View {
     let title: String
     let options: [String]
     @Binding var selection: String
-    var isOptional: Bool = false
     var showDivider: Bool = true
     
     var body: some View {
         VStack(spacing: 0) {
-            Menu {
-                ForEach(options, id: \.self) { option in
-                    Button(option) {
-                        selection = option
+            HStack {
+                Text(title)
+                    .font(.system(size: 16))
+                    .foregroundColor(.primary)
+                
+                Spacer()
+                
+                Picker("", selection: $selection) {
+                    ForEach(options, id: \.self) { option in
+                        Text(option).tag(option)
                     }
                 }
-            } label: {
-                HStack {
-                    HStack(spacing: 4) {
-                        Text(title)
-                            .font(.subheadline)
-                            .foregroundColor(.primary)
-                        
-                        if isOptional {
-                            Text("(optional)")
-                                .font(.caption2)
-                                .foregroundColor(Color(.placeholderText))
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    HStack(spacing: 4) {
-                        Text(selection)
-                            .foregroundColor(.TechBlue)
-                            .font(.body)
-                    }
-                }
-                .padding(.vertical, 12)
-                .padding(.horizontal, 16)
+                .pickerStyle(.menu) // Handles the native iOS chevron automatically
+                .tint(.blue)
+                .labelsHidden()
             }
+            .padding(.vertical, 16)
+            .padding(.horizontal, 16)
+            .background(Color.white)
             
             if showDivider {
-                Divider()
-                    .padding(.leading, 16)
+                Divider().padding(.leading, 16)
             }
         }
     }

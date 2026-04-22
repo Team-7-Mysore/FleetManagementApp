@@ -74,7 +74,13 @@ class VehicleDetailViewModel: ObservableObject {
                     image_url,
                     vehicle_type,
                     fuel_type,
-                    model_year
+                    model_year,
+                    status,
+                    vin,
+                    registration_no,
+                    registration_date,
+                    rc_expiry_date,
+                    puc_expiry_date
                 """)
                 .eq("vehicle_id", value: vehicleId.uuidString.lowercased())
                 .single()
@@ -321,7 +327,7 @@ private extension VehicleDetailViewModel {
         let name = stringValue(row["vehicle_name"])
         let type = stringValue(row["vehicle_type"])
 
-        return Vehicle(
+        var vehicle = Vehicle(
             id: id,
             name: preferredText(name, fallback: plate, defaultValue: "Unnamed Vehicle"),
             registrationNumber: preferredText(plate, fallback: nil, defaultValue: "No Plate"),
@@ -332,6 +338,12 @@ private extension VehicleDetailViewModel {
             fuelType: stringValue(row["fuel_type"]),
             modelYear: stringValue(row["model_year"])
         )
+        vehicle.vin = stringValue(row["vin"]) ?? ""
+        vehicle.rcNumber = stringValue(row["registration_no"]) ?? ""
+        vehicle.registrationDate = stringValue(row["registration_date"]) ?? ""
+        vehicle.rcExpiryDate = stringValue(row["rc_expiry_date"]) ?? ""
+        vehicle.pucExpiryDate = stringValue(row["puc_expiry_date"]) ?? ""
+        return vehicle
     }
 
     static func parseDocuments(from data: Data) throws -> [VehicleDocument] {
