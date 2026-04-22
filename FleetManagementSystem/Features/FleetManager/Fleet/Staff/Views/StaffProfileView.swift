@@ -7,15 +7,23 @@
 //
 
 import SwiftUI
+import Supabase
 
 struct StaffProfileView: View {
     let staff: StaffUser
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var creatorName: String? = nil
+    @State private var isDeactivating = false
+    @State private var errorMessage: String? = nil
+    @State private var showAlert = false
+    @State private var showDeactivateConfirmation = false
 
     private var accentColor: Color {
         switch staff.role {
         case .driver:      return Color(red: 59/255,  green: 13/255,  blue: 17/255)
         case .maintenance: return Color(red: 30/255,  green: 80/255,  blue: 160/255)
-        case .fleetManager:     return Color(red: 40/255,  green: 120/255, blue: 70/255)
+        case .manager:     return Color(red: 40/255,  green: 120/255, blue: 70/255)
         }
     }
 
@@ -63,6 +71,9 @@ struct StaffProfileView: View {
                 if let phone = staff.phone_no, !phone.isEmpty {
                     LabeledContent("Phone", value: phone)
                 }
+                if let cname = creatorName {
+                    LabeledContent("Created By", value: cname)
+                }
             }
 
             // MARK: Performance & Activity (Simplified)
@@ -85,15 +96,83 @@ struct StaffProfileView: View {
             // MARK: Actions
             Section {
                 Button(role: .destructive) {
-                    // Action for deactivating/removing staff
+                    showDeactivateConfirmation = true
                 } label: {
-                    Text("Deactivate Staff Account")
-                        .frame(maxWidth: .infinity)
+                    if isDeactivating {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        Text("Deactivate Staff Account")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .disabled(isDeactivating || staff.status == .inactive)
+            }
+        }
+        .alert(
+            "Deactivate Account?",
+            isPresented: $showDeactivateConfirmation
+        ) {
+            Button("Cancel", role: .cancel) {}
+            Button("Deactivate", role: .destructive) {
+                Task {
+                    await deactivateStaff()
                 }
             }
+        } message: {
+            Text("Are you sure you want to deactivate \(staff.name)'s account?")
+        }
+        .alert("Error Deactivating", isPresented: $showAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(errorMessage ?? "Unknown error occurred.")
         }
         .navigationTitle("Profile")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await fetchCreatorName()
+        }
+    }
+
+    private func deactivateStaff() async {
+        await MainActor.run { isDeactivating = true }
+        do {
+            try await SupabaseManager.shared.client
+                .from("users")
+                .update(["status": "inactive"])
+                .eq("user_id", value: staff.user_id)
+                .execute()
+            
+            await MainActor.run {
+                isDeactivating = false
+                dismiss() // Close the profile view since the account is now inactive
+            }
+        } catch {
+            await MainActor.run {
+                self.errorMessage = error.localizedDescription
+                self.showAlert = true
+                self.isDeactivating = false
+            }
+        }
+    }
+
+    private func fetchCreatorName() async {
+        guard let creatorId = staff.created_by, creatorName == nil else { return }
+        do {
+            let records: [CreatorRecord] = try await SupabaseManager.shared.client
+                .from("users")
+                .select("name")
+                .eq("user_id", value: creatorId)
+                .limit(1)
+                .execute()
+                .value
+            
+            if let fetchedName = records.first?.name {
+                await MainActor.run { self.creatorName = fetchedName }
+            }
+        } catch {
+            print("Failed to fetch creator name: \(error)")
+        }
     }
 
     private func statusColor(_ status: AccountStatus) -> Color {
@@ -105,14 +184,19 @@ struct StaffProfileView: View {
     }
 }
 
-#Preview {
-    StaffProfileView(staff: StaffUser(
-        user_id: "D12345678",
-        name: "Amit Sharma",
-        email: "amit.garage@fleet.com",
-        role: .maintenance,
-        phone_no: "9988776655",
-        username: "amit_s",
-        status: .active
-    ))
+private struct CreatorRecord: Decodable {
+    let name: String
 }
+
+//#Preview {
+//    StaffProfileView(staff: StaffUser(
+//        user_id: "D12345678",
+//        name: "Amit Sharma",
+//        email: "amit.garage@fleet.com",
+//        role: .maintenance,
+//        phone_no: "9988776655",
+//        username: "amit_s",
+//        status: .active,
+//        created_by: nil
+//    ))
+//}

@@ -45,10 +45,16 @@ struct AddStaffReviewView: View {
 
             // MARK: Details
             Section(header: Text("Staff Details")) {
-                LabeledContent("Username", value: model.displayUsername)
                 LabeledContent("Email", value: model.email)
                 LabeledContent("Phone", value: model.phoneNo.isEmpty ? "—" : model.phoneNo)
                 LabeledContent("Role", value: model.selectedRole?.rawValue ?? "—")
+            }
+
+            if model.selectedRole == .driver {
+                Section(header: Text("Licence Details")) {
+                    LabeledContent("Licence Number", value: model.licenceNumber.isEmpty ? "—" : model.licenceNumber)
+                    LabeledContent("Expiry Date", value: model.licenceExpiryDate.isEmpty ? "—" : model.licenceExpiryDate)
+                }
             }
 
             // MARK: Account Info

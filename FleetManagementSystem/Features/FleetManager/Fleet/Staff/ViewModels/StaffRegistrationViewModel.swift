@@ -20,8 +20,6 @@ final class StaffRegistrationViewModel: ObservableObject {
     var phoneNo:       String     { get { model.phoneNo       } set { model.phoneNo       = newValue } }
     var selectedRole:  StaffRole? { get { model.selectedRole  } set { model.selectedRole  = newValue } }
 
-    var generatedUsername: String  { model.generatedUsername  }
-    var displayUsername:   String  { model.displayUsername    }
     var isFormValid:       Bool    { model.isFormValid        }
     var isCreatingAccount: Bool    { model.isCreatingAccount  }
     var accountCreated:    Bool    { model.accountCreated     }
