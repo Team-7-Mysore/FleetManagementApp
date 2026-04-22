@@ -5,13 +5,20 @@ struct ReportIssueView: View {
     let user: User
     let vehicle: Vehicle?
     @Environment(\.dismiss) private var dismiss
+    
+    @StateObject private var vm: ReportIssueViewModel
 
     @State private var issueCategory = "Mechanical"
     @State private var severity = "Medium"
     @State private var description = ""
-    @State private var showConfirmation = false
+    
+    init(user: User, vehicle: Vehicle?) {
+        self.user = user
+        self.vehicle = vehicle
+        _vm = StateObject(wrappedValue: ReportIssueViewModel(user: user, vehicle: vehicle))
+    }
 
-    private let categories = ["Mechanical", "Electrical", "Tire/Wheel", "Fluid Leak", "Body Damage", "Safety", "Other"]
+    private let categories = ["Mechanical", "Electrical", "Tyre/Wheel", "Fluid Leak", "Body Damage", "Safety", "Other"]
     private let severities = ["Low", "Medium", "Critical"]
 
     var body: some View {
@@ -95,17 +102,25 @@ struct ReportIssueView: View {
                     HStack {
                         Spacer()
                         Button {
-                            showConfirmation = true
+                            Task {
+                                await vm.submitReport(category: issueCategory, severity: severity, description: description)
+                            }
                         } label: {
-                            Text("Submit Report")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 24)
-                                .padding(.vertical, 12)
-                                .background(AppTheme.primaryGreen)
-                                .clipShape(Capsule())
+                            if vm.isSubmitting {
+                                ProgressView()
+                                    .tint(.white)
+                                    .frame(width: 80, height: 20)
+                            } else {
+                                Text("Submit Report")
+                                    .font(.subheadline.weight(.semibold))
+                            }
                         }
-                        .disabled(description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 12)
+                        .background(AppTheme.primaryGreen)
+                        .clipShape(Capsule())
+                        .disabled(description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || vm.isSubmitting)
                         Spacer()
                     }
                     .listRowBackground(Color.clear)
@@ -115,10 +130,20 @@ struct ReportIssueView: View {
             .listSectionSpacing(.compact)
             .navigationTitle("Report Issue")
             .navigationBarTitleDisplayMode(.inline)
-            .alert("Issue Reported", isPresented: $showConfirmation) {
+            .alert("Issue Reported", isPresented: $vm.submitSuccess) {
                 Button("OK") { dismiss() }
             } message: {
                 Text("Your issue report has been submitted to the fleet manager. They will follow up shortly.")
+            }
+            .alert("Error", isPresented: Binding(
+                get: { vm.errorMessage != nil },
+                set: { if !$0 { vm.errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                if let error = vm.errorMessage {
+                    Text(error)
+                }
             }
         }
     }
