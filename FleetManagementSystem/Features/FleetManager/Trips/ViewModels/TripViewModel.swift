@@ -258,7 +258,11 @@ final class TripViewModel: ObservableObject {
         isLoading = true
         errorMessage = nil
 
+        // Convert local dates to UTC for Supabase
         let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        
         let pickupISODate = formatter.string(from: pickupDate)
         let endISODate = formatter.string(from: expectedEndDate)
 
@@ -282,6 +286,8 @@ final class TripViewModel: ObservableObject {
         print("   Origin: \(origin)")
         print("   Destination: \(destination)")
         print("   Via Points: \(viaPoints)")
+        print("   Pickup Time (UTC): \(pickupISODate)")
+        print("   End Time (UTC): \(endISODate)")
 
         do {
             try await SupabaseManager.shared.client
@@ -392,14 +398,19 @@ final class TripViewModel: ObservableObject {
     private func parseDatabaseTimestamp(_ value: String?) -> Date? {
         guard let value else { return nil }
 
+        // Supabase stores timestamps in UTC, so we need to parse them as UTC
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        iso.timeZone = TimeZone(identifier: "UTC")
         if let date = iso.date(from: value) {
             return date
         }
 
+        // Fallback to other formats, also treating them as UTC
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        
         let formats = [
             "yyyy-MM-dd'T'HH:mm:ss",
             "yyyy-MM-dd'T'HH:mm:ssZ",

@@ -100,25 +100,27 @@ struct TripsListView: View {
 
    private func overviewCard(title: String, value: String, icon: String, color: Color) -> some View {
        VStack(spacing: 16) {
-           HStack(alignment: .center, spacing: 5){
+           HStack(alignment: .center, spacing: 8) {
                Image(systemName: icon)
-                   .font(.system(size: 16))
+                   .font(.system(size: 20))
                    .foregroundColor(color)
 
                Text(title)
                    .font(.subheadline)
                    .foregroundColor(.secondary)
-                   //.multilineTextAlignment(.center)
+               
+               Spacer()
            }
 
            Text(value)
-               .font(.system(size: 32, weight: .bold, design: .rounded))
+               .font(.system(size: 36, weight: .bold, design: .rounded))
                .foregroundColor(.primary)
+               .frame(maxWidth: .infinity, alignment: .center)
 
        }
        .frame(maxWidth: .infinity)
-       .padding(.vertical, 16)
-       .padding(.horizontal, 10)
+       .padding(.vertical, 20)
+       .padding(.horizontal, 16)
        .background(Color(.secondarySystemGroupedBackground))
        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
        .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
@@ -154,21 +156,9 @@ struct TripsListView: View {
    // MARK: - Maintenance Section
    private var maintenanceSection: some View {
        VStack(alignment: .leading, spacing: 12) {
-           HStack {
-               Text("Vehicles in Maintenance")
-                   .font(.title3.weight(.semibold))
-                   .foregroundColor(.primary)
-
-               Spacer()
-
-               Text("\(vm.maintenanceVehicleCount)")
-                   .font(.subheadline.weight(.bold))
-                   .foregroundColor(.white)
-                   .padding(.horizontal, 12)
-                   .padding(.vertical, 6)
-                   .background(Color.orange)
-                   .clipShape(Capsule())
-           }
+           Text("Vehicles in Maintenance")
+               .font(.title3.weight(.semibold))
+               .foregroundColor(.primary)
 
            ForEach(Array(vm.vehiclesInMaintenance.prefix(3))) { workOrder in
                MaintenanceVehicleCard(workOrder: workOrder)

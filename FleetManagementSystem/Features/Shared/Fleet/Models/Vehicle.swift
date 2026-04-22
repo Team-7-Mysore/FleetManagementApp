@@ -53,10 +53,11 @@ struct Vehicle: Identifiable, Codable {
         vehicleType = (try container.decodeIfPresent(String.self, forKey: .vehicleType)) ?? "Unknown"
         fuelType = try container.decodeIfPresent(String.self, forKey: .fuelType)
 
-        if let stringYear = try container.decodeIfPresent(String.self, forKey: .modelYear) {
-            modelYear = stringYear
-        } else if let intYear = try container.decodeIfPresent(Int.self, forKey: .modelYear) {
+        // Handle model_year which can be either Int or String in the database
+        if let intYear = try? container.decodeIfPresent(Int.self, forKey: .modelYear) {
             modelYear = String(intYear)
+        } else if let stringYear = try? container.decodeIfPresent(String.self, forKey: .modelYear) {
+            modelYear = stringYear
         } else {
             modelYear = nil
         }
