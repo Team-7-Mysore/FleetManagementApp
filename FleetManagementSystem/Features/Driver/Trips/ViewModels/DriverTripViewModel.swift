@@ -16,7 +16,7 @@ final class DriverTripViewModel: ObservableObject {
     enum TripFilter: String, CaseIterable, Identifiable {
         case upcoming   = "Upcoming"
         case completed  = "Completed"
-        case all        = "All"
+//        case all        = "All"
         var id: String { rawValue }
     }
 
@@ -77,9 +77,9 @@ final class DriverTripViewModel: ObservableObject {
 
     var filteredTrips: [TripMap] {
         switch selectedFilter {
-        case .upcoming:  return upcomingTrips
+        case .upcoming:  return upcomingTrips + (activeTrip.map { [$0] } ?? [])
         case .completed: return completedTrips
-        case .all:       return upcomingTrips + completedTrips + (activeTrip.map { [$0] } ?? [])
+//        case .all:       return upcomingTrips + completedTrips + (activeTrip.map { [$0] } ?? [])
         }
     }
 

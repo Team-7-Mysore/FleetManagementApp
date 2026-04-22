@@ -58,7 +58,7 @@ struct TripListView: View {
         }
         .background(AppTheme.pageBackground)
         .navigationTitle("My Trips")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .onAppear { vm.loadData() }
     }
 
