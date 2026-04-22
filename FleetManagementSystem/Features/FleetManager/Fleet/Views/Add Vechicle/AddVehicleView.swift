@@ -20,15 +20,16 @@ struct AddVehicleView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // MARK: - Vehicle Photo
+                // MARK: - Vehicle Photo (Grey Rounded Rectangle Style)
                 Section {
                     HStack {
                         Spacer()
                         imageUploadSection
                         Spacer()
                     }
-                    .listRowBackground(Color.clear)
+                    .padding(.vertical, 10)
                 }
+                .listRowBackground(Color.clear) // Keeps the background clean
 
                 // MARK: - Vehicle Identification
                 Section(header: Text("Vehicle Identification")) {
@@ -95,12 +96,6 @@ struct AddVehicleView: View {
                     }
                 }
             }
-            .alert(item: Binding(
-                get: { vm.errorMessage.map { ErrorWrapper(message: $0) } },
-                set: { _ in vm.errorMessage = nil }
-            )) { wrapper in
-                Alert(title: Text("Note"), message: Text(wrapper.message))
-            }
             .sheet(isPresented: $showDocumentPicker) {
                 DocumentPicker { url in
                     handleDocumentSelected(url)
@@ -124,15 +119,13 @@ struct AddVehicleView: View {
     
     private func handleImageSelected(_ image: UIImage) {
         self.vm.localVehicleImage = image
-        let uploadType = self.selectedType
-        let viewModel = self.vm
-        Task { await viewModel.uploadImage(image: image, type: uploadType) }
+        self.selectedType = "VEHICLE"
+        Task { await vm.uploadImage(image: image, type: "VEHICLE") }
     }
 
     private func handleDocumentSelected(_ url: URL) {
         let uploadType = self.selectedType
-        let viewModel = self.vm
-        Task { await viewModel.uploadFile(fileURL: url, type: uploadType) }
+        Task { await vm.uploadFile(fileURL: url, type: uploadType) }
     }
     
     // MARK: - Subcomponents
@@ -155,28 +148,32 @@ struct AddVehicleView: View {
                 }
             } label: { Label("Choose from Gallery", systemImage: "photo") }
         } label: {
-            VStack(spacing: 8) {
+            VStack(spacing: 12) {
                 if let image = vm.localVehicleImage {
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()
-                        .frame(width: 100, height: 100)
-                        .clipShape(Circle())
+                        .frame(width: 140, height: 140)
+                        .clipShape(RoundedRectangle(cornerRadius: 24))
                 } else {
+                    // CHANGED: This ZStack creates the grey rounded rectangle background
                     ZStack {
-                        Circle()
-                            .fill(Color(.systemGray5))
-                            .frame(width: 100, height: 100)
+                        RoundedRectangle(cornerRadius: 24) // Defines the rounded corner shape
+                            .fill(Color(.systemGray5)) // The grey background color
+                            .frame(width: 140, height: 140) // Size to match the text and layout
+                        
                         Image(systemName: "camera.fill")
-                            .font(.system(size: 30))
-                            .foregroundColor(.secondary)
+                            .font(.system(size: 40))
+                            .foregroundColor(.white) // Camera icon color
                     }
                 }
+                
                 Text("Set Vehicle Photo")
-                    .font(.system(size: 14))
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundColor(.blue)
             }
         }
+        .buttonStyle(.plain) // This is already in place and stops the background from becoming invisible on click
     }
 
     private func documentRow(title: String, isUploaded: Bool, fileName: String?, type: String) -> some View {
@@ -213,6 +210,7 @@ struct AddVehicleView: View {
                 }
                 .font(.system(size: 14, weight: .medium))
             }
+            .buttonStyle(.plain) // Applied to document row menus as well for consistency
         }
     }
 

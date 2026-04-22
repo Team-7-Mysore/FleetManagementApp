@@ -285,12 +285,13 @@ struct VehicleCategoryDetailView: View {
     }
 }
 
-// MARK: - Compact Row Component
+
 struct CompactVehicleRow: View {
     let vehicle: Vehicle
     
     var body: some View {
         HStack(spacing: 16) {
+            // Vehicle Image
             AsyncImage(url: URL(string: vehicle.imageURL ?? "")) { image in
                 image
                     .resizable()
@@ -306,36 +307,39 @@ struct CompactVehicleRow: View {
             .frame(width: 64, height: 64)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             
+            // Text Content
             VStack(alignment: .leading, spacing: 4) {
                 Text(vehicle.name)
-                    .font(.headline)
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.primary)
                 
                 Text(vehicle.registrationNumber)
-                    .font(.subheadline)
+                    .font(.system(size: 14))
                     .foregroundColor(.secondary)
-                
-                Text(vehicle.status?.uppercased() ?? "ACTIVE")
-                    .font(.caption2.weight(.bold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .background(vehicle.statusColor.opacity(0.12))
-                    .foregroundColor(vehicle.statusColor)
-                    .clipShape(Capsule())
-                    .padding(.top, 2)
             }
             
             Spacer()
+            
+            // Status Capsule (Moved here to match screenshots)
+            Text(vehicle.status?.uppercased() ?? "ACTIVE")
+                .font(.system(size: 11, weight: .bold)) // Slightly smaller, bold for UI consistency
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .foregroundColor(vehicle.statusColor)
+                .background(vehicle.statusColor.opacity(0.12))
+                .clipShape(Capsule())
+            
+            // Chevron
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(Color(.systemGray4))
         }
-        .padding(12)
+        .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 24, style: .continuous) // Matched to the soft curves in your screens
                 .fill(Color(.secondarySystemGroupedBackground))
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(.separator).opacity(0.1), lineWidth: 0.5)
-        )
+        .shadow(color: .black.opacity(0.03), radius: 8, x: 0, y: 4)
     }
 }
 
