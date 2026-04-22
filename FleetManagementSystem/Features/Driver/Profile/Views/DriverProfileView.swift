@@ -47,7 +47,6 @@ struct DriverProfileView: View {
                 // MARK: - Account Info
                 Section("Account") {
                     profileRow(icon: "envelope", title: "Email", value: user.email)
-                    profileRow(icon: "phone", title: "Phone", value: user.phone)
                     profileRow(icon: "calendar", title: "Member Since",
                                value: user.joinDate.formatted(date: .abbreviated, time: .omitted))
                 }
@@ -73,7 +72,7 @@ struct DriverProfileView: View {
                         }
                         .padding(.vertical, 4)
 
-                        profileRow(icon: "number", title: "License", value: vehicle.licensePlate)
+                        profileRow(icon: "number", title: "Number Plate", value: vehicle.licensePlate)
                     }
                 }
 
@@ -114,9 +113,26 @@ struct DriverProfileView: View {
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .tint(AppTheme.primaryGreen)
+//                ToolbarItem(placement: .topBarLeading) {
+//                    Button(action: {
+//                        dismiss()
+//                    }) {
+//                        Image(systemName: "xmark")
+//                            .foregroundColor(AppTheme.primaryGreen)
+//                            .font(.title2)
+//                    }
+//                }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: {
+                        dismiss()
+                    }) {
+                        ZStack {
+
+                            Image(systemName: "xmark")
+                                .foregroundColor(AppTheme.primaryGreen)
+                                .fontWeight(.medium)
+                        }
+                    }
                 }
             }
             .confirmationDialog("Log Out", isPresented: $showLogoutConfirmation) {
