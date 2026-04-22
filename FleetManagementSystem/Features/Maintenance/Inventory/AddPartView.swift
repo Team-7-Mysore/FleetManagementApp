@@ -4,14 +4,24 @@ struct AddPartView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var viewModel: InventoryViewModel
     
-    @State private var partName: String = ""
+    @State private var partName: String
     @State private var vehicleCategory: String = "Car"
     @State private var categoryDescription: String = ""
     @State private var supplier: String = ""
-    @State private var quantityText: String = "1"
+    @State private var quantityText: String
     @State private var costPerUnitText: String = ""
     @State private var sku: String = ""
     @State private var location: String = ""
+    
+    init(viewModel: InventoryViewModel, prefilledName: String? = nil, prefilledQuantity: Int? = nil) {
+        self.viewModel = viewModel
+        self._partName = State(initialValue: prefilledName ?? "")
+        if let pq = prefilledQuantity, pq > 0 {
+            self._quantityText = State(initialValue: "\(pq)")
+        } else {
+            self._quantityText = State(initialValue: "1")
+        }
+    }
     
     let categories = ["Car", "Truck", "Bike", "Bus"]
     

@@ -6,6 +6,12 @@ struct InventoryView: View {
     @State private var navigatedCategory: String?
     @State private var showDeleteAlert = false
     @State private var itemToDelete: InventoryItem?
+    @State private var showOptions = false
+    @State private var showScanner = false
+    @State private var navigateToManual = false
+    @State private var navigateToScanned = false
+    @State private var scannedName: String?
+    @State private var scannedQuantity: Int?
     
     var body: some View {
         NavigationStack {
@@ -84,7 +90,9 @@ struct InventoryView: View {
                 }
             }
             .overlay(alignment: .bottomTrailing) {
-                NavigationLink(destination: AddPartView(viewModel: viewModel)) {
+                Button {
+                    showOptions = true
+                } label: {
                     Image(systemName: "plus")
                         .font(.title2)
                         .fontWeight(.bold)
@@ -96,6 +104,42 @@ struct InventoryView: View {
                 }
                 .padding(.trailing, 20)
                 .padding(.bottom, 20)
+            }
+            .confirmationDialog("Add New Part", isPresented: $showOptions) {
+                Button("Scan Invoice") { showScanner = true }
+                Button("Add Manually") { navigateToManual = true }
+                Button("Cancel", role: .cancel) { }
+            }
+            .navigationDestination(isPresented: $navigateToManual) {
+                AddPartView(viewModel: viewModel)
+            }
+            .navigationDestination(isPresented: $navigateToScanned) {
+                AddPartView(
+                    viewModel: viewModel,
+                    prefilledName: scannedName,
+                    prefilledQuantity: scannedQuantity
+                )
+            }
+            .fullScreenCover(isPresented: $showScanner) {
+                DocumentScanner(showScanner: $showScanner) { images in
+                    guard let firstImage = images.first else { return }
+                    Task {
+                        do {
+                            let result = try await OCRService.shared.recognizeText(from: firstImage)
+                            await MainActor.run {
+                                scannedName = result.name
+                                scannedQuantity = result.quantity
+                                navigateToScanned = true
+                            }
+                        } catch {
+                            print("OCR Failed: \(error.localizedDescription)")
+                            await MainActor.run {
+                                navigateToManual = true // Fallback to manual
+                            }
+                        }
+                    }
+                }
+                .ignoresSafeArea()
             }
             .navigationBarHidden(true) // Using custom header
             .navigationDestination(item: $navigatedCategory) { category in
