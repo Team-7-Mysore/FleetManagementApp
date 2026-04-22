@@ -4,6 +4,7 @@ import SwiftUI
 
 // MARK: - App Routes
 enum AppRoute: Hashable {
+
     case activeTrip(TripMap)
     case vehicleInspection(TripMap?, type: InspectionType)
 
@@ -30,6 +31,10 @@ enum AppRoute: Hashable {
             return false
         }
     }
+
+//    case activeTrip(Trip)
+//    case vehicleInspection(Trip?, type: InspectionType = .preTrip)
+
 }
 
 // MARK: - App Router

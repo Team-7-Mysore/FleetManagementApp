@@ -36,6 +36,35 @@ struct FleetManagementSystemApp: App {
                     LoginView(viewModel: AuthViewModel(appSession: appSession))
                 }
             }
+//            
+//            Group {
+//                if isLoading {
+//                    ProgressView("Loading...")
+//                } else if showSetPassword {
+//                    SetPasswordView {
+//                        showSetPassword = false
+//                    }
+//                } else if let profile = appSession.profile {
+//                    switch profile.role {
+//                    case .driver:
+//                        DriverWorkspaceView(profile: profile) {
+//                            await appSession.signOut()
+//                        }
+//                    case .maintenance:
+//                        MaintenanceHomeView(profile: profile) {
+//                            await appSession.signOut()
+//                        }
+//                    case .fleetManager:
+//                        FleetManagerTabView(profile: profile) {
+//                            await appSession.signOut()
+//                        }
+//                    }
+//                } else {
+//                    LoginView(viewModel: AuthViewModel(appSession: appSession))
+//                }
+//            }
+            
+            
             .tint(Color(hex: "#A3352A"))
             .onAppear {
                 Task {

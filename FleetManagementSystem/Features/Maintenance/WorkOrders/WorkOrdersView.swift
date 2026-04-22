@@ -103,6 +103,15 @@ struct WorkOrdersView: View {
             .navigationTitle("Work Orders")
             .background(Color(uiColor: .systemGroupedBackground))
             .toolbar {
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    NavigationLink(destination: Text("Notifications Placeholder")) {
+                        Image(systemName: "bell")
+                            .foregroundColor(Color(hex: "#A3352A"))
+                    }
+                }
+                
+                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
                         showingProfile = true
@@ -113,12 +122,7 @@ struct WorkOrdersView: View {
                     }
                 }
                 
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(destination: Text("Notifications Placeholder")) {
-                        Image(systemName: "bell")
-                            .foregroundColor(Color(hex: "#A3352A"))
-                    }
-                }
+               
             }
             .task {
                 if viewModel.workOrders.isEmpty {

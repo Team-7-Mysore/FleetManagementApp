@@ -40,6 +40,7 @@ final class WorkOrderViewModel: ObservableObject {
             self.waitingForApproval = fetchedOrders.filter { $0.status == .pending && !$0.isApproved }
             self.approvedPending = fetchedOrders.filter { $0.status == .pending && $0.isApproved }
             
+
         } catch {
             print("ERROR:", error)
             self.errorMessage = "Failed to fetch work orders: \(error.localizedDescription)"

@@ -20,6 +20,7 @@ struct UserProfile: Codable {
         case createdBy = "created_by"
         case username
     }
+
     
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
