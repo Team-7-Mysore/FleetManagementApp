@@ -33,85 +33,17 @@ struct FleetListView: View {
                 Color(.systemGroupedBackground)
                     .ignoresSafeArea()
                 
+                // Breaking the body into computed properties fixes the type-checking timeout
                 ScrollView {
                     VStack(alignment: .leading, spacing: 32) {
-                        
-                        // 1. CATEGORIES SECTION
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Categories")
-                                .font(.title2.weight(.bold))
-                                .padding(.horizontal)
-                            
-                            LazyVGrid(columns: columns, spacing: 16) {
-                                ForEach(categories) { category in
-                                    NavigationLink(destination: VehicleCategoryDetailView(category: category, vm: vm)) {
-                                        CategoryCardView(category: category)
-                                    }
-                                }
-                            }
-                            .padding(.horizontal)
-                        }
-                        
-                        // 2. UPCOMING MAINTENANCE SECTION
-                        VStack(alignment: .leading, spacing: 16) {
-                            HStack {
-                                Text("Upcoming Maintenance")
-                                    .font(.title2.weight(.bold))
-                                
-                                Spacer()
-                                
-                                if !vm.maintenanceAlerts.isEmpty {
-                                    Text("\(vm.maintenanceAlerts.count) Alerts")
-                                        .font(.subheadline.weight(.bold))
-                                        .foregroundColor(.blue)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 6)
-                                        .background(Color.blue.opacity(0.1))
-                                        .clipShape(Capsule())
-                                }
-                            }
-                            .padding(.horizontal)
-                            
-                            if vm.maintenanceAlerts.isEmpty {
-                                HStack {
-                                    Spacer()
-                                    VStack(spacing: 8) {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundColor(.green)
-                                        Text("All vehicles operational")
-                                            .font(.subheadline)
-                                            .foregroundColor(.secondary)
-                                    }
-                                    Spacer()
-                                }
-                                .padding(.vertical, 30)
-                                .background(RoundedRectangle(cornerRadius: 20).fill(Color(.secondarySystemGroupedBackground)).padding(.horizontal))
-                            } else {
-                                VStack(spacing: 12) {
-                                    ForEach(vm.maintenanceAlerts) { alert in
-                                        MaintenanceAlertCard(alert: alert)
-                                    }
-                                }
-                                .padding(.horizontal)
-                            }
-                        }
-                        
+                        categoriesSection
+                        upcomingMaintenanceSection
                         Spacer(minLength: 100)
                     }
                     .padding(.vertical)
                 }
                 
-                Button(action: { showingAddVehicle = true }) {
-                    Image(systemName: "plus")
-                        .font(.title2.weight(.bold))
-                        .foregroundColor(.white)
-                        .frame(width: 56, height: 56)
-                        .background(Color.accentColor)
-                        .clipShape(Circle())
-                        .shadow(color: .black.opacity(0.2), radius: 6, x: 0, y: 3)
-                }
-                .padding(.trailing, 20)
-                .padding(.bottom, 24)
+                floatingActionButton
             }
             .navigationTitle("Fleet")
             .sheet(isPresented: $showingAddVehicle) {
@@ -123,8 +55,92 @@ struct FleetListView: View {
             }
         }
     }
-    // Inside FleetListViewModel
-  
+    
+    // MARK: - Extracted Subviews
+    
+    private var categoriesSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Categories")
+                .font(.title2.weight(.bold))
+                .padding(.horizontal)
+            
+            LazyVGrid(columns: columns, spacing: 16) {
+                ForEach(categories) { category in
+                    NavigationLink(destination: VehicleCategoryDetailView(category: category, vm: vm)) {
+                        CategoryCardView(category: category)
+                    }
+                }
+            }
+            .padding(.horizontal)
+        }
+    }
+    
+    private var upcomingMaintenanceSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Upcoming Maintenance")
+                    .font(.title2.weight(.bold))
+                
+                Spacer()
+                
+                if !vm.maintenanceAlerts.isEmpty {
+                    Text("\(vm.maintenanceAlerts.count) Alerts")
+                        .font(.subheadline.weight(.bold))
+                        .foregroundColor(.blue)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.blue.opacity(0.1))
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(.horizontal)
+            
+            if vm.maintenanceAlerts.isEmpty {
+                emptyMaintenanceState
+            } else {
+                VStack(spacing: 12) {
+                    ForEach(vm.maintenanceAlerts) { alert in
+                        MaintenanceAlertCard(alert: alert)
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
+    
+    private var emptyMaintenanceState: some View {
+        HStack {
+            Spacer()
+            VStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+                Text("All vehicles operational")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+        }
+        .padding(.vertical, 30)
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color(.secondarySystemGroupedBackground))
+                .padding(.horizontal)
+        )
+    }
+    
+    private var floatingActionButton: some View {
+        Button(action: { showingAddVehicle = true }) {
+            Image(systemName: "plus")
+                .font(.title2.weight(.bold))
+                .foregroundColor(.white)
+                .frame(width: 56, height: 56)
+                .background(Color.accentColor)
+                .clipShape(Circle())
+                .shadow(color: .black.opacity(0.2), radius: 6, x: 0, y: 3)
+        }
+        .padding(.trailing, 20)
+        .padding(.bottom, 24)
+    }
 }
 
 // MARK: - Category Card Component
@@ -182,7 +198,6 @@ struct MaintenanceAlertCard: View {
             
             Spacer()
             
-            // Cleaned up trailing section
             VStack(alignment: .trailing) {
                 Text(alert.status == .overdue ? "OVERDUE" : "SCHEDULED")
                     .font(.system(size: 9, weight: .black))
@@ -200,16 +215,14 @@ struct MaintenanceAlertCard: View {
     }
 }
 
-// Detail View Components
+// MARK: - Detail View Components
 struct VehicleCategoryDetailView: View {
     let category: VehicleCategory
     @ObservedObject var vm: FleetListViewModel
     
     @State private var vehicleToDelete: Vehicle?
     @State private var showingDeleteConfirmation = false
-    
-    // NEW: Tracks which vehicle ID is selected for the modal
-    @State private var selectedVehicleId: UUID?
+    @State private var selectedVehicle: Vehicle?
     
     var filteredVehicles: [Vehicle] {
         vm.vehicles.filter { $0.vehicleType.lowercased() == category.type.lowercased() }
@@ -220,38 +233,15 @@ struct VehicleCategoryDetailView: View {
             if filteredVehicles.isEmpty {
                 ContentUnavailableView("No \(category.name)s", systemImage: category.icon, description: Text("No vehicles found."))
             } else {
-                List {
-                    ForEach(filteredVehicles) { vehicle in
-                        // Changed from NavigationLink to Button for Modal trigger
-                        Button {
-                            selectedVehicleId = vehicle.id
-                        } label: {
-                            CompactVehicleRow(vehicle: vehicle)
-                        }
-                        .buttonStyle(.plain)
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                vehicleToDelete = vehicle
-                                showingDeleteConfirmation = true
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
-                        .tint(.red)
-                    }
-                }
-                .listStyle(.plain)
+                // Extracted List to ease compiler burden
+                vehicleList
             }
         }
         .background(Color(.systemGroupedBackground))
         .navigationTitle(category.name)
-        // MODAL PRESENTATION
-        .sheet(item: $selectedVehicleId) { id in
+        .sheet(item: $selectedVehicle) { vehicle in
             NavigationStack {
-                VehicleDetailView(vehicleId: id)
+                VehicleDetailView(vehicle: vehicle)
             }
         }
         .confirmationDialog(
@@ -267,67 +257,88 @@ struct VehicleCategoryDetailView: View {
             Text("This will permanently remove \(vehicle.registrationNumber) from your fleet.")
         }
     }
+    
+    private var vehicleList: some View {
+        List {
+            ForEach(filteredVehicles) { vehicle in
+                Button {
+                    selectedVehicle = vehicle
+                } label: {
+                    CompactVehicleRow(vehicle: vehicle)
+                }
+                .buttonStyle(.plain)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button(role: .destructive) {
+                        vehicleToDelete = vehicle
+                        showingDeleteConfirmation = true
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
+                .tint(.red)
+            }
+        }
+        .listStyle(.plain)
+    }
 }
 
+// MARK: - Compact Row Component
 struct CompactVehicleRow: View {
     let vehicle: Vehicle
     
     var body: some View {
         HStack(spacing: 16) {
-            // 1. Vehicle Image
             AsyncImage(url: URL(string: vehicle.imageURL ?? "")) { image in
-                image.resizable().scaledToFill()
+                image
+                    .resizable()
+                    .scaledToFill()
             } placeholder: {
                 ZStack {
-                    Color.gray.opacity(0.1)
+                    Color(.tertiarySystemFill)
                     Image(systemName: vehicle.imageSystemName)
-                        .foregroundColor(.gray.opacity(0.3))
+                        .font(.title2)
+                        .foregroundColor(.secondary)
                 }
             }
-            .frame(width: 70, height: 70)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .frame(width: 64, height: 64)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             
-            // 2. Details Section
             VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(vehicle.name) // Displaying 'vehicle_name' (e.g., Activa 6G)
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    
-                    Spacer()
-                    
-                    // STATUS CAPSULE (e.g., ACTIVE / IN SERVICE)
-                    Text(vehicle.status?.uppercased() ?? "ACTIVE")
-                        .font(.system(size: 8, weight: .black))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(vehicle.statusColor.opacity(0.1))
-                        .foregroundColor(vehicle.statusColor)
-                        .clipShape(Capsule())
-                }
+                Text(vehicle.name)
+                    .font(.headline)
+                    .foregroundColor(.primary)
                 
-                Text(vehicle.registrationNumber) // e.g., KA03EF9012
-                    .font(.subheadline.weight(.medium))
-                    .foregroundColor(.blue)
-                
-                Text("\(vehicle.brand ?? "") \(vehicle.model ?? "")") // e.g., Honda Activa
-                    .font(.caption)
+                Text(vehicle.registrationNumber)
+                    .font(.subheadline)
                     .foregroundColor(.secondary)
+                
+                Text(vehicle.status?.uppercased() ?? "ACTIVE")
+                    .font(.caption2.weight(.bold))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(vehicle.statusColor.opacity(0.12))
+                    .foregroundColor(vehicle.statusColor)
+                    .clipShape(Capsule())
+                    .padding(.top, 2)
             }
             
-            // 3. Navigation Indicator
-            Image(systemName: "chevron.right")
-                .font(.footnote.weight(.bold))
-                .foregroundStyle(.tertiary)
+            Spacer()
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color(.secondarySystemGroupedBackground))
         )
-        .shadow(color: .black.opacity(0.02), radius: 5, x: 0, y: 2)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color(.separator).opacity(0.1), lineWidth: 0.5)
+        )
     }
 }
+
 extension UUID: Identifiable {
     public var id: UUID { self }
 }

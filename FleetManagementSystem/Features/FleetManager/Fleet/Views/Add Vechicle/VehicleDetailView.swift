@@ -3,10 +3,12 @@ import Combine
 import UniformTypeIdentifiers
 
 struct VehicleDetailView: View {
-    let vehicleId: UUID
+    // 1. Accept the entire Vehicle object instead of just the ID
+    let vehicle: Vehicle
     @Environment(\.dismiss) var dismiss
     
-    @StateObject private var vm = VehicleDetailViewModel()
+    // 2. StateObject injected via the initializer
+    @StateObject private var vm: VehicleDetailViewModel
     
     @State private var isEditing = false
     @State private var draftVehicle: Vehicle?
@@ -20,6 +22,13 @@ struct VehicleDetailView: View {
     
     // State for maintenance assignment via chat/notification
     @State private var showStaffSelection = false
+    
+    // 3. New Initializer
+    init(vehicle: Vehicle) {
+        self.vehicle = vehicle
+        // Inject the vehicle into the ViewModel to prevent loading screen
+        _vm = StateObject(wrappedValue: VehicleDetailViewModel(initialVehicle: vehicle))
+    }
 
     var body: some View {
         ScrollView {
@@ -27,30 +36,37 @@ struct VehicleDetailView: View {
                 ProgressView()
                     .padding(.top, 60)
                 
-            } else if let vehicle = vm.vehicle {
-                VStack(alignment: .leading, spacing: 22) {
+            } else if let currentVehicle = vm.vehicle {
+                VStack(alignment: .leading, spacing: 24) {
                     
-                    vehicleImage(vehicle)
-                    vehicleHeader(vehicle)
-                    infoSection(vehicle)
-                    registrationSection(vehicle)
+                    vehicleImage(currentVehicle)
+                    vehicleHeader(currentVehicle)
+                    infoSection(currentVehicle)
+                    registrationSection(currentVehicle)
                     documentsSection
                     
-                    // Maintenance Section
-                    maintenanceButton(vehicle)
+                    // Maintenance & Reports Section
+                    maintenanceSection(currentVehicle)
                     
+                    // Reports Button
+                    reportsButton(currentVehicle)
                 }
                 .padding()
                 
             } else if let errorMessage = vm.errorMessage {
                 Text(errorMessage)
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
                     .foregroundColor(.red)
                     .padding(.top, 60)
             }
         }
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .task {
-            await vm.fetchVehicle(vehicleId: vehicleId)
+            // Fetch silently in the background using the vehicle ID
+            await vm.fetchVehicle(vehicleId: vehicle.id)
+        }
+        .refreshable {
+            await vm.fetchVehicle(vehicleId: vehicle.id)
         }
         .navigationTitle(vm.vehicle?.name ?? "Vehicle")
         .navigationBarTitleDisplayMode(.inline)
@@ -75,7 +91,7 @@ struct VehicleDetailView: View {
                             await saveChanges()
                         }
                     }
-                    .fontWeight(.bold)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                     .disabled(isSaving)
                 }
             } else {
@@ -84,13 +100,15 @@ struct VehicleDetailView: View {
                         draftVehicle = vm.vehicle
                         isEditing = true
                     }
-                    .fontWeight(.semibold)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
                     .disabled(vm.vehicle == nil)
                 }
             }
         }
         .sheet(isPresented: $showStaffSelection) {
-            MaintenanceStaffPickerView(vehicle: vm.vehicle!)
+            if let v = vm.vehicle {
+                MaintenanceStaffPickerView(vehicle: v)
+            }
         }
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(sourceType: sourceType) { image in
@@ -128,7 +146,7 @@ struct VehicleDetailView: View {
         isSaving = true
         let success = await vm.updateVehicle()
         if success {
-            await vm.fetchVehicle(vehicleId: vehicleId)
+            await vm.fetchVehicle(vehicleId: vehicle.id)
         }
         isSaving = false
     }
@@ -176,19 +194,19 @@ struct VehicleDetailView: View {
         VStack(alignment: .leading, spacing: 6) {
             if isEditing {
                 TextField("Vehicle Name", text: binding(\.name))
-                    .font(.title.bold())
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
                     .textFieldStyle(.plain)
 
                 TextField("Registration Number", text: binding(\.registrationNumber))
-                    .font(.subheadline)
+                    .font(.system(size: 16, weight: .medium, design: .rounded))
                     .foregroundColor(.secondary)
                     .textFieldStyle(.plain)
             } else {
                 Text(vehicle.name)
-                    .font(.title.bold())
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
 
                 Text(vehicle.registrationNumber)
-                    .font(.subheadline)
+                    .font(.system(size: 16, weight: .medium, design: .rounded))
                     .foregroundColor(.secondary)
             }
         }
@@ -197,8 +215,9 @@ struct VehicleDetailView: View {
     private func infoSection(_ vehicle: Vehicle) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Basic Info")
-                .font(.caption.bold())
+                .font(.system(size: 14, weight: .bold, design: .rounded))
                 .foregroundColor(.secondary)
+                .padding(.horizontal, 4)
 
             VStack(spacing: 10) {
                 InfoRow(title: "Brand", value: vehicle.brand ?? "—", isEditing: isEditing, text: binding(\.brand))
@@ -207,7 +226,7 @@ struct VehicleDetailView: View {
                 InfoRow(title: "Fuel", value: vehicle.fuelType ?? "—", isEditing: isEditing, text: binding(\.fuelType))
             }
             .padding()
-            .background(Color(.secondarySystemGroupedBackground))
+            .background(Color(uiColor: .secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
     }
@@ -215,8 +234,9 @@ struct VehicleDetailView: View {
     private func registrationSection(_ vehicle: Vehicle) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Registration Details")
-                .font(.caption.bold())
+                .font(.system(size: 14, weight: .bold, design: .rounded))
                 .foregroundColor(.secondary)
+                .padding(.horizontal, 4)
 
             VStack(spacing: 10) {
                 InfoRow(title: "VIN", value: vehicle.vin.isEmpty ? "—" : vehicle.vin, isEditing: isEditing, text: binding(\.vin))
@@ -226,7 +246,7 @@ struct VehicleDetailView: View {
                 InfoRow(title: "PUC Expiry", value: vehicle.pucExpiryDate.isEmpty ? "—" : vehicle.pucExpiryDate)
             }
             .padding()
-            .background(Color(.secondarySystemGroupedBackground))
+            .background(Color(uiColor: .secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
     }
@@ -234,8 +254,9 @@ struct VehicleDetailView: View {
     private var documentsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Documents")
-                .font(.caption.bold())
+                .font(.system(size: 14, weight: .bold, design: .rounded))
                 .foregroundColor(.secondary)
+                .padding(.horizontal, 4)
 
             VStack(spacing: 0) {
                 let requiredTypes = ["RC", "INSURANCE", "PUC"]
@@ -263,8 +284,20 @@ struct VehicleDetailView: View {
                     }
                 }
             }
-            .background(Color(.secondarySystemGroupedBackground))
+            .background(Color(uiColor: .secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+    }
+
+    // MARK: - NEW MAINTENANCE SECTION
+    private func maintenanceSection(_ vehicle: Vehicle) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Maintenance")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundColor(.secondary)
+                .padding(.horizontal, 4)
+            
+            maintenanceButton(vehicle)
         }
     }
 
@@ -272,48 +305,89 @@ struct VehicleDetailView: View {
         Button {
             showStaffSelection = true
         } label: {
-            HStack {
+            HStack(spacing: 16) {
                 Image(systemName: "wrench.and.screwdriver.fill")
                     .font(.title3)
                     .foregroundColor(.orange)
-                    .frame(width: 40, height: 40)
+                    .frame(width: 44, height: 44)
                     .background(Color.orange.opacity(0.1))
                     .clipShape(Circle())
                 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Notify Maintenance")
-                        .font(.headline)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Schedule Maintenance")
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
                         .foregroundColor(.primary)
                     Text("Assign technician via chat notification")
-                        .font(.caption)
+                        .font(.system(size: 13, weight: .regular, design: .rounded))
                         .foregroundColor(.secondary)
                 }
                 Spacer()
                 Image(systemName: "person.badge.plus.fill")
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(.blue)
             }
             .padding()
-            .background(Color(.secondarySystemGroupedBackground))
+            .background(Color(uiColor: .secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func reportsButton(_ vehicle: Vehicle) -> some View {
+        Button {
+            // TODO: Add logic to display reports / analytics
+        } label: {
+            HStack(spacing: 16) {
+                Image(systemName: "chart.bar.doc.horizontal.fill")
+                    .font(.title3)
+                    .foregroundColor(.purple)
+                    .frame(width: 44, height: 44)
+                    .background(Color.purple.opacity(0.1))
+                    .clipShape(Circle())
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Reports")
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundColor(.primary)
+                    Text("View vehicle analytics and history")
+                        .font(.system(size: 13, weight: .regular, design: .rounded))
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.secondary)
+            }
+            .padding()
+            .background(Color(uiColor: .secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(.plain)
     }
 
     private func missingDocumentRow(type: String) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 16) {
             Image(systemName: type == "RC" ? "doc.text.fill" : (type == "INSURANCE" ? "shield.lefthalf.filled" : "doc.badge.gearshape"))
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundColor(.secondary)
-                .frame(width: 30, height: 30)
+                .frame(width: 44, height: 44)
                 .background(Color.gray.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(type).font(.subheadline.weight(.semibold))
-                Text("Not uploaded").font(.caption).foregroundColor(.secondary)
+                Text(type)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+                Text("Not uploaded")
+                    .font(.system(size: 13, weight: .regular, design: .rounded))
+                    .foregroundColor(.secondary)
             }
             Spacer()
-            if isEditing { Image(systemName: "plus.circle.fill").foregroundColor(.blue) }
+            if isEditing {
+                Image(systemName: "plus.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(.blue)
+            }
         }
         .padding(.horizontal, 16).padding(.vertical, 14)
     }
@@ -327,8 +401,7 @@ struct VehicleDetailView: View {
     }
 }
 
-// MARK: - RE-ADDED MISSING COMPONENTS
-
+// MARK: - ROW COMPONENTS
 struct InfoRow: View {
     let title: String
     let value: String
@@ -337,15 +410,18 @@ struct InfoRow: View {
 
     var body: some View {
         HStack {
-            Text(title).foregroundColor(.secondary)
+            Text(title)
+                .font(.system(size: 15, weight: .regular, design: .rounded))
+                .foregroundColor(.secondary)
             Spacer()
             if isEditing, let text {
                 TextField(title, text: text)
                     .textFieldStyle(.plain)
                     .multilineTextAlignment(.trailing)
-                    .font(.body.weight(.medium))
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
             } else {
-                Text(value).fontWeight(.medium)
+                Text(value)
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
             }
         }
         .padding(.vertical, 6)
@@ -357,28 +433,37 @@ struct DocumentRow: View {
     var isEditing: Bool = false
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 16) {
             if isImageDocument, let url = URL(string: document.fileURL) {
                 AsyncImage(url: url) { image in
                     image.resizable().scaledToFill()
                 } placeholder: {
                     iconBadge
                 }
-                .frame(width: 54, height: 54)
+                .frame(width: 44, height: 44)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             } else {
                 iconBadge
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(document.title).font(.subheadline.weight(.semibold))
-                Text(document.fileName ?? "Document").font(.caption).foregroundColor(.secondary).lineLimit(1)
+                Text(document.title)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundColor(.primary)
+                Text(document.fileName ?? "Document")
+                    .font(.system(size: 13, weight: .regular, design: .rounded))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
             }
             Spacer()
             if isEditing {
-                Image(systemName: "pencil.circle.fill").foregroundColor(.blue)
+                Image(systemName: "pencil.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(.blue)
             } else {
-                Image(systemName: "chevron.right").font(.caption.bold()).foregroundColor(.secondary)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.secondary)
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 14)
@@ -393,8 +478,8 @@ struct DocumentRow: View {
         Image(systemName: "doc.fill")
             .font(.system(size: 16, weight: .semibold))
             .foregroundColor(.blue)
-            .frame(width: 30, height: 30)
+            .frame(width: 44, height: 44)
             .background(Color.blue.opacity(0.12))
-            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }

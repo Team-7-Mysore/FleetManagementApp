@@ -55,9 +55,18 @@ class VehicleDetailViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var documentsErrorMessage: String?
+    
+    // MARK: - NEW INITIALIZER FOR OPTIMISTIC LOADING
+    init(initialVehicle: Vehicle? = nil) {
+        self.vehicle = initialVehicle
+    }
 
     func fetchVehicle(vehicleId: UUID) async {
-        isLoading = true
+        // Only show loading if we don't have the vehicle yet
+        if self.vehicle == nil {
+            isLoading = true
+        }
+        
         errorMessage = nil
         documentsErrorMessage = nil
         print("Opening vehicle detail id:", vehicleId.uuidString)
@@ -216,8 +225,8 @@ class VehicleDetailViewModel: ObservableObject {
             documents[index].fileName = resolvedFileName
         } else {
             documents.append(VehicleDocument(
-                id: normalizedType, 
-                type: normalizedType, 
+                id: normalizedType,
+                type: normalizedType,
                 fileURL: url,
                 fileName: resolvedFileName
             ))
