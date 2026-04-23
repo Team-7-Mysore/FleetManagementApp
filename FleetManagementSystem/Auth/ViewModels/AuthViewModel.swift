@@ -3,13 +3,24 @@ import Combine
 
 @MainActor
 final class AuthViewModel: ObservableObject {
+    enum SignInStage {
+        case credentials
+        case otp
+    }
+
     @Published var email = ""
     @Published var password = ""
+    @Published var otpCode = ""
+    @Published private(set) var signInStage: SignInStage = .credentials
     @Published private(set) var isSigningIn = false
+    @Published private(set) var isSendingOTP = false
+    @Published private(set) var isVerifyingOTP = false
     @Published var errorMessage: String?
+    @Published var infoMessage: String?
 
     private let appSession: AppSession
     private let authService: AuthService
+    private var pendingContext: PendingAuthContext?
 
     init(appSession: AppSession, authService: AuthService = AuthService()) {
         self.appSession = appSession
@@ -31,12 +42,16 @@ final class AuthViewModel: ObservableObject {
 
         isSigningIn = true
         errorMessage = nil
+        infoMessage = nil
 
         do {
             print("🔐 Attempting sign in for: \(trimmedEmail)")
-            let profile = try await authService.signIn(email: trimmedEmail, password: password)
-            print("✅ Sign in successful. Profile: \(profile.name), Role: \(profile.role.rawValue)")
-            appSession.setAuthenticated(profile: profile)
+            let context = try await authService.signIn(email: trimmedEmail, password: password)
+            pendingContext = context
+            print("✅ Credentials accepted. Waiting for OTP verification.")
+
+            await sendOTP()
+            signInStage = .otp
             password = ""
         } catch {
             print("❌ Sign in error: \(error)")
@@ -62,5 +77,64 @@ final class AuthViewModel: ObservableObject {
         }
 
         isSigningIn = false
+    }
+
+    func sendOTP() async {
+        guard let context = pendingContext else { return }
+        guard !isSendingOTP else { return }
+
+        isSendingOTP = true
+        errorMessage = nil
+        infoMessage = nil
+
+        do {
+            try await authService.sendMFAOTP(email: context.email)
+            infoMessage = "OTP sent to \(context.email)."
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isSendingOTP = false
+    }
+
+    func verifyOTP() async {
+        guard let context = pendingContext else { return }
+        guard !isVerifyingOTP else { return }
+
+        let trimmedCode = otpCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedCode.isEmpty else {
+            errorMessage = "Please enter OTP."
+            return
+        }
+
+        isVerifyingOTP = true
+        errorMessage = nil
+        infoMessage = nil
+
+        do {
+            try await authService.verifyMFAOTP(email: context.email, otp: trimmedCode)
+            appSession.clearAuthenticatedState()
+            appSession.setAuthenticated(profile: context.profile)
+            appSession.setMFAVerified(email: context.email)
+            otpCode = ""
+            pendingContext = nil
+            signInStage = .credentials
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isVerifyingOTP = false
+    }
+
+    func resetOTPFlow() async {
+        pendingContext = nil
+        otpCode = ""
+        signInStage = .credentials
+        infoMessage = nil
+        do {
+            try await authService.signOut()
+        } catch {
+            errorMessage = "Unable to cancel OTP flow right now."
+        }
     }
 }

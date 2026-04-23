@@ -1,3 +1,5 @@
+//FleetManagementSystemApp
+
 import SwiftUI
 import Supabase
 
@@ -36,35 +38,6 @@ struct FleetManagementSystemApp: App {
                     LoginView(viewModel: AuthViewModel(appSession: appSession))
                 }
             }
-//            
-//            Group {
-//                if isLoading {
-//                    ProgressView("Loading...")
-//                } else if showSetPassword {
-//                    SetPasswordView {
-//                        showSetPassword = false
-//                    }
-//                } else if let profile = appSession.profile {
-//                    switch profile.role {
-//                    case .driver:
-//                        DriverWorkspaceView(profile: profile) {
-//                            await appSession.signOut()
-//                        }
-//                    case .maintenance:
-//                        MaintenanceHomeView(profile: profile) {
-//                            await appSession.signOut()
-//                        }
-//                    case .fleetManager:
-//                        FleetManagerTabView(profile: profile) {
-//                            await appSession.signOut()
-//                        }
-//                    }
-//                } else {
-//                    LoginView(viewModel: AuthViewModel(appSession: appSession))
-//                }
-//            }
-            
-            
             .tint(Color(hex: "#A3352A"))
             .onAppear {
                 NotificationManager.shared.requestPermission()
@@ -82,17 +55,28 @@ struct FleetManagementSystemApp: App {
     private func checkSession() async {
         do {
             let session = try await SupabaseManager.shared.client.auth.session
-            if session != nil {
-                await fetchUserProfile()
+
+            if !session.isExpired {
+                print("✅ Valid session found")
+                await authenticateCurrentSessionIfAllowed()
+            } else {
+                print("❌ Session expired")
+                await MainActor.run {
+                    appSession.clearAuthenticatedState()
+                }
             }
         } catch {
-            print("❌ Session error:", error)
+            print("❌ No session found:", error)
+            await MainActor.run {
+                appSession.clearAuthenticatedState()
+            }
         }
+
         isLoading = false
     }
 
-    // MARK: - Fetch User Profile
-    private func fetchUserProfile() async {
+    // MARK: - Fetch User Profile + MFA Gate
+    private func authenticateCurrentSessionIfAllowed() async {
         do {
             let user = try await SupabaseManager.shared.client.auth.user()
 
@@ -104,9 +88,22 @@ struct FleetManagementSystemApp: App {
                 .execute()
                 .value
 
-            appSession.setAuthenticated(profile: profile)
+            if appSession.hasMFAVerified(email: profile.email) {
+                await MainActor.run {
+                    appSession.setAuthenticated(profile: profile)
+                }
+            } else {
+                print("🔒 MFA verification missing for session user: \(profile.email)")
+                try await SupabaseManager.shared.client.auth.signOut()
+                await MainActor.run {
+                    appSession.clearAuthenticatedState()
+                }
+            }
         } catch {
             print("❌ Profile fetch error:", error)
+            await MainActor.run {
+                appSession.clearAuthenticatedState()
+            }
         }
     }
 
@@ -126,9 +123,23 @@ struct FleetManagementSystemApp: App {
                     _ = try await SupabaseManager.shared.client.auth.session(from: url)
                 }
 
-                let isInvite = params["type"] == "invite"
-                showSetPassword = isInvite
-                await fetchUserProfile()
+                let session = try await SupabaseManager.shared.client.auth.session
+
+                if !session.isExpired {
+                    print("✅ Valid session found")
+                    await authenticateCurrentSessionIfAllowed()
+                } else {
+                    print("❌ Session expired")
+                }
+                if !session.isExpired {
+                    let isInvite = params["type"] == "invite"
+                    
+                    await MainActor.run {
+                        showSetPassword = isInvite
+                    }
+
+                    await authenticateCurrentSessionIfAllowed()
+                }
             } catch {
                 print("❌ Deep link error:", error)
             }

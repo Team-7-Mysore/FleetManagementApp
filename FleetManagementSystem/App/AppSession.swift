@@ -7,6 +7,7 @@ final class AppSession: ObservableObject {
 
     private enum Storage {
         static let profileKey = "app_session_profile"
+        static let mfaEmailKey = "app_session_mfa_email"
     }
 
     @Published private(set) var profile: UserProfile?
@@ -26,15 +27,30 @@ final class AppSession: ObservableObject {
         persist(profile: profile)
     }
 
+    func setMFAVerified(email: String) {
+        let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        UserDefaults.standard.set(normalized, forKey: Storage.mfaEmailKey)
+    }
+
+    func hasMFAVerified(email: String) -> Bool {
+        let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return UserDefaults.standard.string(forKey: Storage.mfaEmailKey) == normalized
+    }
+
     func signOut() async {
         do {
             try await authService.signOut()
-            profile = nil
-            errorMessage = nil
-            clearPersistedProfile()
+            clearAuthenticatedState()
         } catch {
             errorMessage = "Unable to sign out right now. Please try again."
         }
+    }
+
+    func clearAuthenticatedState() {
+        profile = nil
+        errorMessage = nil
+        clearPersistedProfile()
+        clearMFAState()
     }
 
     private func restorePersistedProfile() {
@@ -55,5 +71,9 @@ final class AppSession: ObservableObject {
 
     private func clearPersistedProfile() {
         UserDefaults.standard.removeObject(forKey: Storage.profileKey)
+    }
+
+    private func clearMFAState() {
+        UserDefaults.standard.removeObject(forKey: Storage.mfaEmailKey)
     }
 }
