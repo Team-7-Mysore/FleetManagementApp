@@ -244,17 +244,19 @@ struct VehicleCategoryDetailView: View {
                 VehicleDetailView(vehicle: vehicle)
             }
         }
-        .confirmationDialog(
-            "Are you sure?",
-            isPresented: $showingDeleteConfirmation,
-            presenting: vehicleToDelete
-        ) { vehicle in
-            Button("Delete \(vehicle.name)", role: .destructive) {
-                Task { await vm.deleteVehicle(vehicle) }
+        .alert("Delete Vehicle?", isPresented: $showingDeleteConfirmation) {
+            Button("Delete", role: .destructive) {
+                if let vehicle = vehicleToDelete {
+                    Task { await vm.deleteVehicle(vehicle) }
+                }
             }
-            Button("Cancel", role: .cancel) { vehicleToDelete = nil }
-        } message: { vehicle in
-            Text("This will permanently remove \(vehicle.registrationNumber) from your fleet.")
+            Button("Cancel", role: .cancel) {
+                vehicleToDelete = nil
+            }
+        } message: {
+            if let vehicle = vehicleToDelete {
+                Text("This will permanently remove \(vehicle.registrationNumber) from your fleet.")
+            }
         }
     }
     

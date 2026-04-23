@@ -2,11 +2,6 @@ import SwiftUI
 import AVFoundation
 import Photos
 
-struct ErrorWrapper: Identifiable {
-    var id: String { message }
-    let message: String
-}
-
 struct AddVehicleView: View {
     @ObservedObject var fleetVM: FleetListViewModel
     @StateObject var vm = AddVehicleViewModel()
@@ -16,11 +11,14 @@ struct AddVehicleView: View {
     @State private var showDocumentPicker = false
     @State private var sourceType: UIImagePickerController.SourceType = .photoLibrary
     @State private var selectedType: String = ""
+    
+    // State for the Image Selection Pop-up
+    @State private var showImageSourceOptions = false
 
     var body: some View {
         NavigationStack {
             Form {
-                // MARK: - Vehicle Photo (Grey Rounded Rectangle Style)
+                // MARK: - Vehicle Photo
                 Section {
                     HStack {
                         Spacer()
@@ -29,7 +27,7 @@ struct AddVehicleView: View {
                     }
                     .padding(.vertical, 10)
                 }
-                .listRowBackground(Color.clear) // Keeps the background clean
+                .listRowBackground(Color.clear)
 
                 // MARK: - Vehicle Identification
                 Section(header: Text("Vehicle Identification")) {
@@ -37,11 +35,25 @@ struct AddVehicleView: View {
                     
                     let plateBinding = Binding(
                         get: { vm.licensePlate },
-                        set: { vm.licensePlate = vm.formatPlate($0) }
+                        set: { vm.licensePlate = vm.formatPlate($0).uppercased() } // Force Uppercase
                     )
                     TextField("License Plate", text: plateBinding)
+                        .textInputAutocapitalization(.characters)
                     
-                    TextField("VIN", text: $vm.vin)
+                    // MARK: VIN with 17-Digit Validation
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField("VIN", text: $vm.vin)
+                            .onChange(of: vm.vin) { newValue in
+                                if newValue.count > 17 {
+                                    vm.vin = String(newValue.prefix(17))
+                                }
+                            }
+                        
+                        Text("\(vm.vin.count)/17 Characters")
+                            .font(.caption2)
+                            .foregroundColor(vm.vin.count == 17 ? .green : .red)
+                    }
+                    
                     TextField("RC Number", text: $vm.rcNumber)
                     TextField("Brand", text: $vm.brand)
                 }
@@ -90,7 +102,8 @@ struct AddVehicleView: View {
                     Button("Save") {
                         Task { await vm.saveVehicle() }
                     }
-                    .disabled(!vm.isFormValid || vm.isLoading)
+                    // VALIDATION: Form must be valid AND VIN must be exactly 17 digits
+                    .disabled(!vm.isFormValid || vm.vin.count != 17 || vm.isLoading)
                     .overlay {
                         if vm.isLoading { ProgressView() }
                     }
@@ -105,6 +118,24 @@ struct AddVehicleView: View {
                 ImagePicker(sourceType: sourceType) { image in
                     handleImageSelected(image)
                 }
+            }
+            // Image Pop-up (Action Sheet)
+            .confirmationDialog("Set Vehicle Photo", isPresented: $showImageSourceOptions, titleVisibility: .visible) {
+                Button("Take Photo") {
+                    handleCameraAccess {
+                        sourceType = .camera
+                        selectedType = "VEHICLE"
+                        showImagePicker = true
+                    }
+                }
+                Button("Choose from Gallery") {
+                    handlePhotoLibraryAccess {
+                        sourceType = .photoLibrary
+                        selectedType = "VEHICLE"
+                        showImagePicker = true
+                    }
+                }
+                Button("Cancel", role: .cancel) { }
             }
             .onChange(of: vm.isSuccess) { success in
                 if success {
@@ -131,22 +162,8 @@ struct AddVehicleView: View {
     // MARK: - Subcomponents
 
     private var imageUploadSection: some View {
-        Menu {
-            Button {
-                handleCameraAccess {
-                    sourceType = .camera
-                    selectedType = "VEHICLE"
-                    showImagePicker = true
-                }
-            } label: { Label("Take Photo", systemImage: "camera") }
-            
-            Button {
-                handlePhotoLibraryAccess {
-                    sourceType = .photoLibrary
-                    selectedType = "VEHICLE"
-                    showImagePicker = true
-                }
-            } label: { Label("Choose from Gallery", systemImage: "photo") }
+        Button {
+            showImageSourceOptions = true // Triggers the Pop-up
         } label: {
             VStack(spacing: 12) {
                 if let image = vm.localVehicleImage {
@@ -156,15 +173,14 @@ struct AddVehicleView: View {
                         .frame(width: 140, height: 140)
                         .clipShape(RoundedRectangle(cornerRadius: 24))
                 } else {
-                    // CHANGED: This ZStack creates the grey rounded rectangle background
                     ZStack {
-                        RoundedRectangle(cornerRadius: 24) // Defines the rounded corner shape
-                            .fill(Color(.systemGray5)) // The grey background color
-                            .frame(width: 140, height: 140) // Size to match the text and layout
+                        RoundedRectangle(cornerRadius: 24)
+                            .fill(Color(.systemGray5))
+                            .frame(width: 140, height: 140)
                         
                         Image(systemName: "camera.fill")
                             .font(.system(size: 40))
-                            .foregroundColor(.white) // Camera icon color
+                            .foregroundColor(.white)
                     }
                 }
                 
@@ -173,7 +189,7 @@ struct AddVehicleView: View {
                     .foregroundColor(.blue)
             }
         }
-        .buttonStyle(.plain) // This is already in place and stops the background from becoming invisible on click
+        .buttonStyle(.plain)
     }
 
     private func documentRow(title: String, isUploaded: Bool, fileName: String?, type: String) -> some View {
@@ -210,7 +226,7 @@ struct AddVehicleView: View {
                 }
                 .font(.system(size: 14, weight: .medium))
             }
-            .buttonStyle(.plain) // Applied to document row menus as well for consistency
+            .buttonStyle(.plain)
         }
     }
 

@@ -39,17 +39,16 @@ class AddVehicleViewModel: ObservableObject {
 
     // MARK: - Validation Logic
     
-    /// Controls UI feedback (e.g., Save button color)
     var isFormValid: Bool {
-        !vehicleName.isEmpty &&
-        isValidPlate(licensePlate) &&
-        vin.count == 17 &&
-        isValidRC(rcNumber) &&
-        rcURL != nil &&            // RC is compulsory
-        insuranceURL != nil        // Insurance is compulsory
-    }
-
-    /// Explicit validation before attempting to save
+            let isNameValid = !vehicleName.trimmingCharacters(in: .whitespaces).isEmpty
+            let isVinValid = vin.count == 17
+            let isPlateValid = isValidPlate(licensePlate)
+            let isRCValid = !rcNumber.isEmpty
+            let documentsValid = rcURL != nil && insuranceURL != nil
+            
+            return isNameValid && isVinValid && isPlateValid && isRCValid && documentsValid && !isLoading
+        }
+    
     func validate() -> String? {
         if vehicleName.trimmingCharacters(in: .whitespaces).isEmpty { return "Vehicle Name is required." }
         if !isValidPlate(licensePlate) { return "Invalid License Plate. Use format: XX-00-XX-0000" }
@@ -69,19 +68,21 @@ class AddVehicleViewModel: ObservableObject {
     // MARK: - Formatting Helpers
     
     func formatPlate(_ input: String) -> String {
-        let normalized = input.uppercased().replacingOccurrences(of: "[^A-Z0-9]", with: "", options: .regularExpression)
-        var result = ""
-        for (index, char) in normalized.enumerated() {
-            if index == 2 || index == 4 || index == 6 { result.append("-") }
-            result.append(char)
+            let normalized = input.uppercased().replacingOccurrences(of: "[^A-Z0-9]", with: "", options: .regularExpression)
+            var result = ""
+            for (index, char) in normalized.enumerated() {
+                // Logic for XX-00-XX-0000
+                if index == 2 || index == 4 || index == 6 { result.append("-") }
+                if result.count < 13 { // Max length for XX-00-XX-0000
+                    result.append(char)
+                }
+            }
+            return result
         }
-        return result
-    }
-
     private func isValidPlate(_ input: String) -> Bool {
-        let regex = "^[A-Z]{2}-[0-9]{2}-[A-Z]{1,2}-[0-9]{4}$"
-        return NSPredicate(format: "SELF MATCHES %@", regex).evaluate(with: input)
-    }
+            let regex = "^[A-Z]{2}-[0-9]{2}-[A-Z]{1,2}-[0-9]{4}$"
+            return NSPredicate(format: "SELF MATCHES %@", regex).evaluate(with: input)
+        }
 
     private func isValidRC(_ input: String) -> Bool {
         let rcRegex = "^[A-Z0-9/]{8,20}$"
@@ -91,6 +92,7 @@ class AddVehicleViewModel: ObservableObject {
     // MARK: - Persistence (Save to Supabase)
     
     func saveVehicle() async {
+        // 1. Final Validation Check
         if let error = validate() {
             await MainActor.run { self.errorMessage = error }
             return
@@ -104,23 +106,23 @@ class AddVehicleViewModel: ObservableObject {
         let sqlDateFormatter = DateFormatter()
         sqlDateFormatter.dateFormat = "yyyy-MM-dd"
 
+        // 2. Construct Payload
+        // Note: Ensuring VIN and RC are sanitized/uppercased
         let payload: [String: Any] = [
             "image_url": vehicleImageURL ?? "",
-            "vehicleName": vehicleName,
+            "vehicleName": vehicleName.trimmingCharacters(in: .whitespaces),
             "registrationNumber": licensePlate,
-            "vin": vin.uppercased(),
-            "rc_number": rcNumber.uppercased(),
+            "vin": vin.uppercased().trimmingCharacters(in: .whitespaces),
+            "rc_number": rcNumber.uppercased().trimmingCharacters(in: .whitespaces),
             "brand": brand,
             "manufacturer": manufacturer,
             "model": model,
             "model_year": Int(modelYear) ?? 0,
             "vehicleType": vehicleType,
             "fuelType": fuelType,
-            // Date Integration
             "registrationDate": sqlDateFormatter.string(from: registrationDate),
             "pucExpiry": sqlDateFormatter.string(from: pucExpiry),
             "rcExpiry": sqlDateFormatter.string(from: rcExpiry),
-            // Document Array Construction
             "documents": [
                 rcURL != nil ? ["type": "RC", "url": rcURL!, "name": rcFileName ?? "RC_Doc"] : nil,
                 insuranceURL != nil ? ["type": "INSURANCE", "url": insuranceURL!, "name": insuranceFileName ?? "Insurance_Doc"] : nil,
@@ -129,7 +131,8 @@ class AddVehicleViewModel: ObservableObject {
         ]
 
         do {
-            let functionURL = URL(string: "https://qisdvwaldlghndrudbvr.supabase.co/functions/v1/bright-action")!
+            // 3. API Request
+            let functionURL = URL(string: "\(SUPABASE_URL)/functions/v1/bright-action")!
             var request = URLRequest(url: functionURL)
             request.httpMethod = "POST"
             request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
@@ -138,12 +141,14 @@ class AddVehicleViewModel: ObservableObject {
 
             let (data, response) = try await URLSession.shared.data(for: request)
             
+            // 4. Response Handling
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 await MainActor.run { self.isSuccess = true }
             } else {
+                // Attempt to extract specific error from Supabase Edge Function
                 let errorObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-                let message = errorObj?["error"] as? String ?? "Failed to save vehicle details."
-                throw NSError(domain: "", code: 0, userInfo: [NSLocalizedDescriptionKey: message])
+                let message = errorObj?["error"] as? String ?? "Server error: \( (response as? HTTPURLResponse)?.statusCode ?? 0)"
+                throw NSError(domain: "SupabaseError", code: 0, userInfo: [NSLocalizedDescriptionKey: message])
             }
         } catch {
             await MainActor.run { self.errorMessage = error.localizedDescription }

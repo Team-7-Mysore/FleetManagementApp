@@ -45,6 +45,11 @@ private struct VehicleUpdatePayload: Encodable {
     let vehicle_type: String
     let fuel_type: String?
     let model_year: String?
+    let vin: String?
+    let registration_no: String?
+    let registration_date: String?
+    let rc_expiry_date: String?
+    let puc_expiry_date: String?
 }
 
 @MainActor
@@ -132,13 +137,18 @@ class VehicleDetailViewModel: ObservableObject {
                 image_url: vehicle.imageURL,
                 vehicle_type: vehicle.vehicleType,
                 fuel_type: vehicle.fuelType,
-                model_year: vehicle.modelYear
+                model_year: vehicle.modelYear,
+                vin: vehicle.vin,
+                registration_no: vehicle.rcNumber,
+                registration_date: vehicle.registrationDate,
+                rc_expiry_date: vehicle.rcExpiryDate,
+                puc_expiry_date: vehicle.pucExpiryDate
             )
 
             try await SupabaseManager.shared.client
                 .from("vehicles")
                 .update(payload)
-                .eq("vehicle_id", value: vehicle.id)
+                .eq("vehicle_id", value: vehicle.id.uuidString.lowercased())
                 .execute()
 
             try await syncDocuments(for: vehicle.id)

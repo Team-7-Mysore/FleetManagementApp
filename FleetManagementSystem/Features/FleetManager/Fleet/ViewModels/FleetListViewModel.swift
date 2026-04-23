@@ -71,8 +71,13 @@ final class FleetListViewModel: ObservableObject {
                     vehicle_type, 
                     fuel_type, 
                     model_year, 
-                    status
-                """) // Explicitly fetching vehicle_name and status
+                    status,
+                    vin,
+                    registration_no,
+                    registration_date,
+                    rc_expiry_date,
+                    puc_expiry_date
+                """)
                 .order("vehicle_name", ascending: true)
                 .execute()
 
@@ -142,7 +147,7 @@ private extension FleetListViewModel {
             guard let idString = stringValue(row["vehicle_id"]),
                   let id = UUID(uuidString: idString) else { return nil }
 
-            return Vehicle(
+            var vehicle = Vehicle(
                 id: id,
                 name: preferredText(stringValue(row["vehicle_name"]), fallback: stringValue(row["number_plate"]), defaultValue: "Unnamed Vehicle"),
                 registrationNumber: preferredText(stringValue(row["number_plate"]), fallback: nil, defaultValue: "No Plate"),
@@ -153,6 +158,12 @@ private extension FleetListViewModel {
                 fuelType: stringValue(row["fuel_type"]),
                 modelYear: stringValue(row["model_year"])
             )
+            vehicle.vin = stringValue(row["vin"]) ?? ""
+            vehicle.rcNumber = stringValue(row["registration_no"]) ?? ""
+            vehicle.registrationDate = stringValue(row["registration_date"]) ?? ""
+            vehicle.rcExpiryDate = stringValue(row["rc_expiry_date"]) ?? ""
+            vehicle.pucExpiryDate = stringValue(row["puc_expiry_date"]) ?? ""
+            return vehicle
         }
     }
 

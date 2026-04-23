@@ -1,6 +1,8 @@
 import SwiftUI
 import Combine
 import UniformTypeIdentifiers
+import AVFoundation
+import Photos
 
 struct VehicleDetailView: View {
     let vehicle: Vehicle
@@ -35,19 +37,15 @@ struct VehicleDetailView: View {
                 // MARK: - Header Image Section
                 Section {
                     vehicleImage(currentVehicle)
-                        .listRowInsets(EdgeInsets()) // Make image flush with edges
+                        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                        .frame(height: 200)
                 }
                 .listRowBackground(Color.clear)
 
                 // MARK: - Vehicle Identification
                 Section(header: Text("Vehicle Identification")) {
-                    if isEditing {
-                        TextField("Vehicle Name", text: binding(\.name))
-                        TextField("Registration Number", text: binding(\.registrationNumber))
-                    } else {
-                        LabeledContent("Name", value: currentVehicle.name)
-                        LabeledContent("Plate", value: currentVehicle.registrationNumber)
-                    }
+                    InfoRow(title: "Name", value: currentVehicle.name, isEditing: isEditing, text: binding(\.name))
+                    InfoRow(title: "Plate", value: currentVehicle.registrationNumber, isEditing: isEditing, text: binding(\.registrationNumber))
                 }
 
                 // MARK: - Basic Info
@@ -62,10 +60,9 @@ struct VehicleDetailView: View {
                 Section(header: Text("Registration Details")) {
                     InfoRow(title: "VIN", value: currentVehicle.vin.isEmpty ? "—" : currentVehicle.vin, isEditing: isEditing, text: binding(\.vin))
                     InfoRow(title: "RC Number", value: currentVehicle.rcNumber.isEmpty ? "—" : currentVehicle.rcNumber, isEditing: isEditing, text: binding(\.rcNumber))
-                    
-                    LabeledContent("Reg. Date", value: currentVehicle.registrationDate.isEmpty ? "—" : currentVehicle.registrationDate)
-                    LabeledContent("RC Expiry", value: currentVehicle.rcExpiryDate.isEmpty ? "—" : currentVehicle.rcExpiryDate)
-                    LabeledContent("PUC Expiry", value: currentVehicle.pucExpiryDate.isEmpty ? "—" : currentVehicle.pucExpiryDate)
+                    InfoRow(title: "Reg. Date", value: currentVehicle.registrationDate.isEmpty ? "—" : currentVehicle.registrationDate, isEditing: isEditing, text: binding(\.registrationDate))
+                    InfoRow(title: "RC Expiry", value: currentVehicle.rcExpiryDate.isEmpty ? "—" : currentVehicle.rcExpiryDate, isEditing: isEditing, text: binding(\.rcExpiryDate))
+                    InfoRow(title: "PUC Expiry", value: currentVehicle.pucExpiryDate.isEmpty ? "—" : currentVehicle.pucExpiryDate, isEditing: isEditing, text: binding(\.pucExpiryDate))
                 }
 
                 // MARK: - Documents
@@ -193,21 +190,27 @@ struct VehicleDetailView: View {
 
     private func vehicleImage(_ vehicle: Vehicle) -> some View {
         ZStack(alignment: .bottomTrailing) {
-            if let urlString = vehicle.imageURL, let url = URL(string: urlString) {
-                AsyncImage(url: url) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
+            Group {
+                if let urlString = vehicle.imageURL, let url = URL(string: urlString) {
+                    AsyncImage(url: url) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        Rectangle().fill(Color(.systemGray5))
+                            .overlay(Image(systemName: vehicle.imageSystemName).font(.largeTitle).foregroundColor(.gray))
+                    }
+                } else {
                     Rectangle().fill(Color(.systemGray5))
+                        .overlay(Image(systemName: vehicle.imageSystemName).font(.largeTitle).foregroundColor(.gray))
                 }
-            } else {
-                Rectangle().fill(Color(.systemGray5))
-                    .overlay(Image(systemName: vehicle.imageSystemName).font(.largeTitle).foregroundColor(.gray))
             }
+            .frame(height: 200)
+            .clipped()
             
             if isEditing {
                 Button {
-                    sourceType = .camera
-                    showImagePicker = true
+                    handleCameraAccess {
+                        showImagePicker = true
+                    }
                 } label: {
                     Image(systemName: "camera.circle.fill")
                         .symbolRenderingMode(.hierarchical)
@@ -217,8 +220,6 @@ struct VehicleDetailView: View {
                 }
             }
         }
-        .frame(height: 200)
-        .clipped()
     }
 
     // MARK: - Binding Helpers
@@ -228,6 +229,28 @@ struct VehicleDetailView: View {
 
     private func binding(_ keyPath: WritableKeyPath<Vehicle, String?>) -> Binding<String> {
         Binding(get: { draftVehicle?[keyPath: keyPath] ?? "" }, set: { draftVehicle?[keyPath: keyPath] = $0.isEmpty ? nil : $0 })
+    }
+
+    private func handleCameraAccess(onGranted: @escaping () -> Void) {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        if status == .authorized { onGranted() }
+        else {
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                if granted { DispatchQueue.main.async { onGranted() } }
+            }
+        }
+    }
+
+    private func handlePhotoLibraryAccess(onGranted: @escaping () -> Void) {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        if status == .authorized || status == .limited { onGranted() }
+        else {
+            PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
+                if status == .authorized || status == .limited {
+                    DispatchQueue.main.async { onGranted() }
+                }
+            }
+        }
     }
 }
 
