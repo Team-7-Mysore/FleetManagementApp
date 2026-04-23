@@ -183,12 +183,14 @@ struct ActiveTripView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will immediately dial emergency services (112). Only proceed in a genuine emergency.")
+            Text("This will immediately dial emergency contact. Only proceed in a genuine emergency.")
         }
         .sheet(isPresented: $showReportIssue) {
             ReportIssueView(user: user, vehicle: nil)
         }
         .onAppear {
+            // Seed emergency contact (replace with user-configurable value later)
+            UserDefaults.standard.set("+918408880436", forKey: "emergency_contact")
             startTimer()
             createRoute()
             locationManager.requestLocation()
@@ -288,10 +290,28 @@ struct ActiveTripView: View {
         ])
     }
 
+//    private func callEmergency() {
+//        let feedback = UINotificationFeedbackGenerator()
+//        feedback.notificationOccurred(.error)
+//        if let url = URL(string: "tel://112") {
+//            UIApplication.shared.open(url)
+//        }
+//    }
+    
     private func callEmergency() {
         let feedback = UINotificationFeedbackGenerator()
         feedback.notificationOccurred(.error)
-        if let url = URL(string: "tel://112") {
+
+        // READ the stored number (set() stores, string(forKey:) reads)
+        let rawNumber = UserDefaults.standard.string(forKey: "emergency_contact") ?? "112"
+
+        // Percent-encode so '+91...' doesn't break URL(string:)
+        let encoded = rawNumber.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "112"
+
+        // Use tel: (not tel://) — correct RFC scheme for phone calls
+        guard let url = URL(string: "tel:\(encoded)") else { return }
+
+        if UIApplication.shared.canOpenURL(url) {
             UIApplication.shared.open(url)
         }
     }
@@ -304,92 +324,63 @@ struct SOSButton: View {
     @State private var isHolding = false
     @State private var progress: CGFloat = 0
     @State private var holdTask: Task<Void, Never>? = nil
-    @State private var pulseScale: CGFloat = 1
 
     private let holdDuration: Double = 1.8
 
     var body: some View {
         ZStack {
-            // Pulse ring (idle)
-            if !isHolding {
-                Circle()
-                    .stroke(Color(red: 1, green: 0.23, blue: 0.19).opacity(0.3), lineWidth: 6)
-                    .frame(width: 72, height: 72)
-                    .scaleEffect(pulseScale)
-                    .animation(
-                        .easeInOut(duration: 1.2).repeatForever(autoreverses: true),
-                        value: pulseScale
-                    )
-            }
-
             // Progress ring (while holding)
             if isHolding {
                 Circle()
                     .trim(from: 0, to: progress)
                     .stroke(
                         Color(red: 1, green: 0.23, blue: 0.19),
-                        style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                        style: StrokeStyle(lineWidth: 4, lineCap: .round)
                     )
-                    .frame(width: 72, height: 72)
+                    .frame(width: 68, height: 68)
                     .rotationEffect(.degrees(-90))
                     .animation(.linear(duration: holdDuration), value: progress)
             }
 
-            // Main button body
-            ZStack {
-                Circle()
-                    .fill(Color(red: 1, green: 0.23, blue: 0.19))
-                    .frame(width: 60, height: 60)
-                    .shadow(color: Color(red: 1, green: 0.23, blue: 0.19).opacity(0.5), radius: 12, x: 0, y: 6)
-
-                VStack(spacing: 2) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(.white)
+            // Static button
+            Circle()
+                .fill(Color(red: 1, green: 0.23, blue: 0.19))
+                .frame(width: 60, height: 60)
+                .shadow(color: Color.black.opacity(0.25), radius: 8, x: 0, y: 4)
+                .overlay {
                     Text("SOS")
-                        .font(.system(size: 10, weight: .black))
+                        .font(.system(size: 16, weight: .black))
                         .foregroundStyle(.white)
-                        .tracking(1)
+                        .tracking(1.5)
                 }
-            }
-            .scaleEffect(isHolding ? 1.1 : 1.0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isHolding)
+                .scaleEffect(isHolding ? 1.08 : 1.0)
+                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isHolding)
         }
         .accessibilityLabel("Emergency SOS button")
         .accessibilityHint("Hold for 2 seconds to call emergency services")
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in
-                    if !isHolding {
-                        startHold()
-                    }
+                    if !isHolding { startHold() }
                 }
                 .onEnded { _ in
                     cancelHold()
                 }
         )
-        .onAppear {
-            pulseScale = 1.25
-        }
     }
 
     private func startHold() {
         isHolding = true
         progress = 0
-        let impact = UIImpactFeedbackGenerator(style: .medium)
-        impact.impactOccurred()
-
-        // Animate progress to 1 over holdDuration
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         withAnimation(.linear(duration: holdDuration)) {
             progress = 1.0
         }
-
         holdTask = Task {
             try? await Task.sleep(nanoseconds: UInt64(holdDuration * 1_000_000_000))
             guard !Task.isCancelled else { return }
             await MainActor.run {
-                let notify = UINotificationFeedbackGenerator()
-                notify.notificationOccurred(.error)
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
                 isHolding = false
                 progress = 0
                 onConfirmed()
@@ -401,12 +392,9 @@ struct SOSButton: View {
         guard isHolding else { return }
         holdTask?.cancel()
         holdTask = nil
-        withAnimation(.easeOut(duration: 0.25)) {
-            progress = 0
-        }
+        withAnimation(.easeOut(duration: 0.2)) { progress = 0 }
         isHolding = false
-        let impact = UIImpactFeedbackGenerator(style: .light)
-        impact.impactOccurred()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 }
 
