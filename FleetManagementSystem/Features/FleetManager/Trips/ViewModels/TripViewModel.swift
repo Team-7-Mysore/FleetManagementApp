@@ -1,6 +1,8 @@
 import SwiftUI
 import Combine
 import Supabase
+import MapKit
+import CoreLocation
 
 struct TripInsert: Encodable {
     let trip_name: String
@@ -95,6 +97,11 @@ final class TripViewModel: ObservableObject {
     @Published var successMessage: String?
     @Published private(set) var availableVehicles: [VehicleAssignmentOption] = []
     @Published private(set) var availableDrivers: [DriverAssignmentOption] = []
+    @Published var calculatedDistance: Double?
+    @Published var calculatedETA: TimeInterval?
+    @Published var isCalculatingRoute = false
+    @Published var originCoordinates: CLLocationCoordinate2D?
+    @Published var destinationCoordinates: CLLocationCoordinate2D?
 
     func resetAssignmentOptions() {
         availableVehicles = []
@@ -186,7 +193,6 @@ final class TripViewModel: ObservableObject {
                 availableDrivers = drivers
                     .filter { hasValidLicenseExpiry($0.license_expiry, relativeTo: pickupDate) }
                     .filter { !busyDriverIDs.contains($0.driver_id) }
-                    .filter { isDriverNearPickup($0.driver_id, pickupLocation: trimmedPickupLocation, trips: trips) }
                     .map { driver in
                         let user = driver.user_id.flatMap { usersByID[$0] }
                         let inferredLocation = inferredDriverLocation(for: driver.driver_id, trips: trips)
@@ -223,6 +229,89 @@ final class TripViewModel: ObservableObject {
         isLoadingAssignments = false
     }
 
+    func calculateRoute(
+        origin: String,
+        originCoord: CLLocationCoordinate2D?,
+        destination: String,
+        destinationCoord: CLLocationCoordinate2D?,
+        waypoints: [CLLocationCoordinate2D] = []
+    ) async {
+        guard !origin.isEmpty, !destination.isEmpty else {
+            calculatedDistance = nil
+            calculatedETA = nil
+            originCoordinates = nil
+            destinationCoordinates = nil
+            return
+        }
+
+        isCalculatingRoute = true
+        
+        do {
+            // 1. Resolve origin coordinate
+            let finalOrigin: CLLocationCoordinate2D
+            if let originCoord = originCoord {
+                finalOrigin = originCoord
+            } else {
+                let placemark = try await geocodeAddress(origin)
+                guard let coord = placemark.location?.coordinate else { throw NSError(domain: "TripVM", code: -1) }
+                finalOrigin = coord
+            }
+            self.originCoordinates = finalOrigin
+
+            // 2. Resolve destination coordinate
+            let finalDest: CLLocationCoordinate2D
+            if let destinationCoord = destinationCoord {
+                finalDest = destinationCoord
+            } else {
+                let placemark = try await geocodeAddress(destination)
+                guard let coord = placemark.location?.coordinate else { throw NSError(domain: "TripVM", code: -1) }
+                finalDest = coord
+            }
+            self.destinationCoordinates = finalDest
+
+            // 3. Chain segments to handle multiple waypoints and get total distance/ETA
+            let allPoints = [finalOrigin] + waypoints + [finalDest]
+            var totalDistance: Double = 0
+            var totalETA: TimeInterval = 0
+            
+            for i in 0..<(allPoints.count - 1) {
+                let request = MKDirections.Request()
+                request.source = MKMapItem(placemark: MKPlacemark(coordinate: allPoints[i]))
+                request.destination = MKMapItem(placemark: MKPlacemark(coordinate: allPoints[i+1]))
+                request.transportType = .automobile
+                
+                let response = try await MKDirections(request: request).calculate()
+                if let route = response.routes.first {
+                    totalDistance += route.distance
+                    totalETA += route.expectedTravelTime
+                }
+            }
+
+            self.calculatedDistance = totalDistance / 1000.0 // km
+            self.calculatedETA = totalETA
+            
+            print("✅ Route calculated with \(waypoints.count) waypoints:")
+            print("   Distance: \(String(format: "%.2f", calculatedDistance ?? 0)) km")
+            print("   ETA: \(String(format: "%.0f", (calculatedETA ?? 0) / 60)) minutes")
+
+        } catch {
+            print("❌ Failed to calculate route: \(error.localizedDescription)")
+            calculatedDistance = nil
+            calculatedETA = nil
+        }
+        
+        isCalculatingRoute = false
+    }
+
+    private func geocodeAddress(_ address: String) async throws -> CLPlacemark {
+        let geocoder = CLGeocoder()
+        let placemarks = try await geocoder.geocodeAddressString(address)
+        guard let placemark = placemarks.first else {
+            throw NSError(domain: "TripViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "No location found for address"])
+        }
+        return placemark
+    }
+
     func createTrip(
         tripName: String,
         clientContact: String,
@@ -232,7 +321,9 @@ final class TripViewModel: ObservableObject {
         pickupDate: Date,
         expectedEndDate: Date,
         vehicleID: UUID?,
-        driverID: UUID?
+        driverID: UUID?,
+        distance: Double?,
+        fleetManagerId: UUID?
     ) async {
 
         if tripName.isEmpty || origin.isEmpty || destination.isEmpty {
@@ -266,33 +357,69 @@ final class TripViewModel: ObservableObject {
         let pickupISODate = formatter.string(from: pickupDate)
         let endISODate = formatter.string(from: expectedEndDate)
 
-        let trip = TripInsert(
-            trip_name: tripName,
-            client_contact: clientContact,
-            origin: origin,
-            destination: destination,
-            via_points: viaPoints,
-            pickup_time: pickupISODate,
-            start_time: pickupISODate,
-            end_time: endISODate,
-            start_location: origin,
-            end_location: destination,
-            vehicle_id: vehicleID,
-            driver_id: driverID,
-            status: "assigned"
-        )
-
         print("📍 Creating trip with locations:")
         print("   Origin: \(origin)")
+        print("   Origin Coordinates: \(originCoordinates.map { "\($0.latitude), \($0.longitude)" } ?? "N/A")")
         print("   Destination: \(destination)")
+        print("   Destination Coordinates: \(destinationCoordinates.map { "\($0.latitude), \($0.longitude)" } ?? "N/A")")
         print("   Via Points: \(viaPoints)")
+        print("   Distance: \(distance.map { String(format: "%.2f km", $0) } ?? "N/A")")
+        print("   ETA: \(calculatedETA.map { String(format: "%.0f minutes", $0 / 60.0) } ?? "N/A")")
+        print("   Fleet Manager ID: \(fleetManagerId?.uuidString ?? "N/A")")
         print("   Pickup Time (UTC): \(pickupISODate)")
         print("   End Time (UTC): \(endISODate)")
 
         do {
+            // Build the insert data
+            struct TripInsertWithDistance: Encodable {
+                let trip_name: String
+                let client_contact: String
+                let origin: String
+                let destination: String
+                let via_points: [String]
+                let pickup_time: String
+                let start_time: String
+                let end_time: String
+                let start_location: String
+                let end_location: String
+                let vehicle_id: UUID
+                let driver_id: UUID
+                let status: String
+                let distance_travelled: Double?
+                let fleet_manager_id: UUID?
+                let origin_latitude: Double?
+                let origin_longitude: Double?
+                let destination_latitude: Double?
+                let destination_longitude: Double?
+                let eta: Double?
+            }
+            
+            let tripData = TripInsertWithDistance(
+                trip_name: tripName,
+                client_contact: clientContact,
+                origin: origin,
+                destination: destination,
+                via_points: viaPoints,
+                pickup_time: pickupISODate,
+                start_time: pickupISODate,
+                end_time: endISODate,
+                start_location: origin,
+                end_location: destination,
+                vehicle_id: vehicleID,
+                driver_id: driverID,
+                status: "assigned",
+                distance_travelled: distance,
+                fleet_manager_id: fleetManagerId,
+                origin_latitude: originCoordinates?.latitude,
+                origin_longitude: originCoordinates?.longitude,
+                destination_latitude: destinationCoordinates?.latitude,
+                destination_longitude: destinationCoordinates?.longitude,
+                eta: calculatedETA.map { $0 / 60.0 } // Convert seconds to minutes
+            )
+            
             try await SupabaseManager.shared.client
                 .from("trips")
-                .insert(trip)
+                .insert(tripData)
                 .execute()
 
             print("✅ Trip created successfully in Supabase")
@@ -324,7 +451,8 @@ final class TripViewModel: ObservableObject {
         guard let status = status?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) else {
             return false
         }
-        return ["assigned", "scheduled", "pending", "in_progress", "in progress", "in_transit", "in transit"].contains(status)
+        // These statuses indicate the driver/vehicle is committed to a trip
+        return ["assigned", "scheduled", "pending", "in_progress", "in progress", "in_transit", "in transit", "planned", "active"].contains(status)
     }
 
     private func overlaps(
@@ -396,31 +524,36 @@ final class TripViewModel: ObservableObject {
     }
 
     private func parseDatabaseTimestamp(_ value: String?) -> Date? {
-        guard let value else { return nil }
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
 
-        // Supabase stores timestamps in UTC, so we need to parse them as UTC
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        iso.timeZone = TimeZone(identifier: "UTC")
-        if let date = iso.date(from: value) {
-            return date
-        }
+        // 1. Try ISO8601 with and without fractional seconds
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.timeZone = TimeZone(identifier: "UTC")
+        
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = isoFormatter.date(from: value) { return date }
+        
+        isoFormatter.formatOptions = [.withInternetDateTime]
+        if let date = isoFormatter.date(from: value) { return date }
 
-        // Fallback to other formats, also treating them as UTC
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "UTC")
+        // 2. Try DateFormatter with common Postgres and API formats
+        let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.timeZone = TimeZone(identifier: "UTC")
         
         let formats = [
-            "yyyy-MM-dd'T'HH:mm:ss",
-            "yyyy-MM-dd'T'HH:mm:ssZ",
+            "yyyy-MM-dd HH:mm:ss.SSSSSS", // Postgres default
+            "yyyy-MM-dd HH:mm:ss.SSS",
             "yyyy-MM-dd HH:mm:ss",
-            "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+            "yyyy-MM-dd'T'HH:mm:ss.SSSZ",
+            "yyyy-MM-dd'T'HH:mm:ssZ",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd HH:mm:ssZZZZZ"
         ]
 
         for format in formats {
-            formatter.dateFormat = format
-            if let date = formatter.date(from: value) {
+            dateFormatter.dateFormat = format
+            if let date = dateFormatter.date(from: value) {
                 return date
             }
         }

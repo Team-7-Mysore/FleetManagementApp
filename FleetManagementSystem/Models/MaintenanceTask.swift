@@ -29,7 +29,7 @@ enum MaintenanceType: String, Codable, CaseIterable, Identifiable {
 
 // MARK: - Maintenance Status
 enum MaintenanceStatus: String, Codable, CaseIterable, Identifiable {
-    case scheduled  = "Scheduled"
+    case scheduled  = "assigned"
     case inProgress = "In Progress"
     case completed  = "Completed"
     case overdue    = "Overdue"

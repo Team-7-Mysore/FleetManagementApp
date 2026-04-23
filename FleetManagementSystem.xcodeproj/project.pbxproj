@@ -7,13 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		84FD75032F96130500237A81 /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = 84FD75022F96130500237A81 /* Auth */; };
-		84FD75052F96130500237A81 /* Functions in Frameworks */ = {isa = PBXBuildFile; productRef = 84FD75042F96130500237A81 /* Functions */; };
-		84FD75072F96130500237A81 /* PostgREST in Frameworks */ = {isa = PBXBuildFile; productRef = 84FD75062F96130500237A81 /* PostgREST */; };
-		84FD75092F96130500237A81 /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = 84FD75082F96130500237A81 /* Realtime */; };
-		84FD750B2F96130500237A81 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = 84FD750A2F96130500237A81 /* Storage */; };
-		84FD750D2F96130500237A81 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 84FD750C2F96130500237A81 /* Supabase */; };
-		84FD75102F96132500237A81 /* MessageKit in Frameworks */ = {isa = PBXBuildFile; productRef = 84FD750F2F96132500237A81 /* MessageKit */; };
+		84FD77FB2F9A290E00237A81 /* Auth in Frameworks */ = {isa = PBXBuildFile; productRef = 84FD77FA2F9A290E00237A81 /* Auth */; };
+		84FD77FD2F9A290E00237A81 /* Functions in Frameworks */ = {isa = PBXBuildFile; productRef = 84FD77FC2F9A290E00237A81 /* Functions */; };
+		84FD77FF2F9A290E00237A81 /* PostgREST in Frameworks */ = {isa = PBXBuildFile; productRef = 84FD77FE2F9A290E00237A81 /* PostgREST */; };
+		84FD78012F9A290E00237A81 /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = 84FD78002F9A290E00237A81 /* Realtime */; };
+		84FD78032F9A290E00237A81 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = 84FD78022F9A290E00237A81 /* Storage */; };
+		84FD78052F9A290E00237A81 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 84FD78042F9A290E00237A81 /* Supabase */; };
+		84FD78082F9A292000237A81 /* MessageKit in Frameworks */ = {isa = PBXBuildFile; productRef = 84FD78072F9A292000237A81 /* MessageKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -29,7 +29,6 @@
 				Features/Driver/Trips/ViewModels/.gitkeep,
 				Features/Driver/Trips/Views/.gitkeep,
 				Features/FleetManager/Fleet/ViewModels/.gitkeep,
-				Features/FleetManager/Fleet/Views/.gitkeep,
 				Features/FleetManager/Maintenance/ViewModels/.gitkeep,
 				Features/FleetManager/Maintenance/Views/.gitkeep,
 				Features/FleetManager/Trips/ViewModels/.gitkeep,
@@ -56,13 +55,13 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				84FD75072F96130500237A81 /* PostgREST in Frameworks */,
-				84FD75052F96130500237A81 /* Functions in Frameworks */,
-				84FD750D2F96130500237A81 /* Supabase in Frameworks */,
-				84FD75102F96132500237A81 /* MessageKit in Frameworks */,
-				84FD75032F96130500237A81 /* Auth in Frameworks */,
-				84FD750B2F96130500237A81 /* Storage in Frameworks */,
-				84FD75092F96130500237A81 /* Realtime in Frameworks */,
+				84FD77FF2F9A290E00237A81 /* PostgREST in Frameworks */,
+				84FD77FD2F9A290E00237A81 /* Functions in Frameworks */,
+				84FD78052F9A290E00237A81 /* Supabase in Frameworks */,
+				84FD78082F9A292000237A81 /* MessageKit in Frameworks */,
+				84FD77FB2F9A290E00237A81 /* Auth in Frameworks */,
+				84FD78032F9A290E00237A81 /* Storage in Frameworks */,
+				84FD78012F9A290E00237A81 /* Realtime in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -113,13 +112,13 @@
 			);
 			name = FleetManagementSystem;
 			packageProductDependencies = (
-				84FD75022F96130500237A81 /* Auth */,
-				84FD75042F96130500237A81 /* Functions */,
-				84FD75062F96130500237A81 /* PostgREST */,
-				84FD75082F96130500237A81 /* Realtime */,
-				84FD750A2F96130500237A81 /* Storage */,
-				84FD750C2F96130500237A81 /* Supabase */,
-				84FD750F2F96132500237A81 /* MessageKit */,
+				84FD77FA2F9A290E00237A81 /* Auth */,
+				84FD77FC2F9A290E00237A81 /* Functions */,
+				84FD77FE2F9A290E00237A81 /* PostgREST */,
+				84FD78002F9A290E00237A81 /* Realtime */,
+				84FD78022F9A290E00237A81 /* Storage */,
+				84FD78042F9A290E00237A81 /* Supabase */,
+				84FD78072F9A292000237A81 /* MessageKit */,
 			);
 			productName = FleetManagementSystem;
 			productReference = 84A866B72F8F44E700546587 /* FleetManagementSystem.app */;
@@ -150,8 +149,8 @@
 			mainGroup = 84A866AE2F8F44E700546587;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				84FD75012F9612FF00237A81 /* XCRemoteSwiftPackageReference "supabase-swift" */,
-				84FD750E2F96132500237A81 /* XCRemoteSwiftPackageReference "MessageKit" */,
+				84FD77F92F9A28FE00237A81 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				84FD78062F9A292000237A81 /* XCRemoteSwiftPackageReference "MessageKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 84A866B82F8F44E700546587 /* Products */;
@@ -399,7 +398,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		84FD75012F9612FF00237A81 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+		84FD77F92F9A28FE00237A81 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/supabase/supabase-swift";
 			requirement = {
@@ -407,7 +406,7 @@
 				minimumVersion = 2.5.1;
 			};
 		};
-		84FD750E2F96132500237A81 /* XCRemoteSwiftPackageReference "MessageKit" */ = {
+		84FD78062F9A292000237A81 /* XCRemoteSwiftPackageReference "MessageKit" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/MessageKit/MessageKit";
 			requirement = {
@@ -418,39 +417,39 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		84FD75022F96130500237A81 /* Auth */ = {
+		84FD77FA2F9A290E00237A81 /* Auth */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 84FD75012F9612FF00237A81 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			package = 84FD77F92F9A28FE00237A81 /* XCRemoteSwiftPackageReference "supabase-swift" */;
 			productName = Auth;
 		};
-		84FD75042F96130500237A81 /* Functions */ = {
+		84FD77FC2F9A290E00237A81 /* Functions */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 84FD75012F9612FF00237A81 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			package = 84FD77F92F9A28FE00237A81 /* XCRemoteSwiftPackageReference "supabase-swift" */;
 			productName = Functions;
 		};
-		84FD75062F96130500237A81 /* PostgREST */ = {
+		84FD77FE2F9A290E00237A81 /* PostgREST */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 84FD75012F9612FF00237A81 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			package = 84FD77F92F9A28FE00237A81 /* XCRemoteSwiftPackageReference "supabase-swift" */;
 			productName = PostgREST;
 		};
-		84FD75082F96130500237A81 /* Realtime */ = {
+		84FD78002F9A290E00237A81 /* Realtime */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 84FD75012F9612FF00237A81 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			package = 84FD77F92F9A28FE00237A81 /* XCRemoteSwiftPackageReference "supabase-swift" */;
 			productName = Realtime;
 		};
-		84FD750A2F96130500237A81 /* Storage */ = {
+		84FD78022F9A290E00237A81 /* Storage */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 84FD75012F9612FF00237A81 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			package = 84FD77F92F9A28FE00237A81 /* XCRemoteSwiftPackageReference "supabase-swift" */;
 			productName = Storage;
 		};
-		84FD750C2F96130500237A81 /* Supabase */ = {
+		84FD78042F9A290E00237A81 /* Supabase */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 84FD75012F9612FF00237A81 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			package = 84FD77F92F9A28FE00237A81 /* XCRemoteSwiftPackageReference "supabase-swift" */;
 			productName = Supabase;
 		};
-		84FD750F2F96132500237A81 /* MessageKit */ = {
+		84FD78072F9A292000237A81 /* MessageKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 84FD750E2F96132500237A81 /* XCRemoteSwiftPackageReference "MessageKit" */;
+			package = 84FD78062F9A292000237A81 /* XCRemoteSwiftPackageReference "MessageKit" */;
 			productName = MessageKit;
 		};
 /* End XCSwiftPackageProductDependency section */

@@ -14,8 +14,8 @@ struct FleetManagerTabView: View {
         TabView {
             TripsListView(profile: profile, onSignOut: onSignOut)
                 .tabItem {
-                    Image(systemName: "map.fill")
-                    Text("Trips")
+                    Image(systemName: "chart.bar.horizontal.page")
+                    Text("Dashboard")
                 }
 
             FleetListView()
@@ -34,6 +34,12 @@ struct FleetManagerTabView: View {
                 .tabItem {
                     Image(systemName: "message.fill")
                     Text("Chat")
+                }
+
+            GeofenceListView(profile: profile)
+                .tabItem {
+                    Image(systemName: "mappin.and.ellipse")
+                    Text("Geofences")
                 }
         }
         .accentColor(.TechBlue)

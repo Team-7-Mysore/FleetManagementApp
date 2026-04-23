@@ -137,7 +137,7 @@ extension TripMap {
         switch dto.status.lowercased() {
         case "assigned":
             self.status = .planned
-        case "active":
+        case "in_progress":
             self.status = .inProgress
         case "completed":
             self.status = .completed

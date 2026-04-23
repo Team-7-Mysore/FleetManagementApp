@@ -15,6 +15,13 @@ struct Trip: Codable, Identifiable {
     let pickup_time: String?
     let status: String?
     let trip_number: String?
+    let distance_travelled: Double?
+    let fleet_manager_id: UUID?
+    let origin_latitude: Double?
+    let origin_longitude: Double?
+    let destination_latitude: Double?
+    let destination_longitude: Double?
+    let eta: Double?
 
     enum CodingKeys: String, CodingKey {
         case id = "trip_id"
@@ -24,6 +31,13 @@ struct Trip: Codable, Identifiable {
         case pickup_time
         case status
         case trip_number
+        case distance_travelled
+        case fleet_manager_id
+        case origin_latitude
+        case origin_longitude
+        case destination_latitude
+        case destination_longitude
+        case eta
     }
 
     /// Returns a displayable trip ID like "#TR-5012"
@@ -151,11 +165,11 @@ struct Trip: Codable, Identifiable {
         switch s {
         case "in_transit", "in transit", "intransit":
             return .inTransit
-        case "in_progress", "in progress", "inprogress":
+        case "in_progress", "in progress", "inprogress", "active":
             return .inProgress
         case "completed", "complete":
             return .completed
-        case "scheduled", "pending":
+        case "scheduled", "pending", "assigned":
             return .scheduled
         case "cancelled", "canceled":
             return .cancelled

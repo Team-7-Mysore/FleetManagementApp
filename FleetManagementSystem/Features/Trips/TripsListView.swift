@@ -36,7 +36,7 @@ struct TripsListView: View {
                    .padding(.bottom, 100)
                }
                .background(Color(.systemGroupedBackground))
-               .navigationTitle("Fleet Dashboard")
+               .navigationTitle("Dashboard")
                .navigationBarTitleDisplayMode(.large)
                .toolbar {
                    ToolbarItemGroup(placement: .topBarTrailing) {
@@ -99,30 +99,29 @@ struct TripsListView: View {
    }
 
    private func overviewCard(title: String, value: String, icon: String, color: Color) -> some View {
-       VStack(spacing: 16) {
-           HStack(alignment: .center, spacing: 8) {
+       VStack(spacing: 8) {
+           HStack(alignment: .center, spacing: 6) {
                Image(systemName: icon)
-                   .font(.system(size: 20))
+                   .font(.system(size: 16))
                    .foregroundColor(color)
-
+               
                Text(title)
-                   .font(.subheadline)
+                   .font(.caption)
                    .foregroundColor(.secondary)
                
                Spacer()
            }
-
+           
            Text(value)
-               .font(.system(size: 36, weight: .bold, design: .rounded))
+               .font(.system(size: 28, weight: .bold, design: .rounded))
                .foregroundColor(.primary)
                .frame(maxWidth: .infinity, alignment: .center)
-
        }
        .frame(maxWidth: .infinity)
-       .padding(.vertical, 20)
-       .padding(.horizontal, 16)
+       .padding(.vertical, 12)
+       .padding(.horizontal, 12)
        .background(Color(.secondarySystemGroupedBackground))
-       .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+       .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
        .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
    }
 
@@ -146,7 +145,7 @@ struct TripsListView: View {
            } else if vm.filteredTrips.isEmpty {
                emptyTripsState
            } else {
-               ForEach(Array(vm.filteredTrips.prefix(3))) { trip in
+               ForEach(Array(vm.filteredTrips.prefix(2))) { trip in
                    EnhancedTripCard(trip: trip)
                }
            }
@@ -156,9 +155,17 @@ struct TripsListView: View {
    // MARK: - Maintenance Section
    private var maintenanceSection: some View {
        VStack(alignment: .leading, spacing: 12) {
-           Text("Vehicles in Maintenance")
-               .font(.title3.weight(.semibold))
-               .foregroundColor(.primary)
+           HStack {
+               Text("Vehicles in Maintenance")
+                   .font(.title3.weight(.semibold))
+                   .foregroundColor(.primary)
+
+               Spacer()
+
+               NavigationLink("View All", destination: AllMaintenanceView())
+                   .font(.subheadline.weight(.semibold))
+                   .foregroundColor(.TechBlue)
+           }
 
            ForEach(Array(vm.vehiclesInMaintenance.prefix(3))) { workOrder in
                MaintenanceVehicleCard(workOrder: workOrder)
@@ -198,7 +205,7 @@ struct TripsListView: View {
    }
 
    private var floatingActionButton: some View {
-       NavigationLink(destination: CreateTripView()) {
+       NavigationLink(destination: CreateTripView(fleetManagerId: profile?.userId)) {
            Image(systemName: "plus")
                .font(.title2.weight(.bold))
                .foregroundColor(.white)
@@ -224,128 +231,76 @@ struct EnhancedTripCard: View {
    let trip: Trip
 
    var body: some View {
-       VStack(alignment: .leading, spacing: 16) {
-           // Header with tracking number and status
-           HStack {
-               VStack(alignment: .leading, spacing: 4) {
-                   Text("Tracking Number")
-                       .font(.caption)
-                       .foregroundColor(.white.opacity(0.8))
-
-                   Text(trip.displayTripID)
-                       .font(.title3.weight(.bold))
-                       .foregroundColor(.white)
+       NavigationLink(destination: FleetManagerTripDetailView(trip: trip)) {
+           VStack(alignment: .leading, spacing: 8) {
+               // Top row - Route name and status badge
+               HStack {
+                   Text(trip.tripNameText)
+                       .font(.headline.weight(.bold))
+                       .foregroundColor(.primary)
+                   
+                   Spacer()
+                   
+                   statusBadge
                }
-
-               Spacer()
-
-               statusBadge
-           }
-
-           // Progress indicator
-           tripProgressView
-
-           // Route information
-           HStack(spacing: 20) {
-               VStack(alignment: .leading, spacing: 4) {
-                   Text("From")
-                       .font(.caption)
-                       .foregroundColor(.white.opacity(0.7))
+               
+               // Bottom row - Route details
+               HStack(spacing: 6) {
                    Text(trip.originText)
-                       .font(.subheadline.weight(.semibold))
-                       .foregroundColor(.white)
-               }
+                       .frame(maxWidth: .infinity, alignment: .leading)
+                       .font(.subheadline)
+                       .foregroundColor(.secondary)
+                       .lineLimit(nil)
+                       .multilineTextAlignment(.leading)
+                       .layoutPriority(1)
 
-               Image(systemName: "arrow.right")
-                   .foregroundColor(.white.opacity(0.6))
-
-               VStack(alignment: .leading, spacing: 4) {
-                   Text("To")
+                   Image(systemName: "arrow.right")
                        .font(.caption)
-                       .foregroundColor(.white.opacity(0.7))
+                       .foregroundColor(.secondary)
+                       .padding(.horizontal, 2)
+                   
                    Text(trip.destinationText)
-                       .font(.subheadline.weight(.semibold))
-                       .foregroundColor(.white)
-               }
-
-               Spacer()
-
-               VStack(alignment: .trailing, spacing: 4) {
-                   Text("Arrival date")
-                       .font(.caption)
-                       .foregroundColor(.white.opacity(0.7))
-                   Text(trip.formattedEstimatedDate)
-                       .font(.subheadline.weight(.semibold))
-                       .foregroundColor(.white)
+                       .frame(maxWidth: .infinity, alignment: .leading)
+                       .font(.subheadline)
+                       .foregroundColor(.secondary)
+                       .lineLimit(nil)
+                       .multilineTextAlignment(.leading)
+                       .layoutPriority(1)
                }
            }
+           .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
+           .padding(14)
+           .background(Color(.secondarySystemGroupedBackground))
+           .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+           .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
        }
-       .padding(20)
-       .background(
-           LinearGradient(
-               colors: gradientColors,
-               startPoint: .topLeading,
-               endPoint: .bottomTrailing
-           )
-       )
-       .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-       .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 5)
+       .buttonStyle(.plain)
    }
 
    private var statusBadge: some View {
        Text(trip.normalisedStatus.displayTitle)
-           .font(.caption.weight(.bold))
+           .font(.caption2.weight(.bold))
            .foregroundColor(.white)
-           .padding(.horizontal, 12)
-           .padding(.vertical, 6)
-           .background(Color.black.opacity(0.3))
+           .padding(.horizontal, 10)
+           .padding(.vertical, 5)
+           .background(statusColor)
            .clipShape(Capsule())
    }
 
-   private var tripProgressView: some View {
-       HStack(spacing: 0) {
-           ForEach(0..<4) { index in
-               Circle()
-                   .fill(progressColor(for: index))
-                   .frame(width: 12, height: 12)
-
-               if index < 3 {
-                   Rectangle()
-                       .fill(progressColor(for: index))
-                       .frame(height: 2)
-               }
-           }
-       }
-   }
-
-   private func progressColor(for index: Int) -> Color {
-       let status = trip.normalisedStatus
-       switch status {
-       case .scheduled:
-           return index == 0 ? .white : .white.opacity(0.3)
-       case .inProgress:
-           return index <= 1 ? .white : .white.opacity(0.3)
-       case .inTransit:
-           return index <= 2 ? .white : .white.opacity(0.3)
-       case .completed:
-           return .white
-       default:
-           return .white.opacity(0.3)
-       }
-   }
-
-   private var gradientColors: [Color] {
+   private var statusColor: Color {
        switch trip.normalisedStatus {
        case .inTransit:
-           return [Color(hex: "#FF6B9D"), Color(hex: "#FFA07A")]
+           return Color.orange
        case .inProgress:
-           return [Color(hex: "#A8E6CF"), Color(hex: "#7FD8BE")]
+           return Color.green
        case .scheduled:
-           return [Color(hex: "#FFD93D"), Color(hex: "#FFC857")]
+           return Color.blue
        case .completed:
-           return [Color(hex: "#6BCF7F"), Color(hex: "#4CAF50")]
+           return Color.green
+       case .cancelled:
+           return Color.red
        default:
-           return [Color(hex: "#B0BEC5"), Color(hex: "#90A4AE")]
+           return Color.gray
        }
    }
 }
@@ -356,46 +311,53 @@ struct MaintenanceVehicleCard: View {
    let workOrder: WorkOrder
 
    var body: some View {
-       HStack(spacing: 16) {
-           // Vehicle icon
-           ZStack {
-               Circle()
-                   .fill(Color.orange.opacity(0.15))
-                   .frame(width: 50, height: 50)
-
-               Image(systemName: "wrench.and.screwdriver.fill")
-                   .font(.title3)
-                   .foregroundColor(.orange)
-           }
-
-           VStack(alignment: .leading, spacing: 4) {
+       VStack(alignment: .leading, spacing: 8) {
+           // Top row - Vehicle name and status badge
+           HStack {
                Text(workOrder.vehicleName ?? workOrder.vehicleVin)
-                   .font(.headline)
+                   .font(.headline.weight(.bold))
                    .foregroundColor(.primary)
-
-               Text(workOrder.issueTitle)
-                   .font(.subheadline)
-                   .foregroundColor(.secondary)
-                   .lineLimit(1)
+               
+               Spacer()
+               
+               statusBadge
            }
-
-           Spacer()
-
-           VStack(alignment: .trailing, spacing: 4) {
-               Text(workOrder.status.rawValue.capitalized)
-                   .font(.caption.weight(.semibold))
-                   .foregroundColor(.orange)
-
-               if let cost = workOrder.estCost {
-                   Text("$\(Int(cost))")
-                       .font(.caption)
-                       .foregroundColor(.secondary)
-               }
-           }
+           
+           // Bottom row - Issue title
+           Text(workOrder.issueTitle)
+               .font(.subheadline)
+               .foregroundColor(.secondary)
+               .lineLimit(2)
+               .multilineTextAlignment(.leading)
        }
-       .padding(16)
+       .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
+       .padding(14)
        .background(Color(.secondarySystemGroupedBackground))
        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+       .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
+   }
+
+   private var statusBadge: some View {
+       Text(workOrder.status.rawValue)
+           .font(.caption2.weight(.bold))
+           .foregroundColor(.white)
+           .padding(.horizontal, 10)
+           .padding(.vertical, 5)
+           .background(statusColor)
+           .clipShape(Capsule())
+   }
+
+   private var statusColor: Color {
+       switch workOrder.status {
+       case .pending:
+           return Color.orange
+       case .inProgress:
+           return Color.blue
+       case .completed:
+           return Color.green
+       case .cancelled:
+           return Color.red
+       }
    }
 }
 

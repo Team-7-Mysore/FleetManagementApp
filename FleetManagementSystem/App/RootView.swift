@@ -1,3 +1,5 @@
+//RootView
+
 import SwiftUI
 
 struct RootView: View {
@@ -25,6 +27,10 @@ struct RootView: View {
                 await appSession.signOut()
             }
         case .maintenance:
+            MaintenanceDashboardView(profile: profile) {
+                await appSession.signOut()
+            }
+        default:
             MaintenanceDashboardView(profile: profile) {
                 await appSession.signOut()
             }

@@ -10,6 +10,7 @@ final class TripListViewModel: ObservableObject {
    @Published var trips: [Trip] = []
    @Published var vehicles: [Vehicle] = []
    @Published var workOrders: [WorkOrder] = []
+   @Published var drivers: [Driver] = []
    @Published var isLoading = false
    @Published var searchText = ""
 
@@ -40,8 +41,17 @@ final class TripListViewModel: ObservableObject {
 
    var maintenanceVehicleCount: Int { vehiclesInMaintenance.count }
 
-   /// Available drivers count (placeholder - extend when driver assignment is implemented)
-   var availableDriverCount: Int { 12 } // TODO: Fetch from database
+   /// Available drivers (not currently assigned to active trips)
+   var availableDrivers: [Driver] {
+       let assignedDriverIDs = Set(activeTrips.compactMap { trip -> UUID? in
+           // Need to get driver_id from trip
+           // For now, return all drivers
+           return nil
+       })
+       return drivers
+   }
+
+   var availableDriverCount: Int { drivers.count }
 
 
    /// Capacity percentage (ratio of active trips to total)
@@ -100,12 +110,22 @@ final class TripListViewModel: ObservableObject {
 
 
            trips = response
+           
+           print("📊 Fetched \(trips.count) trips from Supabase")
+           for trip in trips {
+               print("   Trip: \(trip.tripNameText) - Status: \(trip.status ?? "nil") - Normalized: \(trip.normalisedStatus.label)")
+           }
+           print("   Active trips count: \(activeTrips.count)")
 
-           // Fetch vehicles and work orders in parallel
+           // Fetch vehicles, work orders, and drivers in parallel
            async let vehiclesTask = fetchVehicles()
            async let workOrdersTask = fetchWorkOrders()
+           async let driversTask = fetchDrivers()
 
-           _ = await (vehiclesTask, workOrdersTask)
+           _ = await (vehiclesTask, workOrdersTask, driversTask)
+
+           print("📊 Available vehicles: \(availableVehicleCount)")
+           print("📊 Available drivers: \(availableDriverCount)")
 
            isLoading = false
 
@@ -124,6 +144,7 @@ final class TripListViewModel: ObservableObject {
                .execute()
                .value
            vehicles = response
+           print("✅ Fetched \(vehicles.count) vehicles")
        } catch {
            print("❌ FetchVehicles error: \(error)")
        }
@@ -137,8 +158,23 @@ final class TripListViewModel: ObservableObject {
                .execute()
                .value
            workOrders = response
+           print("✅ Fetched \(workOrders.count) work orders")
        } catch {
            print("❌ FetchWorkOrders error: \(error)")
+       }
+   }
+
+   private func fetchDrivers() async {
+       do {
+           let response: [Driver] = try await SupabaseManager.shared.client
+               .from("drivers")
+               .select()
+               .execute()
+               .value
+           drivers = response
+           print("✅ Fetched \(drivers.count) drivers")
+       } catch {
+           print("❌ FetchDrivers error: \(error)")
        }
    }
 }

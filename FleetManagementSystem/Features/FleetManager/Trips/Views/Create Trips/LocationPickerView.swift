@@ -3,195 +3,266 @@ import MapKit
 import Combine
 import CoreLocation
 
+// MARK: - IdentifiableCompletion
+
+struct IdentifiableCompletion: Identifiable {
+    let id: Int
+    let completion: MKLocalSearchCompletion
+    var title: String { completion.title }
+    var subtitle: String { completion.subtitle }
+}
+
+// MARK: - LocationPickerView
+
 struct LocationPickerView: View {
     @Environment(\.dismiss) private var dismiss
 
     @Binding var selectedAddress: String
+    @Binding var selectedCoordinate: CLLocationCoordinate2D?
     let title: String
 
     @StateObject private var viewModel = LocationPickerViewModel()
+    @StateObject private var locationManager = FleetLocationManager()
+
     @State private var position: MapCameraPosition = .region(
         MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 18.5204, longitude: 73.8567),
-            span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+            center: CLLocationCoordinate2D(latitude: 20.5937, longitude: 78.9629),
+            span: MKCoordinateSpan(latitudeDelta: 10, longitudeDelta: 10)
         )
     )
+    @State private var showResults = false
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottom) {
+            ZStack {
+                // MARK: Full-screen map
                 Map(position: $position) {}
+                    .ignoresSafeArea(edges: .bottom)
                     .mapControls {
                         MapCompass()
-                        MapPitchToggle()
                         MapUserLocationButton()
+                        MapScaleView()
                     }
                     .onMapCameraChange(frequency: .onEnd) { context in
                         viewModel.updateMapCenter(context.region.center)
                     }
-                    .overlay(alignment: .center) {
-                        VStack(spacing: 0) {
-                            Image(systemName: "mappin.circle.fill")
-                                .font(.system(size: 34))
-                                .foregroundStyle(.red)
-                                .shadow(color: .black.opacity(0.16), radius: 6, x: 0, y: 2)
 
-                            Circle()
-                                .fill(.white)
-                                .frame(width: 8, height: 8)
-                                .offset(y: -6)
-                        }
-                    }
-                    .ignoresSafeArea(edges: .bottom)
-
-                VStack(spacing: 12) {
-                    searchPanel
-                    selectionPanel
+                // MARK: Fixed crosshair pin at screen center
+                VStack(spacing: 0) {
+                    Image(systemName: "mappin.circle.fill")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.red)
+                        .shadow(color: .black.opacity(0.2), radius: 4, x: 0, y: 2)
+                    Ellipse()
+                        .fill(Color.black.opacity(0.18))
+                        .frame(width: 10, height: 4)
+                        .offset(y: -2)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
+                .allowsHitTesting(false)
+
+                // MARK: Search bar pinned to top + dropdown results
+                VStack(spacing: 0) {
+                    searchBar
+                        .padding(.horizontal, 12)
+                        .padding(.top, 8)
+
+                    if showResults && !viewModel.completions.isEmpty {
+                        resultsDropdown
+                            .padding(.horizontal, 12)
+                    }
+
+                    Spacer()
+                }
+
+                // MARK: Bottom confirm bar
+                VStack {
+                    Spacer()
+                    confirmBar
+                }
             }
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") {
-                        dismiss()
-                    }
+                    Button("Close") { dismiss() }
                 }
             }
             .task {
-                await viewModel.loadInitialAddress(selectedAddress)
-                if let coordinate = viewModel.selectedCoordinate {
-                    position = .region(
-                        MKCoordinateRegion(
-                            center: coordinate,
+                locationManager.requestLocation()
+
+                // Wait up to 2s for location
+                for _ in 0..<10 {
+                    if locationManager.location != nil { break }
+                    try? await Task.sleep(for: .milliseconds(200))
+                }
+
+                if !selectedAddress.isEmpty {
+                    await viewModel.loadInitialAddress(selectedAddress)
+                    if let coord = viewModel.selectedCoordinate {
+                        position = .region(MKCoordinateRegion(
+                            center: coord,
                             span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-                        )
-                    )
+                        ))
+                    }
+                } else if let loc = locationManager.location {
+                    position = .region(MKCoordinateRegion(
+                        center: loc.coordinate,
+                        span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
+                    ))
+                    viewModel.updateMapCenter(loc.coordinate)
                 }
             }
-            .onReceive(viewModel.$selectedCoordinate) { coordinate in
-                guard let coordinate else { return }
-                position = .region(
-                    MKCoordinateRegion(
-                        center: coordinate,
-                        span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-                    )
-                )
+            .onChange(of: viewModel.query) { _, _ in
+                showResults = !viewModel.query.isEmpty
+            }
+            .onReceive(viewModel.$selectedCoordinate) { coord in
+                guard let coord else { return }
+                position = .region(MKCoordinateRegion(
+                    center: coord,
+                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+                ))
+                showResults = false
             }
         }
     }
 
-    private var searchPanel: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
+    // MARK: - Search Bar
 
-                TextField("Search address", text: $viewModel.query)
-                    .textInputAutocapitalization(.words)
-                    .autocorrectionDisabled()
+    private var searchBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .font(.body)
 
-                if viewModel.isSearching {
-                    ProgressView()
-                        .controlSize(.small)
-                } else if !viewModel.query.isEmpty {
-                    Button {
-                        viewModel.clearSearch()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.tertiary)
-                    }
+            TextField("Search address or place", text: $viewModel.query)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .font(.subheadline)
+
+            if viewModel.isSearching {
+                ProgressView().controlSize(.small)
+            } else if !viewModel.query.isEmpty {
+                Button {
+                    viewModel.clearSearch()
+                    showResults = false
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.tertiary)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 2)
+        )
+    }
 
+    // MARK: - Results Dropdown
+
+    private var resultsDropdown: some View {
+        VStack(spacing: 0) {
             if let error = viewModel.searchError {
-                Divider()
-                
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                        .font(.caption)
-                    
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.orange).font(.caption)
+                    Text(error).font(.caption).foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 14).padding(.vertical, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            } else if !viewModel.completions.isEmpty {
-                Divider()
+            } else {
+                ForEach(viewModel.limitedCompletions) { item in
+                    Button {
+                        Task { await viewModel.selectCompletion(item.completion) }
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "mappin")
+                                .font(.caption)
+                                .foregroundColor(.TechBlue)
+                                .frame(width: 20)
 
-                ScrollView {
-                    VStack(spacing: 0) {
-                        ForEach(viewModel.limitedCompletions) { identifiableCompletion in
-                            Button {
-                                Task {
-                                    await viewModel.selectCompletion(identifiableCompletion.completion)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(item.title)
+                                    .font(.subheadline)
+                                    .foregroundColor(.primary)
+                                    .lineLimit(1)
+                                if !item.subtitle.isEmpty {
+                                    Text(item.subtitle)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
                                 }
-                            } label: {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(identifiableCompletion.title)
-                                        .font(.body)
-                                        .foregroundStyle(.primary)
-
-                                    if !identifiableCompletion.subtitle.isEmpty {
-                                        Text(identifiableCompletion.subtitle)
-                                            .font(.footnote)
-                                            .foregroundStyle(.secondary)
-                                            .multilineTextAlignment(.leading)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 12)
                             }
-                            .buttonStyle(.plain)
-
-                            if identifiableCompletion.id != viewModel.limitedCompletions.last?.id {
-                                Divider()
-                                    .padding(.leading, 14)
-                            }
+                            Spacer()
                         }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                    }
+                    .buttonStyle(.plain)
+
+                    if item.id != viewModel.limitedCompletions.last?.id {
+                        Divider().padding(.leading, 44)
                     }
                 }
-                .frame(maxHeight: 240)
             }
         }
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(Color(.systemBackground))
+                .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 2)
+        )
     }
 
-    private var selectionPanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Selected Location")
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(.secondary)
+    // MARK: - Confirm Bar
 
-            Text(viewModel.selectedAddress.isEmpty ? "Move the map or search for an address." : viewModel.selectedAddress)
-                .font(.body)
-                .foregroundStyle(viewModel.selectedAddress.isEmpty ? .secondary : .primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
+    private var confirmBar: some View {
+        VStack(spacing: 8) {
+            if !viewModel.selectedAddress.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "mappin.circle.fill")
+                        .foregroundColor(.TechBlue)
+                        .font(.body)
+                    Text(viewModel.selectedAddress)
+                        .font(.subheadline)
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+            } else {
+                Text("Pan the map to select a location")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+            }
 
             Button {
                 selectedAddress = viewModel.selectedAddress
+                selectedCoordinate = viewModel.selectedCoordinate
                 dismiss()
             } label: {
                 Text("Use This Location")
                     .font(.headline)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, 16)
+                    .background(viewModel.selectedAddress.isEmpty ? Color(.systemGray4) : Color.TechBlue)
+                    .foregroundColor(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(viewModel.selectedAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(viewModel.selectedAddress.isEmpty)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
         }
-        .padding(16)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(.ultraThinMaterial)
     }
 }
+
+// MARK: - LocationPickerViewModel
 
 @MainActor
 final class LocationPickerViewModel: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
@@ -206,197 +277,146 @@ final class LocationPickerViewModel: NSObject, ObservableObject, MKLocalSearchCo
     private let geocoder = CLGeocoder()
     private var reverseGeocodeTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
-    
+
     var limitedCompletions: [IdentifiableCompletion] {
-        Array(completions.prefix(6)).enumerated().map { index, completion in
-            IdentifiableCompletion(id: index, completion: completion)
+        Array(completions.prefix(6)).enumerated().map {
+            IdentifiableCompletion(id: $0.offset, completion: $0.element)
         }
     }
 
     override init() {
         super.init()
         completer.delegate = self
-        // Set broader result types to include all location types
         completer.resultTypes = [.address, .pointOfInterest, .query]
-        
-        // Set a default region (India-wide search area centered on Pune)
         completer.region = MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 18.5204, longitude: 73.8567),
-            latitudinalMeters: 500000, // 500km radius
-            longitudinalMeters: 500000
+            center: CLLocationCoordinate2D(latitude: 20.5937, longitude: 78.9629),
+            latitudinalMeters: 2_000_000,
+            longitudinalMeters: 2_000_000
         )
 
         $query
             .removeDuplicates()
             .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
-            .sink { [weak self] newValue in
-                self?.updateQuery(newValue)
+            .sink { [weak self] value in
+                guard let self else { return }
+                let trimmed = value.trimmingCharacters(in: .whitespaces)
+                if trimmed.isEmpty {
+                    self.completions = []
+                    self.isSearching = false
+                    self.completer.queryFragment = ""
+                } else {
+                    self.isSearching = true
+                    self.searchError = nil
+                    self.completer.queryFragment = trimmed
+                }
             }
             .store(in: &cancellables)
     }
 
     func loadInitialAddress(_ address: String) async {
-        let trimmedAddress = address.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedAddress.isEmpty else { return }
-
-        selectedAddress = trimmedAddress
-        query = trimmedAddress
-
-        do {
-            let placemarks = try await geocoder.geocodeAddressString(trimmedAddress)
-            if let location = placemarks.first?.location {
-                selectedCoordinate = location.coordinate
-            }
-        } catch {
-            // Keep the existing text if geocoding fails.
+        guard !address.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        selectedAddress = address
+        if let placemark = try? await geocoder.geocodeAddressString(address).first,
+           let loc = placemark.location {
+            selectedCoordinate = loc.coordinate
         }
     }
 
     func updateMapCenter(_ coordinate: CLLocationCoordinate2D) {
         selectedCoordinate = coordinate
-        
-        // Update completer region to prioritize nearby results
         completer.region = MKCoordinateRegion(
             center: coordinate,
-            latitudinalMeters: 100000, // 100km radius for better search results
-            longitudinalMeters: 100000
+            latitudinalMeters: 100_000,
+            longitudinalMeters: 100_000
         )
 
         reverseGeocodeTask?.cancel()
         reverseGeocodeTask = Task {
-            try? await Task.sleep(for: .milliseconds(450))
+            try? await Task.sleep(for: .milliseconds(400))
             guard !Task.isCancelled else { return }
-
-            do {
-                let placemarks = try await geocoder.reverseGeocodeLocation(
-                    CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-                )
-
-                guard let placemark = placemarks.first else { return }
-                let address = formatAddress(from: placemark)
-                guard !address.isEmpty else { return }
-
-                selectedAddress = address
-                if query.isEmpty {
-                    query = address
-                }
-            } catch {
-                // Ignore transient reverse-geocode failures while the map is moving.
+            if let placemark = try? await geocoder.reverseGeocodeLocation(
+                CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+            ).first {
+                let parts = [placemark.name, placemark.locality, placemark.administrativeArea]
+                    .compactMap { $0?.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+                selectedAddress = parts.joined(separator: ", ")
             }
+        }
+    }
+
+    func selectCompletion(_ completion: MKLocalSearchCompletion) async {
+        let request = MKLocalSearch.Request(completion: completion)
+        if let response = try? await MKLocalSearch(request: request).start(),
+           let item = response.mapItems.first {
+            selectedCoordinate = item.location.coordinate
+            let addr = [completion.title, completion.subtitle]
+                .filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
+                .joined(separator: ", ")
+            selectedAddress = addr
+            query = completion.title
+            completions = []
         }
     }
 
     func clearSearch() {
         query = ""
         completions = []
-        completer.queryFragment = ""
         isSearching = false
         searchError = nil
-    }
-
-    func updateQuery(_ newValue: String) {
-        let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Allow single character searches for better UX
-        guard !trimmed.isEmpty else {
-            completions = []
-            completer.queryFragment = ""
-            isSearching = false
-            searchError = nil
-            return
-        }
-
-        isSearching = true
-        searchError = nil
-        completer.queryFragment = trimmed
-    }
-
-    func selectCompletion(_ completion: MKLocalSearchCompletion) async {
-        let request = MKLocalSearch.Request(completion: completion)
-
-        do {
-            let response = try await MKLocalSearch(request: request).start()
-            if let item = response.mapItems.first {
-                let coordinate = item.location.coordinate
-                selectedCoordinate = coordinate
-
-                let address = [completion.title, completion.subtitle]
-                    .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-                    .joined(separator: ", ")
-
-                selectedAddress = address
-                query = address
-                completions = []
-                completer.queryFragment = ""
-            }
-        } catch {
-            // Keep the current selection if search resolution fails.
-        }
+        completer.queryFragment = ""
     }
 
     func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
         completions = completer.results
         isSearching = false
-        searchError = nil
-        
-        // If no results found, show a helpful message
-        if completions.isEmpty && !completer.queryFragment.isEmpty {
-            searchError = "No locations found. Try a different search term."
-        }
+        searchError = completions.isEmpty && !completer.queryFragment.isEmpty
+            ? "No results found" : nil
     }
 
     func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
         isSearching = false
-        
-        // Show error message to user
-        let nsError = error as NSError
-        if nsError.domain == MKError.errorDomain {
-            if let mkError = MKError.Code(rawValue: UInt(nsError.code)) {
-                switch mkError {
-                case .placemarkNotFound:
-                    searchError = "Location not found. Try a different search."
-                case .serverFailure:
-                    searchError = "Search service unavailable. Please try again."
-                default:
-                    searchError = "Search failed. Please try again."
-                }
-            } else {
-                searchError = "Search failed. Please try again."
-            }
-        } else {
-            searchError = "Search failed. Please check your connection."
-        }
-
-        // Keep old completions on transient errors to prevent flashing empty results
-    }
-
-    private func formatAddress(from placemark: CLPlacemark) -> String {
-        let rawParts: [String?] = [
-            placemark.name,
-            placemark.locality,
-            placemark.administrativeArea,
-            placemark.postalCode
-        ]
-
-        var uniqueParts: [String] = []
-
-        for rawPart in rawParts {
-            guard let rawPart else { continue }
-            let trimmed = rawPart.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { continue }
-            if !uniqueParts.contains(trimmed) {
-                uniqueParts.append(trimmed)
-            }
-        }
-
-        return uniqueParts.joined(separator: ", ")
+        completions = []
+        searchError = "Search failed. Please try again."
     }
 }
 
-struct IdentifiableCompletion: Identifiable {
-    let id: Int
-    let completion: MKLocalSearchCompletion
-    
-    var title: String { completion.title }
-    var subtitle: String { completion.subtitle }
+// MARK: - FleetLocationManager
+
+@MainActor
+class FleetLocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
+    private let manager = CLLocationManager()
+    @Published var location: CLLocation?
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+    }
+
+    func requestLocation() {
+        switch manager.authorizationStatus {
+        case .notDetermined:
+            manager.requestWhenInUseAuthorization()
+        case .authorizedWhenInUse, .authorizedAlways:
+            manager.requestLocation()
+        default:
+            break
+        }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        Task { @MainActor in self.location = locations.last }
+    }
+
+    nonisolated func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {}
+
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        Task { @MainActor in
+            if manager.authorizationStatus == .authorizedWhenInUse ||
+               manager.authorizationStatus == .authorizedAlways {
+                manager.requestLocation()
+            }
+        }
+    }
 }

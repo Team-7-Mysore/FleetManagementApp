@@ -22,5 +22,9 @@
 			</array>
 		</dict>
 	</array>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We need your location to help you select pickup and delivery addresses on the map.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>We need your location to help you select pickup and delivery addresses on the map.</string>
 </dict>
 </plist>
