@@ -1,6 +1,8 @@
 import SwiftUI
 import Combine
 import Supabase
+import MapKit
+import CoreLocation
 
 struct TripInsert: Encodable {
     let trip_name: String
@@ -24,14 +26,14 @@ struct VehicleAssignmentOption: Identifiable, Decodable, Hashable {
     let vehicle_name: String?
     let vehicle_type: String?
     let status: String?
-
+    
     var id: UUID { vehicle_id }
-
+    
     var displayName: String {
         let trimmedName = vehicle_name?.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmedName?.isEmpty == false ? trimmedName! : number_plate
     }
-
+    
     var subtitle: String {
         [vehicle_type, number_plate]
             .compactMap { value in
@@ -50,7 +52,7 @@ struct DriverAssignmentOption: Identifiable, Hashable {
     let licenseNumber: String
     let licenseExpiry: String
     let locationHint: String?
-
+    
     var subtitle: String {
         var components = ["License \(licenseNumber)"]
         if let locationHint, !locationHint.isEmpty {
@@ -88,14 +90,19 @@ private struct AssignmentTripRecord: Decodable {
 
 @MainActor
 final class TripViewModel: ObservableObject {
-
+    
     @Published var isLoading = false
     @Published var isLoadingAssignments = false
     @Published var errorMessage: String?
     @Published var successMessage: String?
     @Published private(set) var availableVehicles: [VehicleAssignmentOption] = []
     @Published private(set) var availableDrivers: [DriverAssignmentOption] = []
-
+    @Published var calculatedDistance: Double?
+    @Published var calculatedETA: TimeInterval?
+    @Published var isCalculatingRoute = false
+    @Published var originCoordinates: CLLocationCoordinate2D?
+    @Published var destinationCoordinates: CLLocationCoordinate2D?
+    
     func resetAssignmentOptions() {
         availableVehicles = []
         availableDrivers = []
@@ -103,38 +110,38 @@ final class TripViewModel: ObservableObject {
             errorMessage = nil
         }
     }
-
+    
     func loadAssignmentOptions(
         pickupLocation: String,
         pickupDate: Date,
         expectedEndDate: Date
     ) async {
         let trimmedPickupLocation = pickupLocation.trimmingCharacters(in: .whitespacesAndNewlines)
-
+        
         guard !trimmedPickupLocation.isEmpty else {
             errorMessage = "Enter the pickup location before assigning a vehicle and driver."
             availableVehicles = []
             availableDrivers = []
             return
         }
-
+        
         guard expectedEndDate > pickupDate else {
             errorMessage = "Expected end time must be after pickup time."
             availableVehicles = []
             availableDrivers = []
             return
         }
-
+        
         isLoadingAssignments = true
         errorMessage = nil
-
+        
         do {
             let vehicles: [VehicleAssignmentOption] = try await SupabaseManager.shared.client
                 .from("vehicles")
                 .select("vehicle_id, number_plate, vehicle_name, vehicle_type, status")
                 .execute()
                 .value
-
+            
             let trips: [AssignmentTripRecord]
             do {
                 trips = try await SupabaseManager.shared.client
@@ -145,7 +152,7 @@ final class TripViewModel: ObservableObject {
             } catch {
                 trips = []
             }
-
+            
             let conflictingTrips = trips.filter { trip in
                 blocksAvailability(status: trip.status) && overlaps(
                     existingStart: tripStartDate(from: trip),
@@ -154,21 +161,21 @@ final class TripViewModel: ObservableObject {
                     requestedEnd: expectedEndDate
                 )
             }
-
+            
             let busyVehicleIDs = Set(conflictingTrips.compactMap(\.vehicle_id))
-
+            
             availableVehicles = vehicles
                 .filter(isVehicleEligible)
                 .filter { !busyVehicleIDs.contains($0.vehicle_id) }
                 .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
-
+            
             do {
                 let drivers: [DriverRecord] = try await SupabaseManager.shared.client
                     .from("drivers")
                     .select("driver_id, user_id, license_no, license_expiry")
                     .execute()
                     .value
-
+                
                 let users: [UserRecord]
                 do {
                     users = try await SupabaseManager.shared.client
@@ -179,10 +186,10 @@ final class TripViewModel: ObservableObject {
                 } catch {
                     users = []
                 }
-
+                
                 let busyDriverIDs = Set(conflictingTrips.compactMap(\.driver_id))
                 let usersByID = Dictionary(uniqueKeysWithValues: users.map { ($0.user_id, $0) })
-
+                
                 availableDrivers = drivers
                     .filter { hasValidLicenseExpiry($0.license_expiry, relativeTo: pickupDate) }
                     .filter { !busyDriverIDs.contains($0.driver_id) }
@@ -207,22 +214,97 @@ final class TripViewModel: ObservableObject {
             } catch {
                 availableDrivers = []
             }
-
+            
             if availableVehicles.isEmpty {
                 errorMessage = "No vehicles are currently available for this trip window."
             } else if availableDrivers.isEmpty {
                 errorMessage = "Vehicles loaded, but no drivers matched the current constraints."
             }
-
+            
         } catch {
             errorMessage = error.localizedDescription
             availableVehicles = []
             availableDrivers = []
         }
-
+        
         isLoadingAssignments = false
     }
-
+    
+    func calculateRoute(from origin: String, to destination: String) async {
+        guard !origin.isEmpty, !destination.isEmpty else {
+            calculatedDistance = nil
+            calculatedETA = nil
+            originCoordinates = nil
+            destinationCoordinates = nil
+            return
+        }
+        
+        isCalculatingRoute = true
+        
+        do {
+            // Geocode origin
+            let originPlacemark = try await geocodeAddress(origin)
+            guard let originCoordinate = originPlacemark.location?.coordinate else {
+                print("❌ Failed to get origin coordinates")
+                isCalculatingRoute = false
+                return
+            }
+            
+            // Store origin coordinates
+            originCoordinates = originCoordinate
+            
+            // Geocode destination
+            let destinationPlacemark = try await geocodeAddress(destination)
+            guard let destinationCoordinate = destinationPlacemark.location?.coordinate else {
+                print("❌ Failed to get destination coordinates")
+                isCalculatingRoute = false
+                return
+            }
+            
+            // Store destination coordinates
+            destinationCoordinates = destinationCoordinate
+            
+            // Create MKDirections request
+            let request = MKDirections.Request()
+            request.source = MKMapItem(placemark: MKPlacemark(coordinate: originCoordinate))
+            request.destination = MKMapItem(placemark: MKPlacemark(coordinate: destinationCoordinate))
+            request.transportType = .automobile
+            
+            let directions = MKDirections(request: request)
+            let response = try await directions.calculate()
+            
+            if let route = response.routes.first {
+                calculatedDistance = route.distance / 1000.0 // Convert to kilometers
+                calculatedETA = route.expectedTravelTime
+                
+                print("✅ Route calculated:")
+                print("   Origin: \(origin)")
+                print("   Origin Coordinates: \(originCoordinate.latitude), \(originCoordinate.longitude)")
+                print("   Destination: \(destination)")
+                print("   Destination Coordinates: \(destinationCoordinate.latitude), \(destinationCoordinate.longitude)")
+                print("   Distance: \(String(format: "%.2f", calculatedDistance ?? 0)) km")
+                print("   ETA: \(String(format: "%.0f", (calculatedETA ?? 0) / 60)) minutes")
+            }
+        } catch {
+            print("❌ Failed to calculate route: \(error.localizedDescription)")
+            calculatedDistance = nil
+            calculatedETA = nil
+            originCoordinates = nil
+            destinationCoordinates = nil
+        }
+        
+        isCalculatingRoute = false
+    }
+    
+    private func geocodeAddress(_ address: String) async throws -> CLPlacemark {
+        let geocoder = CLGeocoder()
+        let placemarks = try await geocoder.geocodeAddressString(address)
+        guard let placemark = placemarks.first else {
+            throw NSError(domain: "TripViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "No location found for address"])
+        }
+        return placemark
+    }
+    
     func createTrip(
         tripName: String,
         clientContact: String,
@@ -232,95 +314,139 @@ final class TripViewModel: ObservableObject {
         pickupDate: Date,
         expectedEndDate: Date,
         vehicleID: UUID?,
-        driverID: UUID?
+        driverID: UUID?,
+        distance: Double?,
+        fleetManagerId: UUID?
     ) async {
-
+        
         if tripName.isEmpty || origin.isEmpty || destination.isEmpty {
             errorMessage = "Required fields missing"
             return
         }
-
+        
         guard let vehicleID else {
             errorMessage = "Select an available vehicle"
             return
         }
-
+        
         guard let driverID else {
             errorMessage = "Select an available driver"
             return
         }
-
+        
         guard expectedEndDate > pickupDate else {
             errorMessage = "Expected end time must be after pickup time"
             return
         }
-
+        
         isLoading = true
         errorMessage = nil
-
+        
+        // Convert local dates to UTC for Supabase
         let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        
         let pickupISODate = formatter.string(from: pickupDate)
         let endISODate = formatter.string(from: expectedEndDate)
-
-        let trip = TripInsert(
-            trip_name: tripName,
-            client_contact: clientContact,
-            origin: origin,
-            destination: destination,
-            via_points: viaPoints,
-            pickup_time: pickupISODate,
-            start_time: pickupISODate,
-            end_time: endISODate,
-            start_location: origin,
-            end_location: destination,
-            vehicle_id: vehicleID,
-            driver_id: driverID,
-            status: "assigned"
-        )
-
+        
         print("📍 Creating trip with locations:")
         print("   Origin: \(origin)")
+        print("   Origin Coordinates: \(originCoordinates.map { "\($0.latitude), \($0.longitude)" } ?? "N/A")")
         print("   Destination: \(destination)")
+        print("   Destination Coordinates: \(destinationCoordinates.map { "\($0.latitude), \($0.longitude)" } ?? "N/A")")
         print("   Via Points: \(viaPoints)")
-
+        print("   Distance: \(distance.map { String(format: "%.2f km", $0) } ?? "N/A")")
+        print("   ETA: \(calculatedETA.map { String(format: "%.0f minutes", $0 / 60.0) } ?? "N/A")")
+        print("   Fleet Manager ID: \(fleetManagerId?.uuidString ?? "N/A")")
+        print("   Pickup Time (UTC): \(pickupISODate)")
+        print("   End Time (UTC): \(endISODate)")
+        
         do {
+            // Build the insert data
+            struct TripInsertWithDistance: Encodable {
+                let trip_name: String
+                let client_contact: String
+                let origin: String
+                let destination: String
+                let via_points: [String]
+                let pickup_time: String
+                let start_time: String
+                let end_time: String
+                let start_location: String
+                let end_location: String
+                let vehicle_id: UUID
+                let driver_id: UUID
+                let status: String
+                let distance_travelled: Double?
+                let fleet_manager_id: UUID?
+                let origin_latitude: Double?
+                let origin_longitude: Double?
+                let destination_latitude: Double?
+                let destination_longitude: Double?
+                let eta: Double?
+            }
+            
+            let tripData = TripInsertWithDistance(
+                trip_name: tripName,
+                client_contact: clientContact,
+                origin: origin,
+                destination: destination,
+                via_points: viaPoints,
+                pickup_time: pickupISODate,
+                start_time: pickupISODate,
+                end_time: endISODate,
+                start_location: origin,
+                end_location: destination,
+                vehicle_id: vehicleID,
+                driver_id: driverID,
+                status: "assigned",
+                distance_travelled: distance,
+                fleet_manager_id: fleetManagerId,
+                origin_latitude: originCoordinates?.latitude,
+                origin_longitude: originCoordinates?.longitude,
+                destination_latitude: destinationCoordinates?.latitude,
+                destination_longitude: destinationCoordinates?.longitude,
+                eta: calculatedETA.map { $0 / 60.0 } // Convert seconds to minutes
+            )
+            
             try await SupabaseManager.shared.client
                 .from("trips")
-                .insert(trip)
+                .insert(tripData)
                 .execute()
-
+            
             print("✅ Trip created successfully in Supabase")
             successMessage = "Trip created successfully!"
             isLoading = false
-
+            
         } catch {
             print("❌ Failed to create trip: \(error.localizedDescription)")
             isLoading = false
             errorMessage = error.localizedDescription
         }
     }
-
+    
     private func isVehicleEligible(_ vehicle: VehicleAssignmentOption) -> Bool {
         guard let status = vehicle.status?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) else {
             return true
         }
         return status != "maintenance" && status != "inactive"
     }
-
+    
     private func hasValidLicenseExpiry(_ rawDate: String, relativeTo referenceDate: Date) -> Bool {
         guard let expiryDate = parseDatabaseDate(rawDate) else {
             return false
         }
         return expiryDate >= Calendar.current.startOfDay(for: referenceDate)
     }
-
+    
     private func blocksAvailability(status: String?) -> Bool {
         guard let status = status?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) else {
             return false
         }
         return ["assigned", "scheduled", "pending", "in_progress", "in progress", "in_transit", "in transit"].contains(status)
     }
-
+    
     private func overlaps(
         existingStart: Date?,
         existingEnd: Date?,
@@ -331,16 +457,16 @@ final class TripViewModel: ObservableObject {
         let computedExistingEnd = existingEnd ?? Calendar.current.date(byAdding: .hour, value: 4, to: existingStart) ?? existingStart
         return existingStart < requestedEnd && computedExistingEnd > requestedStart
     }
-
+    
     private func tripStartDate(from trip: AssignmentTripRecord) -> Date? {
         parseDatabaseTimestamp(trip.start_time)
-            ?? parseDatabaseTimestamp(trip.pickup_time)
+        ?? parseDatabaseTimestamp(trip.pickup_time)
     }
-
+    
     private func tripEndDate(from trip: AssignmentTripRecord) -> Date? {
         parseDatabaseTimestamp(trip.end_time)
     }
-
+    
     private func inferredDriverLocation(for driverID: UUID, trips: [AssignmentTripRecord]) -> String? {
         let latestTrip = trips
             .filter { $0.driver_id == driverID }
@@ -350,28 +476,28 @@ final class TripViewModel: ObservableObject {
                 return lhsDate > rhsDate
             }
             .first
-
+        
         return latestTrip?.destination
-            ?? latestTrip?.end_location
-            ?? latestTrip?.origin
-            ?? latestTrip?.start_location
+        ?? latestTrip?.end_location
+        ?? latestTrip?.origin
+        ?? latestTrip?.start_location
     }
-
+    
     private func isDriverNearPickup(_ driverID: UUID, pickupLocation: String, trips: [AssignmentTripRecord]) -> Bool {
         let normalizedPickupLocation = normalizeLocation(pickupLocation)
         guard !normalizedPickupLocation.isEmpty else { return true }
-
+        
         guard let inferredLocation = inferredDriverLocation(for: driverID, trips: trips) else {
             return true
         }
-
+        
         let normalizedDriverLocation = normalizeLocation(inferredLocation)
         guard !normalizedDriverLocation.isEmpty else { return true }
-
+        
         return normalizedDriverLocation.contains(normalizedPickupLocation)
-            || normalizedPickupLocation.contains(normalizedDriverLocation)
+        || normalizedPickupLocation.contains(normalizedDriverLocation)
     }
-
+    
     private func normalizeLocation(_ value: String) -> String {
         value
             .lowercased()
@@ -379,41 +505,46 @@ final class TripViewModel: ObservableObject {
             .first?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
-
+    
     private func parseDatabaseDate(_ value: String?) -> Date? {
         guard let value else { return nil }
-
+        
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.date(from: value)
     }
-
+    
     private func parseDatabaseTimestamp(_ value: String?) -> Date? {
         guard let value else { return nil }
-
+        
+        // Supabase stores timestamps in UTC, so we need to parse them as UTC
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        iso.timeZone = TimeZone(identifier: "UTC")
         if let date = iso.date(from: value) {
             return date
         }
-
+        
+        // Fallback to other formats, also treating them as UTC
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        
         let formats = [
             "yyyy-MM-dd'T'HH:mm:ss",
             "yyyy-MM-dd'T'HH:mm:ssZ",
             "yyyy-MM-dd HH:mm:ss",
             "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
         ]
-
+        
         for format in formats {
             formatter.dateFormat = format
             if let date = formatter.date(from: value) {
                 return date
             }
         }
-
+        
         return nil
     }
 }
