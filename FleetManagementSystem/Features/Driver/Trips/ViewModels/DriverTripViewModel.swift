@@ -52,10 +52,7 @@ final class DriverTripViewModel: ObservableObject {
                 decoder.dateDecodingStrategy = .custom { decoder in
                     let container = try decoder.singleValueContainer()
                     let str = try container.decode(String.self)
-                    let formatter = DateFormatter()
-                    formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-                    formatter.timeZone = TimeZone(secondsFromGMT: 0)
-                    if let date = formatter.date(from: str) { return date }
+                    if let date = BackendDateParser.parse(str) { return date }
                     throw DecodingError.dataCorruptedError(in: container,
                         debugDescription: "Invalid date: \(str)")
                 }
