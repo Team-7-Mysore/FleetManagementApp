@@ -18,10 +18,12 @@ struct MaintenanceHomeView: View {
                     Label("Inventory", systemImage: "cube.box")
                 }
 
-            ChatListView()
-                .tabItem {
-                    Label("Chat", systemImage: "message")
-                }
+            if let userId = profile?.userId {
+                ChatListView(currentUserId: userId)
+                    .tabItem {
+                        Label("Chat", systemImage: "message")
+                    }
+            }
         }
         .tint(Color(red: 163/255, green: 53/255, blue: 42/255))
     }

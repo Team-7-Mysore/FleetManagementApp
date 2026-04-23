@@ -6,7 +6,6 @@ struct UserRowView: View {
     
     var body: some View {
         HStack(spacing: 15) {
-            // Avatar with initials
             ZStack {
                 Circle()
                     .fill(accent.opacity(0.1))
@@ -33,7 +32,8 @@ struct UserRowView: View {
                 .font(.caption)
                 .foregroundColor(.secondary)
         }
-        .padding(.vertical, 8)
+        .contentShape(Rectangle())
+        .padding(.vertical, 10)
     }
 }
 
