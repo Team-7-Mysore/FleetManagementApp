@@ -146,6 +146,11 @@ struct AddVehicleView: View {
             .navigationTitle("Add Vehicle")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { Task { await vm.saveVehicle() } }
                     .disabled(!vm.isFormValid)
