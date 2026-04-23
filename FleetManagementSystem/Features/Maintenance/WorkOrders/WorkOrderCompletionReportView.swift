@@ -317,12 +317,14 @@ struct ReportHeaderCard: View {
                         .fontWeight(.bold)
                         .foregroundColor(.secondary)
                     
-                    Text(workOrder.vehicleName ?? "Fleet Vehicle")
+                    // UPDATED: Pull from nested vehicle object
+                    Text(workOrder.vehicle?.vehicleName ?? workOrder.vehicle?.numberPlate ?? "Fleet Vehicle")
                         .font(.title3)
                         .fontWeight(.bold)
                         .foregroundColor(.primary)
                     
-                    Text("ID: \(workOrder.fleetUnitId)")
+                    // UPDATED: Using numberPlate instead of the dropped fleetUnitId
+                    Text("PLATE: \(workOrder.vehicle?.numberPlate ?? "N/A")")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -358,7 +360,7 @@ struct ReportHeaderCard: View {
                 
                 ReportDetailColumn(
                     title: "VIN",
-                    value: workOrder.vehicleVin
+                    value: workOrder.vehicle?.vin ?? "N/A" // UPDATED
                 )
             }
         }

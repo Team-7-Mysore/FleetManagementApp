@@ -116,10 +116,12 @@ struct InventoryItem: Identifiable, Codable {
 // MARK: - 2. Work Order Model
 struct WorkOrder: Identifiable, Codable {
     let workOrderId: UUID
-    var vehicleVin: String
-    var vehicleName: String?
-    var fleetUnitId: String
-    var vehicleType: VehicleType
+    
+    // NEW: The database foreign key
+    var vehicleId: UUID
+    // NEW: The nested object where Supabase will put the joined data
+    var vehicle: WorkOrderVehicle?
+    
     var priority: WorkOrderPriority
     var status: WorkOrderStatus
     var isApproved: Bool
@@ -132,16 +134,14 @@ struct WorkOrder: Identifiable, Codable {
     var images: [String]?
     let createdAt: Date?
     var updatedAt: Date?
-
+    
     // Satisfies Identifiable for SwiftUI
     var id: UUID { workOrderId }
-
+    
     enum CodingKeys: String, CodingKey {
         case workOrderId = "work_order_id"
-        case vehicleVin = "vehicle_vin"
-        case vehicleName = "vehicle_name"
-        case fleetUnitId = "fleet_unit_id"
-        case vehicleType = "vehicle_type" // Added to coding keys!
+        case vehicleId = "vehicle_id"
+        case vehicle = "vehicles" // Supabase uses the table name for joined data
         case priority
         case status
         case isApproved = "is_approved"
@@ -193,6 +193,26 @@ struct WorkOrderPart: Codable {
     }
 }
 
+// MARK: - Helper Struct for Joined Vehicle Data
+struct WorkOrderVehicle: Codable {
+    let vehicleId: UUID
+    let vin: String?
+    let numberPlate: String?
+    let vehicleName: String?
+    
+    // NEW: Add this line so Swift knows about the type!
+    let vehicleType: VehicleType?
+    
+    enum CodingKeys: String, CodingKey {
+        case vehicleId = "vehicle_id"
+        case vin
+        case numberPlate = "number_plate"
+        case vehicleName = "vehicle_name"
+        
+        // NEW: Map it to the database column
+        case vehicleType = "vehicle_type"
+    }
+}
 
 // MARK: - Work Order Report
 struct WorkOrderReportRecord: Codable, Identifiable {

@@ -40,6 +40,7 @@ struct AddEditWorkOrderView: View {
     
     // Saving State
     @State private var isSaving: Bool = false
+    @State private var selectedVehicleId: UUID? = nil
     
     var body: some View {
         ZStack {
@@ -442,14 +443,22 @@ struct AddEditWorkOrderView: View {
             do {
                 let newWorkOrderId = UUID()
                 
+                // NEW: Ensure you have the UUID of the selected vehicle in your view!
+                // Assuming you have a variable like `selectedVehicleId: UUID`
+                guard let vehicleId = selectedVehicleId else {
+                    print("🚨 No vehicle selected!")
+                    isSaving = false
+                    return
+                }
+                
                 // 1. The 'images: photos' line automatically maps your uploaded
                 // bucket URLs directly into the 'images text[]' PostgreSQL column!
                 let newOrder = WorkOrder(
                     workOrderId: newWorkOrderId,
-                    vehicleVin: vin.isEmpty ? "UNKNOWN-VIN" : vin,
-                    vehicleName: vehicleName.isEmpty ? nil : vehicleName,
-                    fleetUnitId: fleetId.isEmpty ? "UNKNOWN" : fleetId,
-                    vehicleType: vehicleType,
+                    
+                    vehicleId: vehicleId, // <-- NEW: Strictly linking the ID
+                    vehicle: nil,         // <-- NEW: We pass nil here because we don't need to upload the joined object back to the DB
+                    
                     priority: priority,
                     status: .pending,
                     isApproved: false, // Wait for manager approval

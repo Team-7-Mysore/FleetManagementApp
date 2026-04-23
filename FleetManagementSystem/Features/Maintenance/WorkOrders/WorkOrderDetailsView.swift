@@ -517,18 +517,21 @@ struct WorkOrderHeaderView: View {
                         .fill(Color.blue.opacity(0.1))
                         .frame(width: 60, height: 60)
                     
-                    Image(systemName: workOrder.vehicleType.sfSymbol)
+                    // Uses a generic car icon, but see the note below if you want to keep the dynamic icons!
+                    Image(systemName: "car.fill")
                         .font(.title)
                         .foregroundColor(.blue)
                 }
                 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(workOrder.vehicleName ?? "Fleet Vehicle")
+                    // NEW: Pulls from the nested vehicle object
+                    Text(workOrder.vehicle?.vehicleName ?? workOrder.vehicle?.numberPlate ?? "Fleet Vehicle")
                         .font(.title3)
                         .fontWeight(.bold)
                         .foregroundColor(.primary)
                     
-                    Text("VIN: \(workOrder.vehicleVin)")
+                    // NEW: Pulls from the nested vehicle object
+                    Text("VIN: \(workOrder.vehicle?.vin ?? "N/A")")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                     
@@ -941,10 +944,20 @@ struct PartDetailRowView: View {
     NavigationStack {
         WorkOrderDetailView(workOrder: WorkOrder(
             workOrderId: UUID(),
-            vehicleVin: "FL-9902-XJ",
-            vehicleName: "Freightliner Cascadia",
-            fleetUnitId: "UNIT-01",
-            vehicleType: .truck,
+            
+            // NEW: Added the required vehicleId
+            vehicleId: UUID(),
+            
+            // NEW: Added the joined vehicle object to populate the UI
+            vehicle: WorkOrderVehicle(
+                vehicleId: UUID(),
+                vin: "FL-9902-XJ",
+                numberPlate: "UNIT-01",
+                vehicleName: "Freightliner Cascadia",
+                vehicleType: .car
+            ),
+            
+            // The rest remains the same
             priority: .high,
             status: .inProgress,
             isApproved: false,
@@ -952,7 +965,9 @@ struct PartDetailRowView: View {
             issueDescription: "Operator reports intermittent power loss and check engine light.",
             hoursWorked: 2.5,
             estCost: 450.0,
+            internalNotes: nil,
             maintenanceNotes: "Replaced air filtration system.",
+            images: nil,
             createdAt: Date(),
             updatedAt: Date()
         ))

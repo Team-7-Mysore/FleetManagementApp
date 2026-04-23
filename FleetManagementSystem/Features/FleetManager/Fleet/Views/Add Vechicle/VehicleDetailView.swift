@@ -20,12 +20,13 @@ struct VehicleDetailView: View {
     
     // State for the Image Selection Pop-up
     @State private var showImageSourceDialog = false
+    @State private var showReportsSheet = false
     
     init(vehicle: Vehicle) {
         self.vehicle = vehicle
         _vm = StateObject(wrappedValue: VehicleDetailViewModel(initialVehicle: vehicle))
     }
-
+    
     var body: some View {
         Form {
             if vm.isLoading {
@@ -44,7 +45,7 @@ struct VehicleDetailView: View {
                         .frame(height: 200)
                 }
                 .listRowBackground(Color.clear)
-
+                
                 // MARK: - Vehicle Identification
                 Section(header: Text("Vehicle Identification")) {
                     InfoRow(title: "Name", value: currentVehicle.name, isEditing: isEditing, text: binding(\.name))
@@ -53,7 +54,7 @@ struct VehicleDetailView: View {
                     InfoRow(title: "Plate", value: currentVehicle.registrationNumber, isEditing: isEditing, text: binding(\.registrationNumber))
                         .textCase(.uppercase)
                 }
-
+                
                 // MARK: - Basic Info
                 Section(header: Text("Basic Info")) {
                     InfoRow(title: "Brand", value: currentVehicle.brand ?? "—", isEditing: isEditing, text: binding(\.brand))
@@ -61,7 +62,7 @@ struct VehicleDetailView: View {
                     InfoRow(title: "Year", value: currentVehicle.modelYear ?? "—", isEditing: isEditing, text: binding(\.modelYear))
                     InfoRow(title: "Fuel", value: currentVehicle.fuelType ?? "—", isEditing: isEditing, text: binding(\.fuelType))
                 }
-
+                
                 // MARK: - Registration Details
                 Section(header: Text("Registration Details")) {
                     if isEditing {
@@ -98,7 +99,7 @@ struct VehicleDetailView: View {
                     InfoRow(title: "RC Expiry", value: currentVehicle.rcExpiryDate.isEmpty ? "—" : currentVehicle.rcExpiryDate, isEditing: isEditing, text: binding(\.rcExpiryDate))
                     InfoRow(title: "PUC Expiry", value: currentVehicle.pucExpiryDate.isEmpty ? "—" : currentVehicle.pucExpiryDate, isEditing: isEditing, text: binding(\.pucExpiryDate))
                 }
-
+                
                 // MARK: - Documents
                 Section(header: Text("Required Documents")) {
                     let requiredTypes = ["RC", "INSURANCE", "PUC"]
@@ -106,7 +107,7 @@ struct VehicleDetailView: View {
                         documentRowLogic(for: type)
                     }
                 }
-
+                
                 // MARK: - Maintenance & Actions
                 Section(header: Text("Actions")) {
                     Button {
@@ -115,9 +116,9 @@ struct VehicleDetailView: View {
                         Label("Schedule Maintenance", systemImage: "wrench.and.screwdriver.fill")
                             .foregroundColor(.orange)
                     }
-
+                    
                     Button {
-                        // Analytics logic
+                        showReportsSheet = true
                     } label: {
                         Label("View Reports", systemImage: "chart.bar.doc.horizontal.fill")
                             .foregroundColor(.purple)
@@ -138,7 +139,7 @@ struct VehicleDetailView: View {
                     Button("Close") { dismiss() }
                 }
             }
-
+            
             ToolbarItem(placement: .navigationBarTrailing) {
                 if isEditing {
                     Button("Save") {
@@ -168,6 +169,7 @@ struct VehicleDetailView: View {
                 }
             }
         }
+        // ✅ CORRECTED: fileImporter closure is attached properly
         .fileImporter(
             isPresented: $isImportingDocument,
             allowedContentTypes: [.item],
@@ -177,8 +179,12 @@ struct VehicleDetailView: View {
                 Task { await vm.uploadDocument(fileURL: url, type: type) }
             }
         }
+        // ✅ CORRECTED: sheet is placed after the fileImporter completion block
+        .sheet(isPresented: $showReportsSheet) {
+            VehicleReportsListView(reports: vm.maintenanceReports)
+        }
     }
-
+    
     // MARK: - Subcomponents
     
     private func vehicleImage(_ vehicle: Vehicle) -> some View {
@@ -228,7 +234,7 @@ struct VehicleDetailView: View {
             Button("Cancel", role: .cancel) { }
         }
     }
-
+    
     @ViewBuilder
     private func documentRowLogic(for type: String) -> some View {
         let doc = vm.documents.first(where: { $0.type.uppercased() == type })
@@ -260,7 +266,7 @@ struct VehicleDetailView: View {
             }
         }
     }
-
+    
     private func saveChanges() async {
         guard let draft = draftVehicle else { return }
         vm.vehicle = draft
@@ -271,16 +277,16 @@ struct VehicleDetailView: View {
         if success { await vm.fetchVehicle(vehicleId: vehicle.id) }
         isSaving = false
     }
-
+    
     // MARK: - Helpers
     private func binding(_ keyPath: WritableKeyPath<Vehicle, String>) -> Binding<String> {
         Binding(get: { draftVehicle?[keyPath: keyPath] ?? "" }, set: { draftVehicle?[keyPath: keyPath] = $0 })
     }
-
+    
     private func binding(_ keyPath: WritableKeyPath<Vehicle, String?>) -> Binding<String> {
         Binding(get: { draftVehicle?[keyPath: keyPath] ?? "" }, set: { draftVehicle?[keyPath: keyPath] = $0.isEmpty ? nil : $0 })
     }
-
+    
     private func handleCameraAccess(onGranted: @escaping () -> Void) {
         let status = AVCaptureDevice.authorizationStatus(for: .video)
         if status == .authorized { onGranted() }
@@ -290,7 +296,7 @@ struct VehicleDetailView: View {
             }
         }
     }
-
+    
     private func handlePhotoLibraryAccess(onGranted: @escaping () -> Void) {
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         if status == .authorized || status == .limited { onGranted() }
@@ -310,7 +316,7 @@ struct InfoRow: View {
     let value: String
     var isEditing: Bool = false
     var text: Binding<String>? = nil
-
+    
     var body: some View {
         HStack {
             Text(title)
@@ -323,6 +329,64 @@ struct InfoRow: View {
             } else {
                 Text(value)
                     .foregroundColor(.secondary)
+            }
+        }
+    }
+}
+
+// MARK: - Dedicated Reports List View
+struct VehicleReportsListView: View {
+    let reports: [WorkOrderReportRecord]
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationView {
+            List {
+                if reports.isEmpty {
+                    Text("No completed maintenance reports yet.")
+                        .foregroundColor(.secondary)
+                        .font(.subheadline)
+                        .padding()
+                } else {
+                    ForEach(reports) { report in
+                        if let url = URL(string: report.reportUrl) {
+                            Link(destination: url) {
+                                HStack(spacing: 16) {
+                                    Image(systemName: "doc.viewfinder.fill")
+                                        .foregroundColor(.red)
+                                        .font(.title)
+                                    
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(report.reportName ?? "Completion Report")
+                                            .font(.headline)
+                                            .foregroundColor(.primary)
+                                        
+                                        Text("Work Order #WO-\(report.workOrderId.uuidString.prefix(6).uppercased())")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    
+                                    Spacer()
+                                    
+                                    Image(systemName: "chevron.right")
+                                        .foregroundColor(.gray)
+                                        .font(.caption)
+                                }
+                                .padding(.vertical, 8)
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Maintenance Reports")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .fontWeight(.bold)
+                }
             }
         }
     }

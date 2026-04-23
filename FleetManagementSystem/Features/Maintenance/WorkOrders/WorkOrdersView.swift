@@ -344,16 +344,17 @@ struct WorkOrderRowView: View {
                         .fill(iconBackgroundColor)
                         .frame(width: 50, height: 50)
                     
-                    Image(systemName: workOrder.vehicleType.sfSymbol)
+                    // UPDATED: Safely unwrap the joined vehicleType or fallback to a car
+                    Image(systemName: workOrder.vehicle?.vehicleType?.sfSymbol ?? "car.fill")
                         .foregroundColor(iconColor)
                         .font(.title2)
                 }
                 
                 // Text Content
                 if workOrder.status == .completed {
-                    RowTextLinesCompleted(workOrder: workOrder)
+                    RowTextLinesCompleted(workOrder: workOrder) // Note: Make sure to update the inside of this view too!
                 } else {
-                    RowTextLinesDefault(workOrder: workOrder, showStatus: showStatus, isLargeTitle: isLargeTitle)
+                    RowTextLinesDefault(workOrder: workOrder, showStatus: showStatus, isLargeTitle: isLargeTitle) // Note: Update this too!
                 }
                 
                 // Chevron
@@ -376,7 +377,8 @@ struct WorkOrderRowView: View {
         .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
     }
     
-    private var iconColor: Color { workOrder.vehicleType.color }
+    // UPDATED: Safe fallbacks
+    private var iconColor: Color { workOrder.vehicle?.vehicleType?.color ?? .blue }
     private var iconBackgroundColor: Color { iconColor.opacity(0.1) }
 }
 
@@ -399,7 +401,8 @@ struct RowTextLinesDefault: View {
                 PriorityTagView(priority: workOrder.priority)
             }
             
-            Text("\(workOrder.fleetUnitId) • \(workOrder.vehicleName ?? "Fleet Vehicle")")
+            // UPDATED: Pulling plate and vehicle name safely from the joined vehicle object
+            Text("\(workOrder.vehicle?.numberPlate ?? "N/A") • \(workOrder.vehicle?.vehicleName ?? "Fleet Vehicle")")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
@@ -454,7 +457,8 @@ struct RowTextLinesCompleted: View {
                     .clipShape(Capsule())
             }
             
-            Text(workOrder.vehicleName ?? "Fleet Vehicle")
+            // UPDATED: Pulling vehicle name safely from the joined vehicle object
+            Text(workOrder.vehicle?.vehicleName ?? "Fleet Vehicle")
                 .font(.headline)
                 .fontWeight(.semibold)
                 .foregroundColor(.primary)

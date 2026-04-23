@@ -27,7 +27,8 @@ final class WorkOrderViewModel: ObservableObject {
         do {
             let fetchedOrders: [WorkOrder] = try await SupabaseManager.shared.client
                 .from("work_orders")
-                .select()
+            // UPDATED: Added vehicle_type to the list of joined columns
+                .select("*, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type)")
                 .order("updated_at", ascending: false)
                 .execute()
                 .value
@@ -45,21 +46,16 @@ final class WorkOrderViewModel: ObservableObject {
     func filterOrders(fetchedOrders: [WorkOrder]) {
         self.workOrders = fetchedOrders
         
-        // 1. Waiting for Approval: Status is Pending AND isApproved is false
+        // Use ?? false to default to false if the value is missing
         self.waitingForApproval = fetchedOrders.filter {
-            $0.status == .pending && !$0.isApproved
+            $0.status == .pending && ($0.isApproved) == false
         }
         
-        // 2. Approved Pending: Status is Pending AND isApproved is true
-        // This acts as the "Ready to Start" queue
         self.approvedPending = fetchedOrders.filter {
-            $0.status == .pending && $0.isApproved
+            $0.status == .pending && ($0.isApproved) == true
         }
         
-        // 3. Active Work
         self.inProgressOrders = fetchedOrders.filter { $0.status == .inProgress }
-        
-        // 4. Archive
         self.completedOrders = fetchedOrders.filter { $0.status == .completed }
     }
     
@@ -215,7 +211,7 @@ extension WorkOrderViewModel {
     // MARK: - Request Manager Approval Notification
     func requestManagerApproval(for workOrder: WorkOrder, mechanicId: UUID, managerId: UUID) async {
         
-        let vehicleName = workOrder.vehicleName ?? "a vehicle"
+        let vehicleName = workOrder.vehicle?.vehicleName ?? workOrder.vehicle?.numberPlate ?? "a vehicle"
         let shortId = workOrder.workOrderId.uuidString.prefix(6).uppercased()
         
         // Create the DTO matching our exact finalized schema
@@ -224,7 +220,7 @@ extension WorkOrderViewModel {
             sender_id: mechanicId,
             title: "Approval Required",
             message: "Work Order #WO-\(shortId) for \(vehicleName) has been drafted and requires your approval.",
-            type: NotificationType.maintenance.rawValue, // Grouped under maintenance as you requested!
+            type: NotificationType.maintenance.rawValue,
             related_entity_id: workOrder.workOrderId
         )
         

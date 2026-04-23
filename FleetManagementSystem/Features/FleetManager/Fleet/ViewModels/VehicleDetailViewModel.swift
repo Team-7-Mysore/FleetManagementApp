@@ -60,6 +60,7 @@ class VehicleDetailViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var documentsErrorMessage: String?
+    @Published var maintenanceReports: [WorkOrderReportRecord] = []
     
     // MARK: - NEW INITIALIZER FOR OPTIMISTIC LOADING
     init(initialVehicle: Vehicle? = nil) {
@@ -109,6 +110,7 @@ class VehicleDetailViewModel: ObservableObject {
                 let fetchedDocuments = try Self.parseDocuments(from: documentsData)
                 print("Vehicle documents count:", fetchedDocuments.count)
                 self.documents = fetchedDocuments
+                await fetchMaintenanceReports(vehicleId: vehicleId)
                 self.documentsErrorMessage = nil
             } catch {
                 print("Error fetching vehicle documents:", error)
@@ -425,6 +427,44 @@ private extension VehicleDetailViewModel {
                 return lhs.title < rhs.title
             }
             return lhsOrder < rhsOrder
+        }
+    }
+    
+    // MARK: - Fetch Maintenance Reports
+    func fetchMaintenanceReports(vehicleId: UUID) async {
+        do {
+            // Step 1: Find all work orders for this vehicle
+            struct WOId: Decodable { let work_order_id: UUID }
+            
+            let woResponse = try await SupabaseManager.shared.client
+                .from("work_orders")
+                .select("work_order_id")
+                .eq("vehicle_id", value: vehicleId.uuidString.lowercased())
+                .execute()
+            
+            let woIds = try JSONDecoder().decode([WOId].self, from: woResponse.data).map { $0.work_order_id.uuidString }
+            
+            // If the vehicle has no work orders, exit early
+            guard !woIds.isEmpty else {
+                await MainActor.run { self.maintenanceReports = [] }
+                return
+            }
+            
+            // Step 2: Fetch the completed reports for those work orders
+            let reportsResponse = try await SupabaseManager.shared.client
+                .from("work_order_reports")
+                .select()
+                .in("work_order_id", values: woIds) // Fetch all in one batch!
+                .execute()
+            
+            let reports = try JSONDecoder().decode([WorkOrderReportRecord].self, from: reportsResponse.data)
+            
+            // Update the UI
+            await MainActor.run {
+                self.maintenanceReports = reports
+            }
+        } catch {
+            print("🚨 Error fetching maintenance reports: \(error)")
         }
     }
 }
