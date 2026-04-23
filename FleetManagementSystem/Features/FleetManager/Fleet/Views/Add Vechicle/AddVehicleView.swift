@@ -18,7 +18,7 @@ struct AddVehicleView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // MARK: - Vehicle Photo
+                // MARK: - Vehicle Photo Section
                 Section {
                     HStack {
                         Spacer()
@@ -30,19 +30,43 @@ struct AddVehicleView: View {
                 .listRowBackground(Color.clear)
 
                 // MARK: - Vehicle Identification
-                Section(header: Text("Vehicle Identification")) {
+                // UPDATED: Footer now only mentions VIN to avoid redundancy
+                Section(header: Text("Vehicle Identification"), footer: Text("Note: VIN must be exactly 17 characters.")) {
+                    
                     TextField("Vehicle Name", text: $vm.vehicleName)
                     
-                    let plateBinding = Binding(
-                        get: { vm.licensePlate },
-                        set: { vm.licensePlate = vm.formatPlate($0).uppercased() } // Force Uppercase
-                    )
-                    TextField("License Plate", text: plateBinding)
-                        .textInputAutocapitalization(.characters)
-                    
-                    // MARK: VIN with 17-Digit Validation
+                    // Plate Field
                     VStack(alignment: .leading, spacing: 4) {
-                        TextField("VIN", text: $vm.vin)
+                        // Explicit Label for the Field
+                        Text("License Plate")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        let plateBinding = Binding(
+                            get: { vm.licensePlate },
+                            set: { vm.licensePlate = vm.formatPlate($0).uppercased() }
+                        )
+                        
+                        // TextField with Placeholder/Prompt
+                        TextField("AA 00 AA 0000", text: plateBinding)
+                            .textInputAutocapitalization(.characters)
+                            .disableAutocorrection(true)
+                        
+                        // Local status indicator for the plate
+                        if !vm.licensePlate.isEmpty {
+                            Text(vm.licensePlate.count >= 7 ? "✓ Valid Format" : "⚠ Incomplete Plate")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(vm.licensePlate.count >= 7 ? .green : .orange)
+                        }
+                    }
+                    
+                    // VIN Field with character counter
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("VIN")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            
+                        TextField("Enter 17-digit VIN", text: $vm.vin)
                             .onChange(of: vm.vin) { newValue in
                                 if newValue.count > 17 {
                                     vm.vin = String(newValue.prefix(17))
@@ -65,7 +89,7 @@ struct AddVehicleView: View {
                     
                     Picker("Vehicle Type", selection: $vm.vehicleType) {
                         Text("Select Type").tag("")
-                        ForEach(["Truck", "Car", "Bike"], id: \.self) { type in
+                        ForEach(["Truck", "Car", "Bike", "Bus"], id: \.self) { type in
                             Text(type).tag(type)
                         }
                     }
@@ -102,8 +126,7 @@ struct AddVehicleView: View {
                     Button("Save") {
                         Task { await vm.saveVehicle() }
                     }
-                    // VALIDATION: Form must be valid AND VIN must be exactly 17 digits
-                    .disabled(!vm.isFormValid || vm.vin.count != 17 || vm.isLoading)
+                    .disabled(!vm.isFormValid || vm.vin.count != 17 || vm.licensePlate.count < 7 || vm.isLoading)
                     .overlay {
                         if vm.isLoading { ProgressView() }
                     }
@@ -119,8 +142,7 @@ struct AddVehicleView: View {
                     handleImageSelected(image)
                 }
             }
-            // Image Pop-up (Action Sheet)
-            .confirmationDialog("Set Vehicle Photo", isPresented: $showImageSourceOptions, titleVisibility: .visible) {
+            .confirmationDialog("Change Vehicle Photo", isPresented: $showImageSourceOptions, titleVisibility: .visible) {
                 Button("Take Photo") {
                     handleCameraAccess {
                         sourceType = .camera
@@ -146,24 +168,10 @@ struct AddVehicleView: View {
         }
     }
 
-    // MARK: - Handlers
-    
-    private func handleImageSelected(_ image: UIImage) {
-        self.vm.localVehicleImage = image
-        self.selectedType = "VEHICLE"
-        Task { await vm.uploadImage(image: image, type: "VEHICLE") }
-    }
-
-    private func handleDocumentSelected(_ url: URL) {
-        let uploadType = self.selectedType
-        Task { await vm.uploadFile(fileURL: url, type: uploadType) }
-    }
-    
     // MARK: - Subcomponents
-
     private var imageUploadSection: some View {
         Button {
-            showImageSourceOptions = true // Triggers the Pop-up
+            showImageSourceOptions = true
         } label: {
             VStack(spacing: 12) {
                 if let image = vm.localVehicleImage {
@@ -197,28 +205,13 @@ struct AddVehicleView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                 if let fileName = fileName, isUploaded {
-                    Text(fileName)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
+                    Text(fileName).font(.caption).foregroundColor(.secondary).lineLimit(1)
                 }
             }
-            
             Spacer()
-            
             Menu {
-                Button {
-                    selectedType = type
-                    showDocumentPicker = true
-                } label: { Label("Files", systemImage: "folder") }
-                
-                Button {
-                    selectedType = type
-                    handlePhotoLibraryAccess {
-                        sourceType = .photoLibrary
-                        showImagePicker = true
-                    }
-                } label: { Label("Photos", systemImage: "photo") }
+                Button { selectedType = type; showDocumentPicker = true } label: { Label("Files", systemImage: "folder") }
+                Button { selectedType = type; handlePhotoLibraryAccess { sourceType = .photoLibrary; showImagePicker = true } } label: { Label("Photos", systemImage: "photo") }
             } label: {
                 HStack(spacing: 4) {
                     Text(isUploaded ? "Replace" : "Upload")
@@ -230,7 +223,17 @@ struct AddVehicleView: View {
         }
     }
 
-    // MARK: - Permissions
+    // MARK: - Handlers & Permissions
+    private func handleImageSelected(_ image: UIImage) {
+        self.vm.localVehicleImage = image
+        self.selectedType = "VEHICLE"
+        Task { await vm.uploadImage(image: image, type: "VEHICLE") }
+    }
+
+    private func handleDocumentSelected(_ url: URL) {
+        let uploadType = self.selectedType
+        Task { await vm.uploadFile(fileURL: url, type: uploadType) }
+    }
     
     private func handleCameraAccess(onGranted: @escaping () -> Void) {
         let status = AVCaptureDevice.authorizationStatus(for: .video)

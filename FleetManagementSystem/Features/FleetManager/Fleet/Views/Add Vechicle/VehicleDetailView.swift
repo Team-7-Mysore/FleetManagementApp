@@ -18,6 +18,9 @@ struct VehicleDetailView: View {
     @State private var activeDocumentType: String?
     @State private var showStaffSelection = false
     
+    // State for the Image Selection Pop-up
+    @State private var showImageSourceDialog = false
+    
     init(vehicle: Vehicle) {
         self.vehicle = vehicle
         _vm = StateObject(wrappedValue: VehicleDetailViewModel(initialVehicle: vehicle))
@@ -45,7 +48,10 @@ struct VehicleDetailView: View {
                 // MARK: - Vehicle Identification
                 Section(header: Text("Vehicle Identification")) {
                     InfoRow(title: "Name", value: currentVehicle.name, isEditing: isEditing, text: binding(\.name))
+                    
+                    // Plate with auto-capitalization
                     InfoRow(title: "Plate", value: currentVehicle.registrationNumber, isEditing: isEditing, text: binding(\.registrationNumber))
+                        .textCase(.uppercase)
                 }
 
                 // MARK: - Basic Info
@@ -58,7 +64,23 @@ struct VehicleDetailView: View {
 
                 // MARK: - Registration Details
                 Section(header: Text("Registration Details")) {
-                    InfoRow(title: "VIN", value: currentVehicle.vin.isEmpty ? "—" : currentVehicle.vin, isEditing: isEditing, text: binding(\.vin))
+                    // VIN with 17-digit enforcement and UI feedback
+                    VStack(alignment: .leading, spacing: 4) {
+                        InfoRow(title: "VIN", value: currentVehicle.vin.isEmpty ? "—" : currentVehicle.vin, isEditing: isEditing, text: binding(\.vin))
+                            .onChange(of: draftVehicle?.vin) { newValue in
+                                if let val = newValue, val.count > 17 {
+                                    draftVehicle?.vin = String(val.prefix(17))
+                                }
+                            }
+                        
+                        if isEditing {
+                            let count = draftVehicle?.vin.count ?? 0
+                            Text("\(count)/17 Characters")
+                                .font(.caption2)
+                                .foregroundColor(count == 17 ? .green : .red)
+                        }
+                    }
+                    
                     InfoRow(title: "RC Number", value: currentVehicle.rcNumber.isEmpty ? "—" : currentVehicle.rcNumber, isEditing: isEditing, text: binding(\.rcNumber))
                     InfoRow(title: "Reg. Date", value: currentVehicle.registrationDate.isEmpty ? "—" : currentVehicle.registrationDate, isEditing: isEditing, text: binding(\.registrationDate))
                     InfoRow(title: "RC Expiry", value: currentVehicle.rcExpiryDate.isEmpty ? "—" : currentVehicle.rcExpiryDate, isEditing: isEditing, text: binding(\.rcExpiryDate))
@@ -111,7 +133,8 @@ struct VehicleDetailView: View {
                         Task { await saveChanges() }
                     }
                     .fontWeight(.bold)
-                    .disabled(isSaving)
+                    // Disable save if VIN is not exactly 17 digits
+                    .disabled(isSaving || (draftVehicle?.vin.count ?? 0) != 17)
                 } else {
                     Button("Edit") {
                         draftVehicle = vm.vehicle
@@ -144,7 +167,56 @@ struct VehicleDetailView: View {
         }
     }
 
-    // MARK: - Document Row Helper
+    // MARK: - Subcomponents
+    
+    private func vehicleImage(_ vehicle: Vehicle) -> some View {
+        ZStack(alignment: .bottomTrailing) {
+            Group {
+                if let urlString = vehicle.imageURL, let url = URL(string: urlString) {
+                    AsyncImage(url: url) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        Rectangle().fill(Color(.systemGray5))
+                            .overlay(Image(systemName: vehicle.imageSystemName).font(.largeTitle).foregroundColor(.gray))
+                    }
+                } else {
+                    Rectangle().fill(Color(.systemGray5))
+                        .overlay(Image(systemName: vehicle.imageSystemName).font(.largeTitle).foregroundColor(.gray))
+                }
+            }
+            .frame(height: 200)
+            .clipped()
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if isEditing { showImageSourceDialog = true }
+            }
+            
+            if isEditing {
+                Image(systemName: "camera.circle.fill")
+                    .symbolRenderingMode(.hierarchical)
+                    .font(.system(size: 40))
+                    .background(Circle().fill(.white))
+                    .padding(10)
+                    .allowsHitTesting(false)
+            }
+        }
+        .confirmationDialog("Change Vehicle Photo", isPresented: $showImageSourceDialog) {
+            Button("Take Photo") {
+                handleCameraAccess {
+                    sourceType = .camera
+                    showImagePicker = true
+                }
+            }
+            Button("Choose from Library") {
+                handlePhotoLibraryAccess {
+                    sourceType = .photoLibrary
+                    showImagePicker = true
+                }
+            }
+            Button("Cancel", role: .cancel) { }
+        }
+    }
+
     @ViewBuilder
     private func documentRowLogic(for type: String) -> some View {
         let doc = vm.documents.first(where: { $0.type.uppercased() == type })
@@ -188,41 +260,7 @@ struct VehicleDetailView: View {
         isSaving = false
     }
 
-    private func vehicleImage(_ vehicle: Vehicle) -> some View {
-        ZStack(alignment: .bottomTrailing) {
-            Group {
-                if let urlString = vehicle.imageURL, let url = URL(string: urlString) {
-                    AsyncImage(url: url) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
-                        Rectangle().fill(Color(.systemGray5))
-                            .overlay(Image(systemName: vehicle.imageSystemName).font(.largeTitle).foregroundColor(.gray))
-                    }
-                } else {
-                    Rectangle().fill(Color(.systemGray5))
-                        .overlay(Image(systemName: vehicle.imageSystemName).font(.largeTitle).foregroundColor(.gray))
-                }
-            }
-            .frame(height: 200)
-            .clipped()
-            
-            if isEditing {
-                Button {
-                    handleCameraAccess {
-                        showImagePicker = true
-                    }
-                } label: {
-                    Image(systemName: "camera.circle.fill")
-                        .symbolRenderingMode(.hierarchical)
-                        .font(.system(size: 40))
-                        .background(Circle().fill(.white))
-                        .padding(10)
-                }
-            }
-        }
-    }
-
-    // MARK: - Binding Helpers
+    // MARK: - Helpers
     private func binding(_ keyPath: WritableKeyPath<Vehicle, String>) -> Binding<String> {
         Binding(get: { draftVehicle?[keyPath: keyPath] ?? "" }, set: { draftVehicle?[keyPath: keyPath] = $0 })
     }
@@ -254,7 +292,7 @@ struct VehicleDetailView: View {
     }
 }
 
-// MARK: - Refactored Row Component
+// MARK: - Row Component
 struct InfoRow: View {
     let title: String
     let value: String
@@ -269,6 +307,7 @@ struct InfoRow: View {
                 TextField(title, text: text)
                     .multilineTextAlignment(.trailing)
                     .foregroundColor(.blue)
+                    .autocorrectionDisabled()
             } else {
                 Text(value)
                     .foregroundColor(.secondary)
