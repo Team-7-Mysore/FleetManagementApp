@@ -27,7 +27,8 @@ struct WorkOrdersView: View {
                                 ("Approved", viewModel.approvedPending), // Index 0 (Default)
                                 ("Waiting Approval", viewModel.waitingForApproval) // Index 1
                             ],
-                            onRefresh: { await viewModel.fetchWorkOrders() }
+                            onRefresh: { await viewModel.fetchWorkOrders() },
+                            profile: profile // Passing profile down
                         )) {
                             SummaryCardView(
                                 title: "PENDING",
@@ -45,7 +46,8 @@ struct WorkOrdersView: View {
                             sections: [
                                 ("", viewModel.completedOrders) // Single section hides the segmented control
                             ],
-                            onRefresh: { await viewModel.fetchWorkOrders() }
+                            onRefresh: { await viewModel.fetchWorkOrders() },
+                            profile: profile // Passing profile down
                         )) {
                             SummaryCardView(
                                 title: "COMPLETED",
@@ -103,6 +105,15 @@ struct WorkOrdersView: View {
             .navigationTitle("Work Orders")
             .background(Color(uiColor: .systemGroupedBackground))
             .toolbar {
+                
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    NavigationLink(destination: NotificationsView()) {
+                        Image(systemName: "bell")
+                            .foregroundColor(Color(hex: "#A3352A"))
+                        
+                    }
+                }
+                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button(action: {
                         showingProfile = true
@@ -113,12 +124,7 @@ struct WorkOrdersView: View {
                     }
                 }
                 
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(destination: Text("Notifications Placeholder")) {
-                        Image(systemName: "bell")
-                            .foregroundColor(Color(hex: "#A3352A"))
-                    }
-                }
+                
             }
             .task {
                 if viewModel.workOrders.isEmpty {
@@ -155,8 +161,8 @@ struct WorkOrdersView: View {
                 }
             }) { order in
                 NavigationStack {
-                    Text("Detail view for WO-\(order.workOrderId.uuidString.prefix(4))")
-                    // Replace with your WorkOrderDetailView(workOrder: order)
+                    // ACTUALLY OPEN THE VIEW INSTEAD OF THE TEXT PLACEHOLDER
+                    WorkOrderDetailView(workOrder: order)
                 }
             }
             .sheet(item: $selectedReportOrder, onDismiss: {
@@ -165,8 +171,7 @@ struct WorkOrdersView: View {
                     await viewModel.fetchWorkOrders()
                 }
             }) { order in
-                Text("Report View Placeholder")
-                // Replace with WorkOrderCompletionReportView(workOrder: order)
+                WorkOrderCompletionReportView(workOrder: order)
             }
             .sheet(isPresented: $showingAddOrder, onDismiss: {
                 Task {
@@ -175,8 +180,7 @@ struct WorkOrdersView: View {
                 }
             }) {
                 NavigationStack {
-                    Text("Add Order View Placeholder")
-                    // Replace with AddEditWorkOrderView()
+                    AddEditWorkOrderView()
                 }
             }
             .sheet(isPresented: $showingProfile) {
@@ -192,6 +196,7 @@ struct FilteredWorkOrdersView: View {
     let title: String
     let sections: [(header: String, orders: [WorkOrder])]
     var onRefresh: (() async -> Void)? = nil
+    let profile: UserProfile? // Added so we can pass it down to WorkOrderDetailView
     
     @State private var selectedDetailOrder: WorkOrder?
     @State private var selectedReportOrder: WorkOrder?
@@ -271,8 +276,7 @@ struct FilteredWorkOrdersView: View {
             }
         }) { order in
             NavigationStack {
-                Text("Detail view for WO-\(order.workOrderId.uuidString.prefix(4))")
-                // Replace with WorkOrderDetailView(workOrder: order)
+                WorkOrderDetailView(workOrder: order)
             }
         }
         .sheet(item: $selectedReportOrder, onDismiss: {
@@ -281,8 +285,7 @@ struct FilteredWorkOrdersView: View {
                 await onRefresh?()
             }
         }) { order in
-            Text("Report View Placeholder")
-            // Replace with WorkOrderCompletionReportView(workOrder: order)
+            WorkOrderCompletionReportView(workOrder: order)
         }
     }
 }
@@ -373,7 +376,7 @@ struct WorkOrderRowView: View {
         .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
     }
     
-    private var iconColor: Color { Color.blue } // Note: replace with workOrder.vehicleType.color
+    private var iconColor: Color { workOrder.vehicleType.color }
     private var iconBackgroundColor: Color { iconColor.opacity(0.1) }
 }
 
@@ -396,7 +399,7 @@ struct RowTextLinesDefault: View {
                 PriorityTagView(priority: workOrder.priority)
             }
             
-            Text("\(workOrder.fleetUnitId ?? "Unknown") • \(workOrder.vehicleName ?? "Fleet Vehicle")")
+            Text("\(workOrder.fleetUnitId) • \(workOrder.vehicleName ?? "Fleet Vehicle")")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .lineLimit(1)

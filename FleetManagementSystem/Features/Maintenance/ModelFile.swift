@@ -122,7 +122,7 @@ struct WorkOrder: Identifiable, Codable {
     var vehicleType: VehicleType
     var priority: WorkOrderPriority
     var status: WorkOrderStatus
-    let isApproved: Bool
+    var isApproved: Bool
     var issueTitle: String
     var issueDescription: String?
     var hoursWorked: Double?
@@ -192,6 +192,23 @@ struct WorkOrderPart: Codable {
         case costAtTime = "cost_at_time"
     }
 }
+
+
+// MARK: - Work Order Report
+struct WorkOrderReportRecord: Codable, Identifiable {
+    var id: UUID?
+    var workOrderId: UUID
+    var reportUrl: String
+    var reportName: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case id = "report_id"
+        case workOrderId = "work_order_id"
+        case reportUrl = "report_url"
+        case reportName = "report_name"
+    }
+}
+
 
 // MARK: - 5. Chat Room
 struct ChatRoom: Identifiable, Codable, Hashable {

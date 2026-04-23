@@ -2,7 +2,7 @@ import SwiftUI
 
 struct RootView: View {
     @StateObject private var appSession = AppSession()
-
+    
     var body: some View {
         Group {
             if let profile = appSession.profile {
@@ -12,7 +12,7 @@ struct RootView: View {
             }
         }
     }
-
+    
     @ViewBuilder
     private func roleBasedView(for profile: UserProfile) -> some View {
         switch profile.role {
@@ -25,6 +25,10 @@ struct RootView: View {
                 await appSession.signOut()
             }
         case .maintenance:
+            MaintenanceDashboardView(profile: profile) {
+                await appSession.signOut()
+            }
+        default:
             MaintenanceDashboardView(profile: profile) {
                 await appSession.signOut()
             }

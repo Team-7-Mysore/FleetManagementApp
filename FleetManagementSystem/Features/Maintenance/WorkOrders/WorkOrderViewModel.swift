@@ -12,7 +12,7 @@ final class WorkOrderViewModel: ObservableObject {
     @Published var inProgressOrders: [WorkOrder] = []
     @Published var completedOrders: [WorkOrder] = []
     
-    // NEW: Split the pending orders into two distinct lists
+    // Split the pending orders into two distinct lists
     @Published var waitingForApproval: [WorkOrder] = []
     @Published var approvedPending: [WorkOrder] = []
     
@@ -28,17 +28,11 @@ final class WorkOrderViewModel: ObservableObject {
             let fetchedOrders: [WorkOrder] = try await SupabaseManager.shared.client
                 .from("work_orders")
                 .select()
-                .order("created_at", ascending: false)
+                .order("updated_at", ascending: false)
                 .execute()
                 .value
             
-            self.workOrders = fetchedOrders
-            self.inProgressOrders = fetchedOrders.filter { $0.status == .inProgress }
-            self.completedOrders = fetchedOrders.filter { $0.status == .completed }
-            
-            // NEW: Filter logic for the approval workflow
-            self.waitingForApproval = fetchedOrders.filter { $0.status == .pending && !$0.isApproved }
-            self.approvedPending = fetchedOrders.filter { $0.status == .pending && $0.isApproved }
+            filterOrders(fetchedOrders: fetchedOrders)
             
         } catch {
             print("ERROR:", error)
@@ -46,6 +40,27 @@ final class WorkOrderViewModel: ObservableObject {
         }
         
         isLoading = false
+    }
+    
+    func filterOrders(fetchedOrders: [WorkOrder]) {
+        self.workOrders = fetchedOrders
+        
+        // 1. Waiting for Approval: Status is Pending AND isApproved is false
+        self.waitingForApproval = fetchedOrders.filter {
+            $0.status == .pending && !$0.isApproved
+        }
+        
+        // 2. Approved Pending: Status is Pending AND isApproved is true
+        // This acts as the "Ready to Start" queue
+        self.approvedPending = fetchedOrders.filter {
+            $0.status == .pending && $0.isApproved
+        }
+        
+        // 3. Active Work
+        self.inProgressOrders = fetchedOrders.filter { $0.status == .inProgress }
+        
+        // 4. Archive
+        self.completedOrders = fetchedOrders.filter { $0.status == .completed }
     }
     
     // MARK: - Relational Data Fetches
@@ -121,6 +136,107 @@ final class WorkOrderViewModel: ObservableObject {
             self.availableInventory = fetched
         } catch {
             print("ERROR fetching inventory: \(error)")
+        }
+    }
+}
+
+// MARK: - Storage & External File Handlers
+extension WorkOrderViewModel {
+    
+    // MARK: - Upload Image (Only uploads to bucket, DB insert handled by upsertWorkOrder)
+    func uploadImageToSupabase(imageData: Data, fileName: String) async throws -> String {
+        let bucket = "maintenance-images"
+        let uniquePath = "work_orders/\(UUID().uuidString)-\(fileName)"
+        
+        // 1. Upload to bucket
+        try await SupabaseManager.shared.client.storage
+            .from(bucket)
+            .upload(
+                uniquePath,
+                data: imageData,
+                options: FileOptions(contentType: "image/jpeg")
+            )
+        
+        // 2. Retrieve public URL
+        let publicURL = try SupabaseManager.shared.client.storage
+            .from(bucket)
+            .getPublicURL(path: uniquePath)
+        
+        return publicURL.absoluteString
+    }
+    
+    // MARK: - Upload PDF Report to Bucket
+    func uploadPDFReportToSupabase(pdfData: Data, workOrderId: String) async throws -> String {
+        let bucket = "work-order-reports"
+        let uniquePath = "reports/WO-\(workOrderId)-\(UUID().uuidString.prefix(4)).pdf"
+        
+        // 1. Upload to bucket using SupabaseManager
+        try await SupabaseManager.shared.client.storage
+            .from(bucket)
+            .upload(
+                uniquePath,
+                data: pdfData,
+                options: FileOptions(contentType: "application/pdf")
+            )
+        
+        // 2. Retrieve public URL
+        let publicURL = try SupabaseManager.shared.client.storage
+            .from(bucket)
+            .getPublicURL(path: uniquePath)
+        
+        return publicURL.absoluteString
+    }
+    
+    // MARK: - 2. Save URL to Database Table
+    func saveReportDatabaseRecord(workOrderId: UUID, reportUrl: String, reportName: String) async throws {
+        
+        // Define the structure matching your "reports" table in Supabase
+        struct ReportRecord: Encodable {
+            let work_order_id: UUID
+            let report_url: String
+            let report_name: String
+        }
+        
+        let newReport = ReportRecord(
+            work_order_id: workOrderId,
+            report_url: reportUrl,
+            report_name: reportName
+        )
+
+        try await SupabaseManager.shared.client
+            .from("work_order_reports") 
+            .insert(newReport)
+            .execute()
+    }
+}
+
+extension WorkOrderViewModel {
+    
+    // MARK: - Request Manager Approval Notification
+    func requestManagerApproval(for workOrder: WorkOrder, mechanicId: UUID, managerId: UUID) async {
+        
+        let vehicleName = workOrder.vehicleName ?? "a vehicle"
+        let shortId = workOrder.workOrderId.uuidString.prefix(6).uppercased()
+        
+        // Create the DTO matching our exact finalized schema
+        let insertData = NotificationInsertDTO(
+            recipient_id: managerId,
+            sender_id: mechanicId,
+            title: "Approval Required",
+            message: "Work Order #WO-\(shortId) for \(vehicleName) has been drafted and requires your approval.",
+            type: NotificationType.maintenance.rawValue, // Grouped under maintenance as you requested!
+            related_entity_id: workOrder.workOrderId
+        )
+        
+        do {
+            try await SupabaseManager.shared.client
+                .from("notifications")
+                .insert(insertData)
+                .execute()
+            
+            print("Approval notification successfully sent to Fleet Manager!")
+        } catch {
+            print("Failed to send notification: \(error)")
         }
     }
 }
