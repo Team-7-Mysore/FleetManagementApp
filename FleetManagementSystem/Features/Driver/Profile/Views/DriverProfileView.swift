@@ -175,16 +175,16 @@ struct DriverProfileView: View {
                 decoder.dateDecodingStrategy = .custom { decoder in
                     let container = try decoder.singleValueContainer()
                     let str = try container.decode(String.self)
-                    let formatter = DateFormatter()
-                    formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-                    formatter.timeZone = TimeZone(secondsFromGMT: 0)
-                    if let date = formatter.date(from: str) { return date }
+                    if let date = BackendDateParser.parse(str) { return date }
                     throw DecodingError.dataCorruptedError(in: container,
                         debugDescription: "Invalid date: \(str)")
                 }
 
                 let dtoTrips = try decoder.decode([TripDTO].self, from: tripRes.data)
-                let completed = dtoTrips.filter { $0.status == "completed" }
+                let completed = dtoTrips.filter {
+                    let status = $0.status.lowercased()
+                    return status == "completed" || status == "done"
+                }
 
                 self.totalTrips = completed.count
                 self.totalMiles = completed.compactMap { $0.distanceTravelled }.reduce(0, +)
@@ -192,7 +192,15 @@ struct DriverProfileView: View {
 
                 // Step 3: Fetch vehicle from first active/assigned trip
                 if let vehicleId = dtoTrips
-                    .first(where: { $0.status == "assigned" || $0.status == "active" })?
+                    .first(where: {
+                        let status = $0.status.lowercased()
+                        return status == "assigned"
+                            || status == "planned"
+                            || status == "upcoming"
+                            || status == "scheduled"
+                            || status == "active"
+                            || status == "in_progress"
+                    })?
                     .vehicleId {
 
                     let vRes = try await SupabaseManager.shared.client

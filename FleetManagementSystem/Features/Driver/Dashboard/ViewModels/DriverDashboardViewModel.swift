@@ -83,10 +83,7 @@ final class DriverDashboardViewModel: ObservableObject {
                 decoder.dateDecodingStrategy = .custom { decoder in
                     let container = try decoder.singleValueContainer()
                     let dateStr = try container.decode(String.self)
-                    let formatter = DateFormatter()
-                    formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-                    formatter.timeZone = TimeZone(secondsFromGMT: 0)
-                    if let date = formatter.date(from: dateStr) { return date }
+                    if let date = BackendDateParser.parse(dateStr) { return date }
                     throw DecodingError.dataCorruptedError(
                         in: container,
                         debugDescription: "Invalid date format: \(dateStr)"
@@ -111,7 +108,15 @@ final class DriverDashboardViewModel: ObservableObject {
 
                 // Step 3: Get vehicle from first assigned or active trip
                 if let vehicleId = dtoTrips
-                    .first(where: { $0.status == "assigned" || $0.status == "in_progress" })?
+                    .first(where: {
+                        let status = $0.status.lowercased()
+                        return status == "assigned"
+                            || status == "planned"
+                            || status == "upcoming"
+                            || status == "scheduled"
+                            || status == "active"
+                            || status == "in_progress"
+                    })?
                     .vehicleId {
                     await fetchVehicle(vehicleId: vehicleId)
                 } else {
