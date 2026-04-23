@@ -26,7 +26,8 @@ struct WorkOrderDetailView: View {
     @State private var editedIssueDescription: String = ""
     
     @State private var newTaskName: String = ""
-    
+
+
     @State private var editedMaintenanceNotes: String = ""
     @State private var editedHoursWorked: String = ""
     @State private var editedLabourCost: String = ""
@@ -96,7 +97,196 @@ struct WorkOrderDetailView: View {
                     ProgressView("Loading details...")
                         .padding(.top, 50)
                 } else {
-                    mainContent // Extracted to a computed property
+                    VStack(spacing: 24) {
+                        
+                        // MARK: 1. Header Section
+                        WorkOrderHeaderView(workOrder: workOrder)
+                        
+                        // MARK: 2. Issue Summary (Editable)
+                        VStack(alignment: .leading, spacing: 8) {
+                            SectionHeaderView(title: "ISSUE SUMMARY")
+                            EditableIssueSummaryCardView(
+                                issueTitle: $editedIssueTitle,
+                                issueDescription: $editedIssueDescription
+                            )
+                        }
+                        
+                        // MARK: 3. Task Checklist
+                        VStack(alignment: .leading, spacing: 8) {
+                            SectionHeaderView(title: "MAINTENANCE TASKS")
+                            CardView {
+                                VStack(alignment: .leading, spacing: 12) {
+                                    if tasks.isEmpty {
+                                        Text("No tasks assigned.")
+                                            .font(.subheadline)
+                                            .foregroundColor(.secondary)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    } else {
+                                        ForEach($tasks) { $task in
+                                            HStack(spacing: 12) {
+                                                Button(action: {
+                                                    task.isCompleted.toggle()
+                                                    scheduleAutosave()
+                                                }) {
+                                                    Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
+                                                        .foregroundColor(task.isCompleted ? .blue : Color(uiColor: .systemGray4))
+                                                        .font(.title3)
+                                                }
+                                                
+                                                Text(task.description)
+                                                    .font(.subheadline)
+                                                    .foregroundColor(task.isCompleted ? .secondary : .primary)
+                                                    .strikethrough(task.isCompleted)
+                                                
+                                                Spacer()
+                                            }
+                                            .padding(.vertical, 4)
+                                            Divider()
+                                        }
+                                    }
+                                    
+                                    HStack {
+                                        Image(systemName: "plus.circle.fill")
+                                            .foregroundColor(.blue)
+                                        
+                                        TextField("Add Task...", text: $newTaskName)
+                                            .font(.subheadline)
+                                            .padding(.vertical, 8)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .onSubmit {
+                                                guard !newTaskName.isEmpty else { return }
+                                                tasks.append(WorkOrderTask(
+                                                    taskId: UUID(),
+                                                    workOrderId: workOrder.workOrderId,
+                                                    description: newTaskName,
+                                                    isCompleted: false,
+                                                    createdAt: Date()
+                                                ))
+                                                newTaskName = ""
+                                                scheduleAutosave()
+                                            }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // MARK: 4. Parts Required Section
+                        VStack(alignment: .leading, spacing: 8) {
+                            SectionHeaderView(title: "PARTS REQUIRED")
+                            CardView {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    if partsUI.isEmpty {
+                                        Text("No parts requested.")
+                                            .font(.subheadline)
+                                            .foregroundColor(.secondary)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.bottom, 8)
+                                    } else {
+                                        ForEach($partsUI) { $part in
+                                            PartDetailRowView(part: $part, onQuantityChange: {
+                                                scheduleAutosave()
+                                            }, onDelete: {
+                                                partsUI.removeAll { $0.id == part.id }
+                                                scheduleAutosave()
+                                            })
+                                            .padding(.vertical, 4)
+                                            Divider()
+                                        }
+                                    }
+
+
+                                    // FIX: Parts Dropdown Menu
+                                    Menu {
+                                        if viewModel.availableInventory.isEmpty {
+                                            Text("Loading inventory...")
+                                        } else {
+                                            ForEach(viewModel.availableInventory) { item in
+                                                Button {
+                                                    // Prevent adding duplicate parts
+                                                    if !partsUI.contains(where: { $0.inventoryId == item.inventoryId }) {
+                                                        partsUI.append(
+                                                            PartDisplayInfo(
+                                                                inventoryId: item.inventoryId,
+                                                                name: item.partName,
+                                                                quantity: 1,
+                                                                unitCost: item.costPerUnit ?? 0.0 // Grab real unit cost
+                                                            )
+                                                        )
+                                                        scheduleAutosave()
+                                                    }
+                                                } label: {
+                                                    Text("\(item.partName) (In Stock: \(item.quantity))")
+                                                }
+                                            }
+                                        }
+                                    } label: {
+                                        HStack {
+                                            Image(systemName: "plus.circle.fill")
+                                                .foregroundColor(.blue)
+
+
+                                            Image(systemName: "chevron.up.chevron.down")
+                                                .font(.caption)
+                                                .foregroundColor(.gray)
+                                        }
+                                        .padding(.vertical, 8)
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // MARK: 5. Work Entry & Documentation Section
+                        WorkEntryAndDocumentationView(
+                            editedHoursWorked: $editedHoursWorked,
+                            editedLabourCost: $editedLabourCost,
+                            defaultLabourRate: defaultLabourRate,
+                            editedMaintenanceNotes: $editedMaintenanceNotes,
+                            photos: $editablePhotos
+                        )
+                        
+                        // MARK: 6. LIVE COST SUMMARY
+                        VStack(alignment: .leading, spacing: 8) {
+                            SectionHeaderView(title: "ESTIMATED COST SUMMARY")
+                            LiveCostTotalsView(
+                                labourTotal: labourTotalCost,
+                                partsTotal: partsTotalCost,
+                                tax: salesTax,
+                                total: finalTotalCost
+                            )
+                        }
+                        
+                        // MARK: 7. Action Buttons
+                        if workOrder.status == .pending {
+                            Button(action: {
+                                startWorkOrder()
+                            }) {
+                                HStack {
+                                    if isSaving {
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                    } else {
+                                        Text("Start Work Order")
+                                            .font(.headline)
+                                    }
+                                }
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(isSaving ? Color.blue.opacity(0.7) : Color.blue)
+                                .cornerRadius(12)
+                            }
+                            .padding(.top, 10)
+                        }
+                        
+                        Spacer().frame(height: 30) // Bottom padding
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 20)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        hideKeyboard()
+                    }
                 }
             }
         }
@@ -444,7 +634,9 @@ struct WorkOrderDetailView: View {
             if !tasks.isEmpty {
                 try await viewModel.upsertTasks(tasks)
             }
-            
+
+
+            // Re-map the parts to update DB
             let workOrderParts = partsUI.map { uiPart in
                 WorkOrderPart(
                     workOrderId: workOrder.workOrderId,
@@ -454,12 +646,14 @@ struct WorkOrderDetailView: View {
                 )
             }
             try await viewModel.upsertParts(workOrderParts)
-            
+
+
         } catch {
             print("🚨 Autosave failed: \(error)")
         }
     }
     
+    // MARK: - Fetch Relational Data
     private func fetchWorkOrderDetails() async {
         editedIssueTitle = workOrder.issueTitle
         editedIssueDescription = workOrder.issueDescription ?? ""
@@ -467,6 +661,8 @@ struct WorkOrderDetailView: View {
         
         let initialHours = workOrder.hoursWorked ?? 0.0
         editedHoursWorked = String(format: "%.1f", initialHours)
+        
+        // Calculate initial labour cost based on hours
         editedLabourCost = String(format: "%.2f", initialHours * defaultLabourRate)
         
         editablePhotos = workOrder.images ?? []
@@ -517,8 +713,7 @@ struct WorkOrderHeaderView: View {
                         .fill(Color.blue.opacity(0.1))
                         .frame(width: 60, height: 60)
                     
-                    // Uses a generic car icon, but see the note below if you want to keep the dynamic icons!
-                    Image(systemName: "car.fill")
+                    Image(systemName: workOrder.vehicleType.sfSymbol)
                         .font(.title)
                         .foregroundColor(.blue)
                 }

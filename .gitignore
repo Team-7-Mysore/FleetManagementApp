@@ -8,7 +8,11 @@ xcuserdata/
 Package.resolved
 
 # Xcode workspace user data
+
 *.xcworkspace/xcuserdata/
+*.xcworkspace/xcshareddata/
+# Swift Package Manager
+*.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
 # Derived data
 DerivedData/

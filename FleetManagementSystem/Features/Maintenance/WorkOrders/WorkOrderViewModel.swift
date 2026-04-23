@@ -35,6 +35,7 @@ final class WorkOrderViewModel: ObservableObject {
             
             filterOrders(fetchedOrders: fetchedOrders)
             
+
         } catch {
             print("ERROR:", error)
             self.errorMessage = "Failed to fetch work orders: \(error.localizedDescription)"

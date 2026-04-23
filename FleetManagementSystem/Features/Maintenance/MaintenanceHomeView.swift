@@ -3,7 +3,9 @@ import SwiftUI
 struct MaintenanceHomeView: View {
     let profile: UserProfile?
     let onSignOut: () async -> Void
-    
+
+    @StateObject private var inventoryViewModel = InventoryViewModel()
+
     var body: some View {
         TabView {
             WorkOrdersView(profile: profile, onSignOut: onSignOut)
@@ -11,16 +13,19 @@ struct MaintenanceHomeView: View {
                     Label("Work Orders", systemImage: "list.bullet")
                 }
 
-            InventoryView()
+            InventoryView(viewModel: inventoryViewModel)
                 .tabItem {
                     Label("Inventory", systemImage: "cube.box")
                 }
 
-            ChatListView()
-                .tabItem {
-                    Label("Chat", systemImage: "message")
-                }
+            if let userId = profile?.userId {
+                ChatListView(currentUserId: userId)
+                    .tabItem {
+                        Label("Chat", systemImage: "message")
+                    }
+            }
         }
+        .tint(Color(red: 163/255, green: 53/255, blue: 42/255))
     }
 }
 

@@ -3,12 +3,12 @@ import Combine
 
 @MainActor
 final class AppSession: ObservableObject {
-    
-    
+
+
     private enum Storage {
         static let profileKey = "app_session_profile"
     }
-    
+
     @Published private(set) var profile: UserProfile?
     @Published var errorMessage: String?
     
@@ -16,7 +16,7 @@ final class AppSession: ObservableObject {
     
     init(authService: AuthService = AuthService()) {
         self.authService = authService
-        
+
         restorePersistedProfile()
     }
     
@@ -36,7 +36,7 @@ final class AppSession: ObservableObject {
             errorMessage = "Unable to sign out right now. Please try again."
         }
     }
-    
+
     private func restorePersistedProfile() {
         guard
             let data = UserDefaults.standard.data(forKey: Storage.profileKey),
@@ -44,15 +44,15 @@ final class AppSession: ObservableObject {
         else {
             return
         }
-        
+
         profile = decodedProfile
     }
-    
+
     private func persist(profile: UserProfile) {
         guard let data = try? JSONEncoder().encode(profile) else { return }
         UserDefaults.standard.set(data, forKey: Storage.profileKey)
     }
-    
+
     private func clearPersistedProfile() {
         UserDefaults.standard.removeObject(forKey: Storage.profileKey)
     }

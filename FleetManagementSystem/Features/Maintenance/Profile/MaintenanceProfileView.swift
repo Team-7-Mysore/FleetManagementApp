@@ -84,8 +84,8 @@ struct MaintenanceProfileView: View {
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("close") { dismiss() }
                         .tint(brandRed)
                 }
             }
