@@ -64,21 +64,33 @@ struct VehicleDetailView: View {
 
                 // MARK: - Registration Details
                 Section(header: Text("Registration Details")) {
-                    // VIN with 17-digit enforcement and UI feedback
-                    VStack(alignment: .leading, spacing: 4) {
-                        InfoRow(title: "VIN", value: currentVehicle.vin.isEmpty ? "—" : currentVehicle.vin, isEditing: isEditing, text: binding(\.vin))
-                            .onChange(of: draftVehicle?.vin) { newValue in
-                                if let val = newValue, val.count > 17 {
-                                    draftVehicle?.vin = String(val.prefix(17))
+                    if isEditing {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("VIN")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(Color(.systemGray2))
+                            
+                            TextField("Enter 17-digit VIN", text: binding(\.vin))
+                                .textInputAutocapitalization(.characters)
+                                .disableAutocorrection(true)
+                                .onChange(of: draftVehicle?.vin) { _, newValue in
+                                    if let val = newValue, val.count > 17 {
+                                        draftVehicle?.vin = String(val.prefix(17))
+                                    }
                                 }
+                            
+                            if let vin = draftVehicle?.vin, !vin.isEmpty {
+                                HStack(spacing: 4) {
+                                    Image(systemName: vin.count == 17 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                        .font(.system(size: 12))
+                                    Text(vin.count == 17 ? "Valid VIN" : "Incomplete VIN")
+                                        .font(.system(size: 12, weight: .medium))
+                                }
+                                .foregroundColor(vin.count == 17 ? .green : .red)
                             }
-                        
-                        if isEditing {
-                            let count = draftVehicle?.vin.count ?? 0
-                            Text("\(count)/17 Characters")
-                                .font(.caption2)
-                                .foregroundColor(count == 17 ? .green : .red)
                         }
+                    } else {
+                        InfoRow(title: "VIN", value: currentVehicle.vin.isEmpty ? "—" : currentVehicle.vin, isEditing: false, text: nil)
                     }
                     
                     InfoRow(title: "RC Number", value: currentVehicle.rcNumber.isEmpty ? "—" : currentVehicle.rcNumber, isEditing: isEditing, text: binding(\.rcNumber))
