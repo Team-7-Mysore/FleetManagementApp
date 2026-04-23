@@ -40,59 +40,66 @@ class AddVehicleViewModel: ObservableObject {
     // MARK: - Validation Logic
     
     var isFormValid: Bool {
-            let isNameValid = !vehicleName.trimmingCharacters(in: .whitespaces).isEmpty
-            let isVinValid = vin.count == 17
-            let isPlateValid = isValidPlate(licensePlate)
-            let isRCValid = !rcNumber.isEmpty
-            let documentsValid = rcURL != nil && insuranceURL != nil
-            
-            return isNameValid && isVinValid && isPlateValid && isRCValid && documentsValid && !isLoading
-        }
+        let isNameValid = !vehicleName.trimmingCharacters(in: .whitespaces).isEmpty
+        let isVinValid = vin.count == 17
+        let isPlateValid = isValidPlate(licensePlate)
+        let isRCValid = isValidRC(rcNumber)
+        let documentsValid = rcURL != nil
+        
+        return isNameValid && isVinValid && isPlateValid && isRCValid && documentsValid && !isLoading
+    }
     
     func validate() -> String? {
         if vehicleName.trimmingCharacters(in: .whitespaces).isEmpty { return "Vehicle Name is required." }
-        if !isValidPlate(licensePlate) { return "Invalid License Plate. Use format: XX-00-XX-0000" }
+        if !isValidPlate(licensePlate) { return "Invalid License Plate. Expected format: XX-00-XX-0000" }
         if vin.count != 17 { return "VIN must be exactly 17 characters." }
         if !isValidRC(rcNumber) { return "Invalid RC Number (8-20 alphanumeric characters)." }
         
-        // Document requirements
         if rcURL == nil { return "RC Document upload is compulsory." }
-        if insuranceURL == nil { return "Insurance Policy upload is compulsory." }
-        
-        // Date Logic
         if registrationDate > Date() { return "Registration date cannot be in the future." }
         
         return nil
     }
 
-    // MARK: - Formatting Helpers
-    
-    func formatPlate(_ input: String) -> String {
-            let normalized = input.uppercased().replacingOccurrences(of: "[^A-Z0-9]", with: "", options: .regularExpression)
-            var result = ""
-            for (index, char) in normalized.enumerated() {
-                // Logic for XX-00-XX-0000
-                if index == 2 || index == 4 || index == 6 { result.append("-") }
-                if result.count < 13 { // Max length for XX-00-XX-0000
-                    result.append(char)
-                }
-            }
-            return result
-        }
-    private func isValidPlate(_ input: String) -> Bool {
-            let regex = "^[A-Z]{2}-[0-9]{2}-[A-Z]{1,2}-[0-9]{4}$"
-            return NSPredicate(format: "SELF MATCHES %@", regex).evaluate(with: input)
+    var isPlateValidCheck: Bool {
+            return isValidPlate(licensePlate)
         }
 
+        func formatPlate(_ input: String) -> String {
+            // 1. Strip everything and limit to 10 alphanumeric characters (XX00XX0000)
+            let raw = input.uppercased().replacingOccurrences(of: "[^A-Z0-9]", with: "", options: .regularExpression)
+            let normalized = String(raw.prefix(10))
+            
+            var result = ""
+            let characters = Array(normalized)
+            
+            for i in 0..<characters.count {
+                // Insert hyphens at exact logic positions: MH-12-AB-1234
+                if i == 2 || i == 4 || i == 6 {
+                    result.append("-")
+                }
+                result.append(characters[i])
+            }
+            
+            // Return string, hard capped at 13 characters (standard hyphenated length)
+            return String(result.prefix(13))
+        }
+
+        private func isValidPlate(_ input: String) -> Bool {
+            // Strictly matches State(2 Letters) - District(2 Numbers) - Series(2 Letters) - Number(4 Numbers)
+            // Format: AA-00-AA-0000
+            let regex = "^[A-Z]{2}-[0-9]{2}-[A-Z]{1,2}-[0-9]{4}$"
+            let predicate = NSPredicate(format: "SELF MATCHES %@", regex)
+            return predicate.evaluate(with: input)
+        }
     private func isValidRC(_ input: String) -> Bool {
         let rcRegex = "^[A-Z0-9/]{8,20}$"
         return NSPredicate(format: "SELF MATCHES %@", rcRegex).evaluate(with: input.uppercased())
     }
-
+    
     // MARK: - Persistence (Save to Supabase)
     
     func saveVehicle() async {
-        // 1. Final Validation Check
         if let error = validate() {
             await MainActor.run { self.errorMessage = error }
             return
@@ -106,8 +113,6 @@ class AddVehicleViewModel: ObservableObject {
         let sqlDateFormatter = DateFormatter()
         sqlDateFormatter.dateFormat = "yyyy-MM-dd"
 
-        // 2. Construct Payload
-        // Note: Ensuring VIN and RC are sanitized/uppercased
         let payload: [String: Any] = [
             "image_url": vehicleImageURL ?? "",
             "vehicleName": vehicleName.trimmingCharacters(in: .whitespaces),
@@ -131,7 +136,6 @@ class AddVehicleViewModel: ObservableObject {
         ]
 
         do {
-            // 3. API Request
             let functionURL = URL(string: "\(SUPABASE_URL)/functions/v1/bright-action")!
             var request = URLRequest(url: functionURL)
             request.httpMethod = "POST"
@@ -141,13 +145,11 @@ class AddVehicleViewModel: ObservableObject {
 
             let (data, response) = try await URLSession.shared.data(for: request)
             
-            // 4. Response Handling
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 await MainActor.run { self.isSuccess = true }
             } else {
-                // Attempt to extract specific error from Supabase Edge Function
                 let errorObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-                let message = errorObj?["error"] as? String ?? "Server error: \( (response as? HTTPURLResponse)?.statusCode ?? 0)"
+                let message = errorObj?["error"] as? String ?? "Server error: \((response as? HTTPURLResponse)?.statusCode ?? 0)"
                 throw NSError(domain: "SupabaseError", code: 0, userInfo: [NSLocalizedDescriptionKey: message])
             }
         } catch {
@@ -193,7 +195,6 @@ class AddVehicleViewModel: ObservableObject {
 
     func uploadFile(fileURL: URL, type: String) async {
         do {
-            // Start accessing security-scoped resource if coming from DocumentPicker
             let data = try Data(contentsOf: fileURL)
             let fileName = "\(UUID().uuidString).\(fileURL.pathExtension)"
             let storage = SupabaseManager.shared.client.storage.from("vehicle-documents")
