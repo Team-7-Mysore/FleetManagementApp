@@ -28,6 +28,8 @@ struct ImagePicker: UIViewControllerRepresentable {
             picker.delegate = context.coordinator
             return picker
         }
+        picker.delegate = context.coordinator
+        return picker
     }
     
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
