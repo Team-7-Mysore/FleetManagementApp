@@ -90,12 +90,7 @@ struct ReportIssueView: View {
             }
             .navigationTitle(issues.count > 1 ? "Report \(issues.count) Issues" : "Report Issue")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundStyle(.secondary)
-                }
-            }
+
             .alert("Issues Reported ✓", isPresented: $vm.submitSuccess) {
                 Button("Done") { dismiss() }
             } message: {
