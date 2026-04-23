@@ -208,7 +208,7 @@ class ChatViewModel: ObservableObject {
             // 🔥 STEP 1: GET ALL ROOMS OF CURRENT USER
             let myRooms: [ChatParticipant] = try await supabase
                 .from("chat_participants")
-                .select("chat_room_id")
+                .select("chat_room_id, user_id")
                 .eq("user_id", value: currentUserId)
                 .execute()
                 .value
