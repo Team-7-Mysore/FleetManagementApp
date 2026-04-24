@@ -33,4 +33,5 @@ struct AppNotification: Identifiable, Codable {
     var isRead: Bool
     var timestamp: Date
     var relatedId: UUID?
+    var inventoryItem: InventoryItem?
 }

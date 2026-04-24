@@ -97,11 +97,15 @@ struct PartDetailView: View {
                 HStack(spacing: 16) {
                     infoCard(title: "Stock Quantity", value: isEditing ? "" : "\(currentItem.quantity)", isEditing: isEditing) {
                         if isEditing {
-                            Stepper(value: $editQuantity, in: 0...10000) {
-                                Spacer()
-                                Text("\(editQuantity)")
-                                    .fontWeight(.bold)
-                            }
+                            TextField("Quantity", value: $editQuantity, format: .number)
+                                .keyboardType(.numberPad)
+                                .fontWeight(.bold)
+                                .multilineTextAlignment(.leading)
+                                .onChange(of: editQuantity) { newValue in
+                                    if newValue < 0 {
+                                        editQuantity = 0
+                                    }
+                                }
                         }
                     }
                     
@@ -109,7 +113,7 @@ struct PartDetailView: View {
                         if isEditing {
                             TextField("Location", text: $editLocation)
                                 .textFieldStyle(RoundedBorderTextFieldStyle())
-                                .multilineTextAlignment(.trailing)
+                                .multilineTextAlignment(.leading)
                         }
                     }
                 }

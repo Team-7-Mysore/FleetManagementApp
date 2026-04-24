@@ -396,6 +396,7 @@ struct AddEditWorkOrderView: View {
                     vehicleType: vehicleType,
                     priority: priority,
                     status: .pending,
+                    isApproved: false,
                     issueTitle: issueTitle.isEmpty ? "No Title Provided" : issueTitle,
                     issueDescription: issueDescription.isEmpty ? nil : issueDescription,
                     hoursWorked: 0.0,

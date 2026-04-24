@@ -13,80 +13,81 @@ struct PartDisplayInfo: Identifiable, Equatable {
 
 struct WorkOrderDetailView: View {
     @Environment(\.dismiss) private var dismiss
-
+    
     @StateObject private var viewModel = WorkOrderViewModel()
     @State var workOrder: WorkOrder
-
+    
     // MARK: - Fetched Relational Data
     @State private var tasks: [WorkOrderTask] = []
     @State private var partsUI: [PartDisplayInfo] = []
-
+    
     // MARK: - Editable Fields
     @State private var editedIssueTitle: String = ""
     @State private var editedIssueDescription: String = ""
-
+    
     @State private var newTaskName: String = ""
+
 
     @State private var editedMaintenanceNotes: String = ""
     @State private var editedHoursWorked: String = ""
     @State private var editedLabourCost: String = ""
-
+    
     @State private var editablePhotos: [String] = []
-
+    
     // MARK: - UI State
     @State private var isLoading: Bool = true
     @State private var isSaving: Bool = false
-
+    
     @State private var showingCompletionAlert: Bool = false
     @State private var showingCompletionReport: Bool = false
     @State private var saveTask: Task<Void, Never>?
-
+    
     // MARK: - Live Cost Calculations
     private let defaultLabourRate = 125.0
-
+    
     private var parsedHours: Double {
         Double(editedHoursWorked) ?? 0.0
     }
-
+    
     private var labourTotalCost: Double {
         Double(editedLabourCost) ?? 0.0
     }
-
+    
     private var partsTotalCost: Double {
         partsUI.reduce(0) { total, part in
             total + (Double(part.quantity) * part.unitCost)
         }
     }
-
+    
     private var subtotal: Double {
         labourTotalCost + partsTotalCost
     }
-
+    
     private var salesTax: Double {
         subtotal * 0.13
     }
-
+    
     private var finalTotalCost: Double {
         subtotal + salesTax
     }
-
+    
     var body: some View {
         // ZStack to prevent the keyboard from pushing the background up
         ZStack {
             Color(uiColor: .systemGroupedBackground)
                 .ignoresSafeArea()
                 .onTapGesture { hideKeyboard() }
-
+            
             ScrollView {
                 if isLoading {
                     ProgressView("Loading details...")
                         .padding(.top, 50)
                 } else {
                     VStack(spacing: 24) {
-
+                        
                         // MARK: 1. Header Section
                         WorkOrderHeaderView(workOrder: workOrder)
-
+                        
                         // MARK: 2. Issue Summary (Editable)
                         VStack(alignment: .leading, spacing: 8) {
                             SectionHeaderView(title: "ISSUE SUMMARY")
@@ -95,7 +96,7 @@ struct WorkOrderDetailView: View {
                                 issueDescription: $editedIssueDescription
                             )
                         }
-
+                        
                         // MARK: 3. Task Checklist
                         VStack(alignment: .leading, spacing: 8) {
                             SectionHeaderView(title: "MAINTENANCE TASKS")
@@ -117,23 +118,23 @@ struct WorkOrderDetailView: View {
                                                         .foregroundColor(task.isCompleted ? .blue : Color(uiColor: .systemGray4))
                                                         .font(.title3)
                                                 }
-
+                                                
                                                 Text(task.description)
                                                     .font(.subheadline)
                                                     .foregroundColor(task.isCompleted ? .secondary : .primary)
                                                     .strikethrough(task.isCompleted)
-
+                                                
                                                 Spacer()
                                             }
                                             .padding(.vertical, 4)
                                             Divider()
                                         }
                                     }
-
+                                    
                                     HStack {
                                         Image(systemName: "plus.circle.fill")
                                             .foregroundColor(.blue)
-
+                                        
                                         TextField("Add Task...", text: $newTaskName)
                                             .font(.subheadline)
                                             .padding(.vertical, 8)
@@ -154,7 +155,7 @@ struct WorkOrderDetailView: View {
                                 }
                             }
                         }
-
+                        
                         // MARK: 4. Parts Required Section
                         VStack(alignment: .leading, spacing: 8) {
                             SectionHeaderView(title: "PARTS REQUIRED")
@@ -178,6 +179,7 @@ struct WorkOrderDetailView: View {
                                             Divider()
                                         }
                                     }
+
 
                                     // FIX: Parts Dropdown Menu
                                     Menu {
@@ -208,11 +210,6 @@ struct WorkOrderDetailView: View {
                                             Image(systemName: "plus.circle.fill")
                                                 .foregroundColor(.blue)
 
-                                            Text("Select a Part from Inventory...")
-                                                .font(.subheadline)
-                                                .foregroundColor(.primary)
-
-                                            Spacer()
 
                                             Image(systemName: "chevron.up.chevron.down")
                                                 .font(.caption)
@@ -223,7 +220,7 @@ struct WorkOrderDetailView: View {
                                 }
                             }
                         }
-
+                        
                         // MARK: 5. Work Entry & Documentation Section
                         WorkEntryAndDocumentationView(
                             editedHoursWorked: $editedHoursWorked,
@@ -232,7 +229,7 @@ struct WorkOrderDetailView: View {
                             editedMaintenanceNotes: $editedMaintenanceNotes,
                             photos: $editablePhotos
                         )
-
+                        
                         // MARK: 6. LIVE COST SUMMARY
                         VStack(alignment: .leading, spacing: 8) {
                             SectionHeaderView(title: "ESTIMATED COST SUMMARY")
@@ -243,7 +240,7 @@ struct WorkOrderDetailView: View {
                                 total: finalTotalCost
                             )
                         }
-
+                        
                         // MARK: 7. Action Buttons
                         if workOrder.status == .pending {
                             Button(action: {
@@ -266,7 +263,7 @@ struct WorkOrderDetailView: View {
                             }
                             .padding(.top, 10)
                         }
-
+                        
                         Spacer().frame(height: 30) // Bottom padding
                     }
                     .padding(.horizontal)
@@ -283,7 +280,7 @@ struct WorkOrderDetailView: View {
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Work Order")
         .navigationBarTitleDisplayMode(.inline)
-
+        
         // MARK: - Toolbar Items
         .toolbar {
             // Close button for modal presentation
@@ -292,7 +289,7 @@ struct WorkOrderDetailView: View {
                     dismiss()
                 }
             }
-
+            
             // Generate / View Report Button
             if workOrder.status == .inProgress || workOrder.status == .completed {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -313,7 +310,7 @@ struct WorkOrderDetailView: View {
                 }
             }
         }
-
+        
         // MARK: - Navigation Triggers
         .alert("Complete Work Order?", isPresented: $showingCompletionAlert) {
             Button("Cancel", role: .cancel) { }
@@ -329,7 +326,7 @@ struct WorkOrderDetailView: View {
             )
             .presentationDragIndicator(.visible)
         }
-
+        
         // MARK: - Autosave Triggers
         .onChange(of: editedIssueTitle) {
             scheduleAutosave()
@@ -346,7 +343,7 @@ struct WorkOrderDetailView: View {
         .onChange(of: editedMaintenanceNotes) {
             scheduleAutosave()
         }
-
+        
         .onDisappear {
             hideKeyboard() // Clear keyboard on modal dismiss
             if !showingCompletionReport && !showingCompletionAlert {
@@ -362,12 +359,12 @@ struct WorkOrderDetailView: View {
             await viewModel.fetchAllInventory()
         }
     }
-
+    
     // MARK: - Actions
     private func hideKeyboard() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
-
+    
     private func startWorkOrder() {
         cancelPendingSave()
         isSaving = true
@@ -379,11 +376,11 @@ struct WorkOrderDetailView: View {
             }
         }
     }
-
+    
     private func completeWorkOrderAndShowReport() {
         workOrder.status = .completed
         workOrder.updatedAt = Date()
-
+        
         Task {
             await performSilentSave()
             await MainActor.run {
@@ -391,23 +388,23 @@ struct WorkOrderDetailView: View {
             }
         }
     }
-
+    
     // MARK: - Autosave Logic
     private func scheduleAutosave() {
         guard !isLoading else { return }
         cancelPendingSave()
-
+        
         saveTask = Task {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             guard !Task.isCancelled else { return }
             await performSilentSave()
         }
     }
-
+    
     private func cancelPendingSave() {
         saveTask?.cancel()
     }
-
+    
     private func performSilentSave() async {
         workOrder.issueTitle = editedIssueTitle
         workOrder.issueDescription = editedIssueDescription.isEmpty ? nil : editedIssueDescription
@@ -416,13 +413,14 @@ struct WorkOrderDetailView: View {
         workOrder.maintenanceNotes = editedMaintenanceNotes.isEmpty ? nil : editedMaintenanceNotes
         workOrder.images = editablePhotos.isEmpty ? nil : editablePhotos
         workOrder.updatedAt = Date()
-
+        
         do {
             try await viewModel.upsertWorkOrder(workOrder)
-
+            
             if !tasks.isEmpty {
                 try await viewModel.upsertTasks(tasks)
             }
+
 
             // Re-map the parts to update DB
             let workOrderParts = partsUI.map { uiPart in
@@ -435,34 +433,35 @@ struct WorkOrderDetailView: View {
             }
             try await viewModel.upsertParts(workOrderParts)
 
+
         } catch {
             print("🚨 Autosave failed: \(error)")
         }
     }
-
+    
     // MARK: - Fetch Relational Data
     private func fetchWorkOrderDetails() async {
         editedIssueTitle = workOrder.issueTitle
         editedIssueDescription = workOrder.issueDescription ?? ""
         editedMaintenanceNotes = workOrder.maintenanceNotes ?? ""
-
+        
         let initialHours = workOrder.hoursWorked ?? 0.0
         editedHoursWorked = String(format: "%.1f", initialHours)
-
+        
         // Calculate initial labour cost based on hours
         editedLabourCost = String(format: "%.2f", initialHours * defaultLabourRate)
-
+        
         editablePhotos = workOrder.images ?? []
-
+        
         do {
             let fetchedTasks = try await viewModel.fetchTasks(for: workOrder.workOrderId)
             let fetchedParts = try await viewModel.fetchParts(for: workOrder.workOrderId)
-
+            
             var mappedParts: [PartDisplayInfo] = []
             if !fetchedParts.isEmpty {
                 let inventoryIds = fetchedParts.map { $0.inventoryId }
                 let fetchedInventory = try await viewModel.fetchInventory(for: inventoryIds)
-
+                
                 for wp in fetchedParts {
                     if let inv = fetchedInventory.first(where: { $0.inventoryId == wp.inventoryId }) {
                         mappedParts.append(PartDisplayInfo(
@@ -474,7 +473,7 @@ struct WorkOrderDetailView: View {
                     }
                 }
             }
-
+            
             await MainActor.run {
                 self.tasks = fetchedTasks
                 self.partsUI = mappedParts
@@ -491,7 +490,7 @@ struct WorkOrderDetailView: View {
 
 struct WorkOrderHeaderView: View {
     let workOrder: WorkOrder
-
+    
     var body: some View {
         CardView {
             HStack(spacing: 16) {
@@ -499,22 +498,22 @@ struct WorkOrderHeaderView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Color.blue.opacity(0.1))
                         .frame(width: 60, height: 60)
-
+                    
                     Image(systemName: workOrder.vehicleType.sfSymbol)
                         .font(.title)
                         .foregroundColor(.blue)
                 }
-
+                
                 VStack(alignment: .leading, spacing: 6) {
                     Text(workOrder.vehicleName ?? "Fleet Vehicle")
                         .font(.title3)
                         .fontWeight(.bold)
                         .foregroundColor(.primary)
-
+                    
                     Text("VIN: \(workOrder.vehicleVin)")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
-
+                    
                     HStack(spacing: 8) {
                         Text("#WO-\(workOrder.workOrderId.uuidString.prefix(4).uppercased())")
                             .font(.caption2)
@@ -524,7 +523,7 @@ struct WorkOrderHeaderView: View {
                             .padding(.vertical, 4)
                             .background(Color.blue.opacity(0.1))
                             .clipShape(Capsule())
-
+                        
                         Text(workOrder.priority.rawValue.uppercased())
                             .font(.caption2)
                             .fontWeight(.bold)
@@ -539,7 +538,7 @@ struct WorkOrderHeaderView: View {
             }
         }
     }
-
+    
     private var priorityBackgroundColor: Color {
         switch workOrder.priority {
         case .low: return Color.green.opacity(0.1)
@@ -547,7 +546,7 @@ struct WorkOrderHeaderView: View {
         case .high, .urgent: return Color.red.opacity(0.1)
         }
     }
-
+    
     private var priorityTextColor: Color {
         switch workOrder.priority {
         case .low: return .green
@@ -560,7 +559,7 @@ struct WorkOrderHeaderView: View {
 struct EditableIssueSummaryCardView: View {
     @Binding var issueTitle: String
     @Binding var issueDescription: String
-
+    
     var body: some View {
         CardView {
             VStack(alignment: .leading, spacing: 0) {
@@ -570,9 +569,9 @@ struct EditableIssueSummaryCardView: View {
                     .foregroundColor(Color(red: 0.65, green: 0.35, blue: 0.15))
                     .padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-
+                
                 Divider()
-
+                
                 TextField("Detailed description...", text: $issueDescription, axis: .vertical)
                     .font(.subheadline)
                     .padding(.vertical, 12)
@@ -589,10 +588,10 @@ struct WorkEntryAndDocumentationView: View {
     let defaultLabourRate: Double
     @Binding var editedMaintenanceNotes: String
     @Binding var photos: [String]
-
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
-
+            
             VStack(alignment: .leading, spacing: 8) {
                 SectionHeaderView(title: "WORK ENTRY")
                 CardView {
@@ -614,13 +613,13 @@ struct WorkEntryAndDocumentationView: View {
                                     }
                                 }
                         }
-
+                        
                         VStack(alignment: .leading, spacing: 4) {
                             Text("LABOUR COST (₹)")
                                 .font(.caption2)
                                 .fontWeight(.medium)
                                 .foregroundColor(.secondary)
-
+                            
                             TextField("0.00", text: $editedLabourCost)
                                 .font(.subheadline)
                                 .keyboardType(.decimalPad)
@@ -629,7 +628,7 @@ struct WorkEntryAndDocumentationView: View {
                     }
                 }
             }
-
+            
             VStack(alignment: .leading, spacing: 8) {
                 SectionHeaderView(title: "MAINTENANCE NOTES")
                 CardView {
@@ -642,7 +641,7 @@ struct WorkEntryAndDocumentationView: View {
                         )
                 }
             }
-
+            
             VStack(alignment: .leading, spacing: 8) {
                 SectionHeaderView(title: "DOCUMENTATION")
                 CardView {
@@ -660,7 +659,7 @@ struct WorkEntryAndDocumentationView: View {
                                 .cornerRadius(12)
                                 .clipped()
                             }
-
+                            
                             Button(action: { }) {
                                 VStack(spacing: 4) {
                                     Image(systemName: "plus")
@@ -687,7 +686,7 @@ struct LiveCostTotalsView: View {
     let partsTotal: Double
     let tax: Double
     let total: Double
-
+    
     var body: some View {
         VStack(spacing: 8) {
             VStack(spacing: 8) {
@@ -695,9 +694,9 @@ struct LiveCostTotalsView: View {
                 LiveCostRow(label: "Parts subtotal", value: partsTotal)
                 LiveCostRow(label: "GST/Tax (13%)", value: tax)
             }
-
+            
             Divider().padding(.vertical, 4)
-
+            
             HStack {
                 Text("Estimated Total Cost")
                     .font(.headline)
@@ -719,7 +718,7 @@ struct LiveCostTotalsView: View {
 struct LiveCostRow: View {
     let label: String
     let value: Double
-
+    
     var body: some View {
         HStack {
             Text(label)
@@ -764,7 +763,7 @@ struct PartDetailRowView: View {
     @Binding var part: PartDisplayInfo
     var onQuantityChange: () -> Void
     var onDelete: () -> Void
-
+    
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
@@ -775,9 +774,9 @@ struct PartDetailRowView: View {
                     .font(.caption2)
                     .foregroundColor(.secondary)
             }
-
+            
             Spacer()
-
+            
             HStack(spacing: 16) {
                 Button(action: {
                     if part.quantity > 1 {
@@ -788,11 +787,11 @@ struct PartDetailRowView: View {
                     Image(systemName: "minus")
                         .foregroundColor(.blue)
                 }
-
+                
                 Text("\(part.quantity)")
                     .font(.subheadline)
                     .fontWeight(.medium)
-
+                
                 Button(action: {
                     part.quantity += 1
                     onQuantityChange()
@@ -805,7 +804,7 @@ struct PartDetailRowView: View {
             .padding(.vertical, 8)
             .background(Color(uiColor: .systemGray6))
             .cornerRadius(8)
-
+            
             Button(action: onDelete) {
                 Image(systemName: "trash.fill")
                     .foregroundColor(.red.opacity(0.8))
@@ -825,6 +824,7 @@ struct PartDetailRowView: View {
             vehicleType: .truck,
             priority: .high,
             status: .inProgress,
+            isApproved: false,
             issueTitle: "Engine System Fault",
             issueDescription: "Operator reports intermittent power loss and check engine light.",
             hoursWorked: 2.5,

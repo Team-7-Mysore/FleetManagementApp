@@ -1,14 +1,12 @@
 import SwiftUI
-import Supabase
 
 struct ChatListView: View {
+    let currentUserId: UUID
     @StateObject private var viewModel = ChatViewModel()
     @State private var navigationPath = NavigationPath()
     @State private var isShowingNewChat = false
+    @State private var pendingChatRoom: ChatRoom? = nil
     @State private var accent = Color(red: 0.639, green: 0.207, blue: 0.165)
-
-    // Resolved from Supabase auth session
-    @State private var currentUserId: UUID = UUID()
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -24,9 +22,10 @@ struct ChatListView: View {
                             .listRowSeparator(.hidden)
                         } else {
                             Section {
-                                ForEach(viewModel.chats) { chat in
+                                ForEach(filteredChats) { chat in
                                     NavigationLink(value: chat) {
-                                        ChatInboxRow(chat: chat, accent: accent)
+                                        let otherUserName = getOtherUserName(for: chat)
+                                        ChatInboxRow(chat: chat, accent: accent, otherUserName: otherUserName)
                                     }
                                 }
                             }
@@ -35,7 +34,6 @@ struct ChatListView: View {
                     .listStyle(PlainListStyle())
                 }
 
-                // Floating Search Bar
                 searchBar
                     .padding(.bottom, 30)
                     .padding(.horizontal, 20)
@@ -59,31 +57,53 @@ struct ChatListView: View {
                     }
                 }
             }
-            .sheet(isPresented: $isShowingNewChat) {
-                NewChatView(viewModel: viewModel, currentUserId: currentUserId) { room in
+            .sheet(isPresented: $isShowingNewChat, onDismiss: {
+                // Navigate AFTER sheet is fully dismissed — this is the fix
+                if let room = pendingChatRoom {
+                    print("🚀 Navigation triggered: \(room.id)")
                     navigationPath.append(room)
+                    pendingChatRoom = nil
+                }
+            }) {
+                NewChatView(viewModel: viewModel, currentUserId: currentUserId) { room in
+                    print("🚀 Room received from NewChatView: \(room.id)")
+                    pendingChatRoom = room
+                    isShowingNewChat = false
                 }
             }
             .task {
-                await resolveCurrentUser()
-                await viewModel.fetchChatRooms(userId: currentUserId)
                 await viewModel.fetchUsers(currentUserId: currentUserId)
+                await viewModel.fetchChatRooms(userId: currentUserId)
             }
             .refreshable {
-                await viewModel.fetchChatRooms(userId: currentUserId)
                 await viewModel.fetchUsers(currentUserId: currentUserId)
+                await viewModel.fetchChatRooms(userId: currentUserId)
             }
         }
     }
 
-    // MARK: - Resolve current user from Supabase session
-    private func resolveCurrentUser() async {
-        do {
-            let user = try await SupabaseManager.shared.client.auth.user()
-            currentUserId = user.id
-        } catch {
-            print("❌ ChatListView: could not resolve current user:", error)
+    // MARK: - Filtered Chats (UI-level, reliable)
+    private var filteredChats: [ChatRoom] {
+        let query = viewModel.searchText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        
+        // No search → show all
+        guard !query.isEmpty else { return viewModel.chats }
+        
+        return viewModel.chats.filter { chat in
+            let name = (getOtherUserName(for: chat) ?? "").lowercased()
+            let message = (chat.lastMessage ?? "").lowercased()
+            
+            return name.contains(query) || message.contains(query)
         }
+    }
+
+    private func getOtherUserName(for chat: ChatRoom) -> String? {
+        guard let otherUserId = chat.participantIds.first(where: { $0 != currentUserId }) else {
+            return nil
+        }
+        return viewModel.users.first(where: { $0.id == otherUserId })?.name
     }
 
     private var filterMenu: some View {
@@ -116,6 +136,14 @@ struct ChatListView: View {
 struct ChatInboxRow: View {
     let chat: ChatRoom
     let accent: Color
+    var otherUserName: String? = nil
+
+    private var displayName: String {
+        if let name = chat.name, !name.isEmpty {
+            return name
+        }
+        return otherUserName ?? "Chat"
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -128,7 +156,7 @@ struct ChatInboxRow: View {
                     .fill(Color(.systemGray6))
                     .frame(width: 55, height: 55)
 
-                Text(chat.name?.prefix(1).uppercased() ?? "C")
+                Text(displayName.prefix(1).uppercased())
                     .font(.title2)
                     .fontWeight(.bold)
                     .foregroundColor(accent)
@@ -136,7 +164,7 @@ struct ChatInboxRow: View {
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .top) {
-                    Text(chat.name ?? "Direct Chat")
+                    Text(displayName)
                         .font(.headline)
                         .foregroundColor(.primary)
 
@@ -172,14 +200,27 @@ struct DetailWrapper: View {
     let currentUserId: UUID
     let viewModel: ChatViewModel
 
+    private var otherUserInfo: (id: UUID, name: String)? {
+        guard let otherUserId = chat.participantIds.first(where: { $0 != currentUserId }) else {
+            return nil
+        }
+        guard let user = viewModel.users.first(where: { $0.id == otherUserId }) else {
+            return nil
+        }
+        return (id: otherUserId, name: user.name)
+    }
+
     var body: some View {
         ChatDetailRepresentable(
             chatRoomId: chat.id,
             currentUser: Sender(senderId: currentUserId.uuidString, displayName: "Me"),
-            otherUser: Sender(senderId: UUID().uuidString, displayName: chat.name ?? "User"),
+            otherUser: Sender(
+                senderId: otherUserInfo?.id.uuidString ?? UUID().uuidString,
+                displayName: otherUserInfo?.name ?? "Chat"
+            ),
             viewModel: viewModel
         )
-        .navigationTitle(chat.name ?? "Chat")
+        .navigationTitle(otherUserInfo?.name ?? "Chat")
         .navigationBarTitleDisplayMode(.inline)
         .ignoresSafeArea(.container, edges: .bottom)
     }

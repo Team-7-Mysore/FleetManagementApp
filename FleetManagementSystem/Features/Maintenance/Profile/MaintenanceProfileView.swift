@@ -7,132 +7,120 @@ struct MaintenanceProfileView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var isSigningOut = false
     
+    // Theme color matching your previous screens
+    private let brandRed = Color(hex: "#A3352A")
+    
     var body: some View {
         NavigationStack {
             List {
-                // Profile Section
+                // MARK: - Profile Header (Initial Circle + Name)
                 Section {
                     HStack(spacing: 16) {
-                        // Profile Avatar
-                        ZStack {
-                            Circle()
-                                .fill(Color(hex: "#A3352A").opacity(0.1))
-                                .frame(width: 60, height: 60)
-                            
-                            Image(systemName: "person.fill")
-                                .font(.system(size: 28))
-                                .foregroundColor(Color(hex: "#A3352A"))
-                        }
+                        Circle()
+                            .fill(brandRed.opacity(0.1))
+                            .frame(width: 64, height: 64)
+                            .overlay {
+                                Text(getInitials(profile?.name ?? "M"))
+                                    .font(.title2.weight(.bold))
+                                    .foregroundStyle(brandRed)
+                            }
                         
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(profile?.name ?? "Maintenance Staff")
-                                .font(.headline)
-                                .foregroundColor(.primary)
+                            Text(profile?.name ?? "Maintenance Personnel")
+                                .font(.title3.weight(.bold))
                             
-                            Text(profile?.email ?? "")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            
-                            HStack(spacing: 4) {
-                                Image(systemName: "wrench.and.screwdriver.fill")
+                            HStack(spacing: 6) {
+                                Image(systemName: profile?.role.systemImage ?? "wrench.and.screwdriver.fill")
                                     .font(.caption)
-                                Text("Maintenance Personnel")
-                                    .font(.caption)
+                                Text(profile?.role.displayName ?? "Maintenance Staff")
+                                    .font(.subheadline)
                             }
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(brandRed)
                         }
                     }
                     .padding(.vertical, 8)
                 }
                 
-                // Account Information
-                Section("Account Information") {
-                    if let profile = profile {
-                        HStack {
-                            Text("User ID")
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text(profile.userId.uuidString.prefix(8).uppercased())
-                                .foregroundColor(.primary)
-                                .font(.system(.body, design: .monospaced))
-                        }
-                        
-                        if let username = profile.username {
-                            HStack {
-                                Text("Username")
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                Text(username)
-                                    .foregroundColor(.primary)
-                            }
-                        }
-                        
-                        if let phoneNumber = profile.phoneNumber {
-                            HStack {
-                                Text("Phone")
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                Text(phoneNumber)
-                                    .foregroundColor(.primary)
-                            }
-                        }
-                    }
+                // MARK: - Contact & Account Information
+                Section("Contact Information") {
+                    profileRow(icon: "envelope", title: "Email", value: profile?.email ?? "Not Available")
+                    
+                    // Matching naming convention from your UserProfile.swift: .phoneNumber
+                    profileRow(icon: "phone", title: "Contact Number", value: profile?.phoneNumber ?? "Not Set")
+                    
+                    profileRow(icon: "person.text.rectangle", title: "Username", value: profile?.username ?? "Not Set")
                 }
                 
-                // Sign Out Section
+                // MARK: - App & Security Info
+                Section("App Information") {
+                    HStack {
+                        Label("Version", systemImage: "info.circle")
+                        Spacer()
+                        Text("1.0.0")
+                            .foregroundStyle(.secondary)
+                    }
+                    
+                }
+                
+                // MARK: - Logout Button
                 Section {
-                    Button(action: {
-                        Task {
-                            isSigningOut = true
-                            await onSignOut()
-                            dismiss()
-                        }
-                    }) {
+                    Button(role: .destructive) {
+                        handleSignOut()
+                    } label: {
                         HStack {
                             Spacer()
                             if isSigningOut {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle())
-                                    .tint(.white)
+                                ProgressView().tint(.red)
                             } else {
-                                Image(systemName: "rectangle.portrait.and.arrow.right")
-                                Text("Sign Out")
-                                    .fontWeight(.semibold)
+                                Label("Log Out", systemImage: "rectangle.portrait.and.arrow.right")
+                                    .font(.subheadline.weight(.semibold))
                             }
                             Spacer()
                         }
-                        .foregroundColor(.white)
-                        .padding(.vertical, 8)
                     }
-                    .listRowBackground(Color(hex: "#A3352A"))
-                    .disabled(isSigningOut)
                 }
+                .disabled(isSigningOut)
             }
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("close") { dismiss() }
+                        .tint(brandRed)
                 }
             }
         }
     }
-}
-
-#Preview {
-    MaintenanceProfileView(
-        profile: UserProfile(
-            userId: UUID(),
-            name: "John Mechanic",
-            email: "john@example.com",
-            role: .maintenance,
-            phoneNumber: "+1 234 567 8900",
-            createdAt: nil,
-            createdBy: nil,
-            username: "john_mechanic"
-        ),
-        onSignOut: {}
-    )
+    
+    // MARK: - Helpers
+    
+    private func handleSignOut() {
+        Task {
+            isSigningOut = true
+            await onSignOut()
+            isSigningOut = false
+            dismiss()
+        }
+    }
+    
+    private func getInitials(_ name: String) -> String {
+        let components = name.components(separatedBy: " ")
+        if components.count > 1 {
+            let first = components.first?.first ?? " "
+            let last = components.last?.first ?? " "
+            return "\(first)\(last)".uppercased()
+        }
+        return String(name.prefix(1)).uppercased()
+    }
+    
+    private func profileRow(icon: String, title: String, value: String) -> some View {
+        HStack {
+            Label(title, systemImage: icon)
+                .foregroundStyle(.primary)
+            Spacer()
+            Text(value)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.trailing)
+        }
+    }
 }

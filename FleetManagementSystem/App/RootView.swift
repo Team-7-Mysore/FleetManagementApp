@@ -28,6 +28,10 @@ struct RootView: View {
             MaintenanceDashboardView(profile: profile) {
                 await appSession.signOut()
             }
+        default:
+            MaintenanceDashboardView(profile: profile) {
+                await appSession.signOut()
+            }
         }
     }
 }

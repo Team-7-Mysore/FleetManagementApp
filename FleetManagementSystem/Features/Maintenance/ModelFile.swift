@@ -116,12 +116,13 @@ struct InventoryItem: Identifiable, Codable {
 // MARK: - 2. Work Order Model
 struct WorkOrder: Identifiable, Codable {
     let workOrderId: UUID
-    var vehicleVin: String
+    var vehicleVin: String?
     var vehicleName: String?
     var fleetUnitId: String
     var vehicleType: VehicleType
     var priority: WorkOrderPriority
     var status: WorkOrderStatus
+    let isApproved: Bool
     var issueTitle: String
     var issueDescription: String?
     var hoursWorked: Double?
@@ -143,6 +144,7 @@ struct WorkOrder: Identifiable, Codable {
         case vehicleType = "vehicle_type" // Added to coding keys!
         case priority
         case status
+        case isApproved = "is_approved"
         case issueTitle = "issue_title"
         case issueDescription = "issue_description"
         case hoursWorked = "hours_worked"
@@ -200,6 +202,7 @@ struct ChatRoom: Identifiable, Codable, Hashable {
     let createdAt: Date?
     var updatedAt: Date?         // Useful for sorting the inbox by "most recently active"
     var lastMessage: String?     // Local property for inbox preview
+    var participantIds: [UUID] = []  // Local property for participant IDs
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -274,4 +277,15 @@ struct ChatParticipantWithRoom: Codable {
 
 extension Color {
     static let TechBlue = Color(red: 0/255, green: 89/255, blue: 184/255)
+}
+
+
+struct ParticipantUserIdWithRoom: Codable {
+    let chatRoomId: UUID
+    let userId: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case chatRoomId = "chat_room_id"
+        case userId = "user_id"
+    }
 }

@@ -1,12 +1,13 @@
 import Foundation
 
+
 enum AppUserRole: String, Codable, CaseIterable, Identifiable {
     case driver = "driver"
     case maintenance = "maintenance"
     case fleetManager = "fleet_manager"
-
+    
     var id: String { rawValue }
-
+    
     var displayName: String {
         switch self {
         case .driver:       return "Driver"
@@ -14,7 +15,7 @@ enum AppUserRole: String, Codable, CaseIterable, Identifiable {
         case .fleetManager: return "Fleet Manager"
         }
     }
-
+    
     var icon: String {
         switch self {
         case .driver:       return "car.fill"
@@ -22,7 +23,14 @@ enum AppUserRole: String, Codable, CaseIterable, Identifiable {
         case .fleetManager: return "person.badge.key.fill"
         }
     }
-
+    
     /// Alias for icon — used in profile views
     var systemImage: String { icon }
+    
+    enum AppUserRole: String, Codable {
+        case driver
+        case manager
+        case maintenance
+        
+    }
 }

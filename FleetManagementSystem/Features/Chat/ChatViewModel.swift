@@ -2,6 +2,14 @@ import Foundation
 import Supabase
 import Combine
 
+struct ParticipantUserId: Codable {
+    var userId: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case userId = "user_id"
+    }
+}
+
 @MainActor
 class ChatViewModel: ObservableObject {
     @Published var chats: [ChatRoom] = []
@@ -12,10 +20,13 @@ class ChatViewModel: ObservableObject {
     @Published var searchText: String = "" {
         didSet { applyFilter() }
     }
+    // Note: this patch introduces chat filtering logic (Part 1) and extends
+    // existing user filtering behavior (Part 2 will use similar patterns).
     @Published var selectedRoleFilter: String = "All" {
         didSet { applyFilter() }
     }
     @Published var isLoading: Bool = false
+    @Published var isCreatingRoom: Bool = false
     
     private let supabase = SupabaseManager.shared.client
     private var cancellables = Set<AnyCancellable>()
@@ -30,20 +41,16 @@ class ChatViewModel: ObservableObject {
         defer { isLoading = false }
         
         do {
-            print("Fetching users...")
             let fetchedUsers: [AppUser] = try await supabase
                 .from("users")
                 .select()
-                .neq("user_id", value: currentUserId)
                 .execute()
                 .value
-            
-            self.users = fetchedUsers
-            self.applyFilter()
-            
-            print("Fetched users count:", fetchedUsers.count)
+
+            self.users = fetchedUsers.filter { $0.id != currentUserId }
+            self.filteredUsers = self.users
         } catch {
-            print("Error fetching users: \(error)")
+            print("❌ Error fetching users: \(error)")
         }
     }
     
@@ -53,7 +60,7 @@ class ChatViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            // 1. Fetch participants and rooms
+            // 1. Get all rooms where current user is a participant
             let participants: [ChatParticipantWithRoom] = try await supabase
                 .from("chat_participants")
                 .select("chat_rooms(*)")
@@ -61,46 +68,61 @@ class ChatViewModel: ObservableObject {
                 .execute()
                 .value
 
-            let rooms = participants.map { $0.chatRoom }
-            
-            // 2. Fetch last message for each room to determine visibility and preview
-            let fortyEightHoursAgo = Calendar.current.date(byAdding: .hour, value: -48, to: Date()) ?? Date()
-            let isoFormatter = ISO8601DateFormatter()
-            _ = isoFormatter.string(from: fortyEightHoursAgo)
-            
-            var filteredRooms: [ChatRoom] = []
-            
-            for var room in rooms {
-                // Fetch the absolute latest message
-                let lastMessages: [ChatMessage] = try await supabase
-                    .from("chat_messages")
-                    .select()
-                    .eq("chat_room_id", value: room.id)
-                    .order("created_at", ascending: false)
-                    .limit(1)
-                    .execute()
-                    .value
-                
-                if let lastMsg = lastMessages.first {
-                    // Check if the message is within 48h
-                    if let createdAt = lastMsg.createdAt, createdAt > fortyEightHoursAgo {
-                        room.updatedAt = createdAt // Use message time for sorting
-                        room.lastMessage = lastMsg.content
-                        filteredRooms.append(room)
-                    }
+            var rooms = participants.map { $0.chatRoom }
+
+            guard !rooms.isEmpty else {
+                self.chats = []
+                return
+            }
+
+            let roomIds = rooms.map { $0.id }
+
+            // 2. Fetch ALL participants for ALL rooms (single query)
+            let allParticipants: [ParticipantUserIdWithRoom] = try await supabase
+                .from("chat_participants")
+                .select("chat_room_id, user_id")
+                .in("chat_room_id", values: roomIds)
+                .execute()
+                .value
+
+            // Map roomId → participants
+            let participantsMap = Dictionary(grouping: allParticipants, by: { $0.chatRoomId })
+
+            // 3. Fetch ALL last messages (single query)
+            let messages: [ChatMessage] = try await supabase
+                .from("chat_messages")
+                .select()
+                .in("chat_room_id", values: roomIds)
+                .order("created_at", ascending: false)
+                .execute()
+                .value
+
+            // Map roomId → latest message
+            let messageMap = Dictionary(grouping: messages, by: { $0.chatRoomId })
+
+            // 4. Attach data
+            for i in 0..<rooms.count {
+                let roomId = rooms[i].id
+
+                // participants
+                rooms[i].participantIds = participantsMap[roomId]?.map { $0.userId } ?? []
+
+                // latest message
+                if let latest = messageMap[roomId]?.first {
+                    rooms[i].updatedAt = latest.createdAt
+                    rooms[i].lastMessage = latest.content
                 } else {
-                    // Room with no messages - show only if created recently (last 48h)
-                    if let roomCreated = room.createdAt, roomCreated > fortyEightHoursAgo {
-                        room.lastMessage = "No messages yet"
-                        filteredRooms.append(room)
-                    }
+                    rooms[i].lastMessage = "No messages yet"
                 }
             }
 
-            self.chats = filteredRooms.sorted { ($0.updatedAt ?? Date.distantPast) > ($1.updatedAt ?? Date.distantPast) }
+            // 5. Sort
+            self.chats = rooms.sorted {
+                ($0.updatedAt ?? Date.distantPast) > ($1.updatedAt ?? Date.distantPast)
+            }
 
         } catch {
-            print("Error fetching chat rooms:", error)
+            print("❌ Error fetching chat rooms:", error)
         }
     }
     
@@ -111,15 +133,33 @@ class ChatViewModel: ObservableObject {
         // Role filter
         if selectedRoleFilter != "All" {
             let roleValue = selectedRoleFilter.lowercased().replacingOccurrences(of: " ", with: "_")
-            result = result.filter { $0.role == roleValue }
+            result = result.filter { $0.role.lowercased() == roleValue }
         }
         
         // Search filter
         if !searchText.isEmpty {
-            result = result.filter { $0.name.lowercased().contains(searchText.lowercased()) }
+            let lower = searchText.lowercased()
+            result = result.filter { $0.name.lowercased().contains(lower) || $0.email.lowercased().contains(lower) }
         }
         
         self.filteredUsers = result
+    }
+
+    // MARK: - Part 1: Filter Chats
+    func filteredChats(for currentUserId: UUID) -> [ChatRoom] {
+        var result = chats
+
+        // Search by chat name OR last message
+        if !searchText.isEmpty {
+            let lower = searchText.lowercased()
+            result = result.filter { room in
+                let nameMatch = (room.name ?? "").lowercased().contains(lower)
+                let messageMatch = (room.lastMessage ?? "").lowercased().contains(lower)
+                return nameMatch || messageMatch
+            }
+        }
+
+        return result
     }
     
     // MARK: - Fetch Messages (with 48h limit)
@@ -173,74 +213,144 @@ class ChatViewModel: ObservableObject {
     
     // MARK: - Chat Room Creation / Fetching
     func getOrCreateChatRoom(currentUserId: UUID, otherUserId: UUID) async -> ChatRoom? {
+        guard !isCreatingRoom else { return nil }
+        isCreatingRoom = true
+        defer { isCreatingRoom = false }
+
+        print("📱 getOrCreateChatRoom: currentUserId=\(currentUserId), otherUserId=\(otherUserId)")
+
+        guard currentUserId != otherUserId else {
+            print("❌ Cannot chat with yourself")
+            return nil
+        }
+
         do {
-            // 1. Fetch all room IDs where the current user is a participant
-            let myParticipants: [ChatParticipant] = try await supabase
+            // 🔥 STEP 1: GET ALL ROOMS OF CURRENT USER
+            let myRooms: [ChatParticipant] = try await supabase
                 .from("chat_participants")
-                .select("chat_room_id")
+                .select("chat_room_id, user_id")
                 .eq("user_id", value: currentUserId)
                 .execute()
                 .value
-            
-            let myRoomIds = myParticipants.map { $0.chatRoomId }
-            
-            // 2. Check if any of these rooms also have the other user
-            if !myRoomIds.isEmpty {
-                let existingParticipants: [ChatParticipant] = try await supabase
+
+            let roomIds = myRooms.map { $0.chatRoomId }
+            print("📱 Found \(roomIds.count) rooms")
+
+            // 🔥 STEP 2: CHECK IF OTHER USER IS IN SAME ROOM
+            if !roomIds.isEmpty {
+                let matches: [ChatParticipant] = try await supabase
                     .from("chat_participants")
-                    .select("*, chat_rooms!inner(*)")
-                    .in("chat_room_id", values: myRoomIds)
+                    .select("chat_room_id")
+                    .in("chat_room_id", values: roomIds)
                     .eq("user_id", value: otherUserId)
-                    .eq("chat_rooms.type", value: ChatRoomType.direct.rawValue)
                     .execute()
                     .value
-                
-                if let firstMatch = existingParticipants.first {
-                    // Find the room object again to ensure we have it (already fetched with !inner)
-                    // But for mapping simplicity, let's just fetch it once more or extract it
-                    let room: ChatRoom = try await supabase
-                        .from("chat_rooms")
-                        .select()
-                        .eq("id", value: firstMatch.chatRoomId)
-                        .single()
-                        .execute()
-                        .value
-                    return room
+
+                if let match = matches.first {
+                    print("✅ Reusing existing room:", match.chatRoomId)
+
+                    return try await fetchChatRoom(
+                        roomId: match.chatRoomId,
+                        participantIds: [currentUserId, otherUserId]
+                    )
                 }
             }
-            
-            // 3. If no room exists, create a new one
+
+            // 🔥 STEP 3: CREATE NEW ROOM (ONLY IF NOT FOUND)
             let newRoomId = UUID()
-            let newRoom = ChatRoom(
-                id: newRoomId,
-                type: .direct,
-                name: nil, // Direct chats use participant names in UI
-                workOrderId: nil,
-                createdAt: Date(),
-                updatedAt: Date()
-            )
-            
+            print("📱 Creating new room:", newRoomId)
+
+            let insertRoom: [String: AnyJSON] = [
+                "id": .string(newRoomId.uuidString),
+                "type": .string(ChatRoomType.direct.rawValue),
+                "name": .null,
+                "work_order_id": .null
+            ]
+
             _ = try await supabase
                 .from("chat_rooms")
-                .insert(newRoom)
+                .insert(insertRoom)
                 .execute()
-            
-            // 4. Add participants
-            let participants: [ChatParticipant] = [
-                ChatParticipant(chatRoomId: newRoomId, userId: currentUserId, joinedAt: Date(), lastReadAt: Date()),
-                ChatParticipant(chatRoomId: newRoomId, userId: otherUserId, joinedAt: Date(), lastReadAt: Date())
+
+            // 🔥 STEP 4: ADD PARTICIPANTS
+            let now = ISO8601DateFormatter().string(from: Date())
+
+            let participants: [[String: AnyJSON]] = [
+                [
+                    "chat_room_id": .string(newRoomId.uuidString),
+                    "user_id": .string(currentUserId.uuidString),
+                    "joined_at": .string(now),
+                    "last_read_at": .string(now)
+                ],
+                [
+                    "chat_room_id": .string(newRoomId.uuidString),
+                    "user_id": .string(otherUserId.uuidString),
+                    "joined_at": .string(now),
+                    "last_read_at": .string(now)
+                ]
             ]
-            
+
             _ = try await supabase
                 .from("chat_participants")
                 .insert(participants)
                 .execute()
-            
-            return newRoom
-            
+
+            print("📱 Room + participants created")
+
+            // 🔥 STEP 5: RETURN ROOM (SAFE)
+            return try await fetchChatRoom(
+                roomId: newRoomId,
+                participantIds: [currentUserId, otherUserId]
+            )
+
         } catch {
-            print("Error in getOrCreateChatRoom: \(error)")
+            print("❌ Error in getOrCreateChatRoom:", error)
             return nil
         }
+    }
+
+    private func ensureUserExists(userId: UUID, email: String) async throws {
+        let existing: [AppUser] = try await supabase
+            .from("users")
+            .select()
+            .eq("user_id", value: userId.uuidString)
+            .execute()
+            .value
+
+        if existing.isEmpty {
+            print("⚠️ Creating missing user in DB")
+
+            let safeEmail = email.isEmpty ? "\(userId.uuidString.lowercased())@placeholder.local" : email
+            let fallbackName = safeEmail.split(separator: "@").first.map(String.init).flatMap { $0.isEmpty ? nil : $0 } ?? "User"
+
+            let newUser: [String: AnyJSON] = [
+                "user_id": .string(userId.uuidString),
+                "email": .string(safeEmail),
+                "name": .string(fallbackName),
+                "role": .string(AppUserRole.driver.rawValue)
+            ]
+
+            try await supabase
+                .from("users")
+                .insert(newUser)
+                .execute()
+        }
+    }
+
+    private func fetchChatRoom(roomId: UUID, participantIds: [UUID]) async throws -> ChatRoom {
+        let rooms: [ChatRoom] = try await supabase
+            .from("chat_rooms")
+            .select()
+            .eq("id", value: roomId)
+            .limit(1)
+            .execute()
+            .value
+            
+        guard var room = rooms.first else {
+            throw URLError(.badServerResponse)
+        }
+
+        room.participantIds = participantIds
+        return room
     }
 }

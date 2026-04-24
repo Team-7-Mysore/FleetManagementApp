@@ -122,7 +122,8 @@ extension ChatViewController: InputBarAccessoryViewDelegate {
         inputBar.inputTextView.text = ""
         
         Task {
-            await viewModel.sendMessage(chatRoomId: chatRoomId, senderId: UUID(uuidString: currentUser.senderId)!, content: content)
+            let senderUUID = UUID(uuidString: currentUser.senderId) ?? UUID()
+            await viewModel.sendMessage(chatRoomId: chatRoomId, senderId: senderUUID, content: content)
             loadMessages()
         }
     }

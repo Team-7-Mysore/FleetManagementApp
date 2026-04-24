@@ -38,6 +38,7 @@ struct FleetManagementSystemApp: App {
             }
             .tint(Color(hex: "#A3352A"))
             .onAppear {
+                NotificationManager.shared.requestPermission()
                 Task {
                     await checkSession()
                 }
@@ -52,15 +53,19 @@ struct FleetManagementSystemApp: App {
     private func checkSession() async {
         do {
             let session = try await SupabaseManager.shared.client.auth.session
-            if session != nil {
+
+            if !session.isExpired {
+                print("✅ Valid session found")
                 await fetchUserProfile()
+            } else {
+                print("❌ Session expired")
             }
         } catch {
-            print("❌ Session error:", error)
+            print("❌ No session found:", error)
         }
+
         isLoading = false
     }
-
     // MARK: - Fetch User Profile
     private func fetchUserProfile() async {
         do {
@@ -74,7 +79,9 @@ struct FleetManagementSystemApp: App {
                 .execute()
                 .value
 
-            appSession.setAuthenticated(profile: profile)
+            await MainActor.run {
+                appSession.setAuthenticated(profile: profile)
+            }
         } catch {
             print("❌ Profile fetch error:", error)
         }
@@ -96,9 +103,23 @@ struct FleetManagementSystemApp: App {
                     _ = try await SupabaseManager.shared.client.auth.session(from: url)
                 }
 
-                let isInvite = params["type"] == "invite"
-                showSetPassword = isInvite
-                await fetchUserProfile()
+                let session = try await SupabaseManager.shared.client.auth.session
+
+                if !session.isExpired {
+                    print("✅ Valid session found")
+                    await fetchUserProfile()
+                } else {
+                    print("❌ Session expired")
+                }
+                if !session.isExpired {
+                    let isInvite = params["type"] == "invite"
+                    
+                    await MainActor.run {
+                        showSetPassword = isInvite
+                    }
+
+                    await fetchUserProfile()
+                }
             } catch {
                 print("❌ Deep link error:", error)
             }
