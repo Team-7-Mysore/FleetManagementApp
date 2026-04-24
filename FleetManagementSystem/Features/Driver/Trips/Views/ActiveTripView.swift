@@ -152,9 +152,12 @@ struct ActiveTripView: View {
         .onAppear { 
             startTimer()
             createRoute()
-            locationManager.requestLocation()
+            locationManager.startTracking(vehicleId: trip.vehicleId, tripId: trip.id)
         }
-        .onDisappear { stopTimer() }
+        .onDisappear { 
+            stopTimer()
+            locationManager.stopTracking()
+        }
     }
 
 
@@ -246,59 +249,5 @@ struct ActiveTripView: View {
         destinationItem.openInMaps(launchOptions: [
             MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
         ])
-    }
-}
-
-// MARK: - LocationManager
-import Combine
-
-class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
-    
-    private let manager = CLLocationManager()
-    
-    @Published var userLocation: CLLocationCoordinate2D?
-    
-    override init() {
-        super.init()
-        manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyBest
-    }
-    
-    func requestLocation() {
-        manager.requestWhenInUseAuthorization()
-    }
-    
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        
-        switch manager.authorizationStatus {
-            
-        case .notDetermined:
-            manager.requestWhenInUseAuthorization()
-            
-        case .authorizedWhenInUse, .authorizedAlways:
-            print("✅ Authorized")
-            manager.startUpdatingLocation()
-            
-        case .denied, .restricted:
-            print("❌ Permission denied")
-            
-        default:
-            break
-        }
-    }
-    
-    // Delegate method (this is where updates come)
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        print("📍 didUpdateLocations called")
-        guard let location = locations.last else { return }
-        
-        DispatchQueue.main.async {
-            print("📍 New location:", location.coordinate)
-            self.userLocation = location.coordinate
-        }
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        print("Location error: \(error.localizedDescription)")
     }
 }
