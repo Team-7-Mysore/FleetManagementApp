@@ -5,7 +5,7 @@ struct NotificationItem: Codable, Identifiable {
     let inventoryId: UUID?
     let title: String
     let message: String
-    let isRead: Bool?
+    var isRead: Bool?
     let createdAt: Date?
 
     enum CodingKeys: String, CodingKey {

@@ -20,22 +20,28 @@ final class WorkOrderViewModel: ObservableObject {
     @Published var errorMessage: String? = nil
     
     // MARK: - Main Fetch
-    func fetchWorkOrders() async {
+    func fetchWorkOrders(profile: UserProfile?) async {
         isLoading = true
         errorMessage = nil
         
         do {
-            let fetchedOrders: [WorkOrder] = try await SupabaseManager.shared.client
+            // 1. Start building the query
+            var query = SupabaseManager.shared.client
                 .from("work_orders")
-            // UPDATED: Added vehicle_type to the list of joined columns
                 .select("*, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type)")
+
+            if let userProfile = profile, userProfile.role.rawValue.lowercased() == "maintenance" {
+                query = query.eq("maintenance_personnel_id", value: userProfile.userId.uuidString)
+            }
+            
+            // 3. Execute the query
+            let fetchedOrders: [WorkOrder] = try await query
                 .order("updated_at", ascending: false)
                 .execute()
                 .value
             
             filterOrders(fetchedOrders: fetchedOrders)
             
-
         } catch {
             print("ERROR:", error)
             self.errorMessage = "Failed to fetch work orders: \(error.localizedDescription)"

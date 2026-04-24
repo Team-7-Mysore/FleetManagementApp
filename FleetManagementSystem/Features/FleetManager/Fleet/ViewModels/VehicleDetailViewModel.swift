@@ -272,7 +272,7 @@ class VehicleDetailViewModel: ObservableObject {
     }
 }
 
-private extension VehicleDetailViewModel {
+extension VehicleDetailViewModel {
     func fetchVehicleDocumentsData(vehicleId: UUID) async throws -> Data {
         guard var components = URLComponents(string: "\(SUPABASE_URL)/rest/v1/vehicle_documents") else {
             throw URLError(.badURL)

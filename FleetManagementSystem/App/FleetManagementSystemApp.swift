@@ -1,3 +1,5 @@
+//FleetManagementSystemApp
+
 import SwiftUI
 import Supabase
 
@@ -36,35 +38,6 @@ struct FleetManagementSystemApp: App {
                     LoginView(viewModel: AuthViewModel(appSession: appSession))
                 }
             }
-            //
-            //            Group {
-            //                if isLoading {
-            //                    ProgressView("Loading...")
-            //                } else if showSetPassword {
-            //                    SetPasswordView {
-            //                        showSetPassword = false
-            //                    }
-            //                } else if let profile = appSession.profile {
-            //                    switch profile.role {
-            //                    case .driver:
-            //                        DriverWorkspaceView(profile: profile) {
-            //                            await appSession.signOut()
-            //                        }
-            //                    case .maintenance:
-            //                        MaintenanceHomeView(profile: profile) {
-            //                            await appSession.signOut()
-            //                        }
-            //                    case .fleetManager:
-            //                        FleetManagerTabView(profile: profile) {
-            //                            await appSession.signOut()
-            //                        }
-            //                    }
-            //                } else {
-            //                    LoginView(viewModel: AuthViewModel(appSession: appSession))
-            //                }
-            //            }
-            
-            
             .tint(Color(hex: "#A3352A"))
             .onAppear {
                 NotificationManager.shared.requestPermission()
@@ -82,7 +55,7 @@ struct FleetManagementSystemApp: App {
     private func checkSession() async {
         do {
             let session = try await SupabaseManager.shared.client.auth.session
-
+            
             if !session.isExpired {
                 print("✅ Valid session found")
                 await fetchUserProfile()
@@ -92,10 +65,9 @@ struct FleetManagementSystemApp: App {
         } catch {
             print("❌ No session found:", error)
         }
-
+        
         isLoading = false
     }
-    
     // MARK: - Fetch User Profile
     private func fetchUserProfile() async {
         do {
@@ -108,7 +80,7 @@ struct FleetManagementSystemApp: App {
                 .single()
                 .execute()
                 .value
-
+            
             await MainActor.run {
                 appSession.setAuthenticated(profile: profile)
             }
@@ -132,9 +104,9 @@ struct FleetManagementSystemApp: App {
                 } else if params["code"] != nil {
                     _ = try await SupabaseManager.shared.client.auth.session(from: url)
                 }
-
+                
                 let session = try await SupabaseManager.shared.client.auth.session
-
+                
                 if !session.isExpired {
                     print("✅ Valid session found")
                     await fetchUserProfile()
@@ -147,7 +119,7 @@ struct FleetManagementSystemApp: App {
                     await MainActor.run {
                         showSetPassword = isInvite
                     }
-
+                    
                     await fetchUserProfile()
                 }
             } catch {

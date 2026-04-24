@@ -156,8 +156,14 @@ struct VehicleDetailView: View {
                 }
             }
         }
-        .task { await vm.fetchVehicle(vehicleId: vehicle.id) }
-        .refreshable { await vm.fetchVehicle(vehicleId: vehicle.id) }
+        .task {
+            await vm.fetchVehicle(vehicleId: vehicle.id)
+            await vm.fetchMaintenanceReports(vehicleId: vehicle.id)
+        }
+        .refreshable {
+            await vm.fetchVehicle(vehicleId: vehicle.id)
+            await vm.fetchMaintenanceReports(vehicleId: vehicle.id)
+        }
         .sheet(isPresented: $showStaffSelection) {
             if let v = vm.vehicle { MaintenanceStaffPickerView(vehicle: v) }
         }

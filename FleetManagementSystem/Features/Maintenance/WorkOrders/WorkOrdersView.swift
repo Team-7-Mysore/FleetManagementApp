@@ -1,54 +1,61 @@
 import SwiftUI
+import Supabase
 
 struct WorkOrdersView: View {
     let profile: UserProfile?
     let onSignOut: () async -> Void
     
-    // Injecting the ViewModel to get real data silently
     @StateObject private var viewModel = WorkOrderViewModel()
+    @State private var unreadNotificationCount = 0
     
-    // Modal Presentation States
     @State private var selectedDetailOrder: WorkOrder?
     @State private var selectedReportOrder: WorkOrder?
-    @State private var showingAddOrder: Bool = false
-    @State private var showingProfile: Bool = false
+    @State private var showingProfile = false
     
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     
-                    // MARK: Top Horizontal Cards (Only 2: Pending & Completed)
+                    // MARK: Top Cards
                     HStack(spacing: 12) {
-                        // Pending Card
-                        NavigationLink(destination: FilteredWorkOrdersView(
-                            title: "Pending Orders",
-                            sections: [
-                                ("Approved", viewModel.approvedPending), // Index 0 (Default)
-                                ("Waiting Approval", viewModel.waitingForApproval) // Index 1
-                            ],
-                            onRefresh: { await viewModel.fetchWorkOrders() },
-                            profile: profile // Passing profile down
-                        )) {
+                        
+                        NavigationLink(
+                            destination: FilteredWorkOrdersView(
+                                title: "Pending Orders",
+                                sections: [
+                                    ("Approved", viewModel.approvedPending),
+                                    ("Waiting Approval", viewModel.waitingForApproval)
+                                ],
+                                onRefresh: {
+                                    await viewModel.fetchWorkOrders(profile: profile)
+                                },
+                                profile: profile
+                            )
+                        ) {
                             SummaryCardView(
                                 title: "PENDING",
                                 icon: "clock.fill",
-                                count: viewModel.waitingForApproval.count + viewModel.approvedPending.count,
+                                count: viewModel.waitingForApproval.count +
+                                viewModel.approvedPending.count,
                                 tintColor: .orange,
                                 backgroundColor: Color(uiColor: .systemBackground)
                             )
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .buttonStyle(.plain)
                         
-                        // Completed Card
-                        NavigationLink(destination: FilteredWorkOrdersView(
-                            title: "Completed Orders",
-                            sections: [
-                                ("", viewModel.completedOrders) // Single section hides the segmented control
-                            ],
-                            onRefresh: { await viewModel.fetchWorkOrders() },
-                            profile: profile // Passing profile down
-                        )) {
+                        NavigationLink(
+                            destination: FilteredWorkOrdersView(
+                                title: "Completed Orders",
+                                sections: [
+                                    ("", viewModel.completedOrders)
+                                ],
+                                onRefresh: {
+                                    await viewModel.fetchWorkOrders(profile: profile)
+                                },
+                                profile: profile
+                            )
+                        ) {
                             SummaryCardView(
                                 title: "COMPLETED",
                                 icon: "checkmark.circle.fill",
@@ -57,34 +64,46 @@ struct WorkOrdersView: View {
                                 backgroundColor: Color(uiColor: .systemBackground)
                             )
                         }
-                        .buttonStyle(PlainButtonStyle())
+                        .buttonStyle(.plain)
                     }
-                    .padding(.top, 10)
+                    .padding(.top,10)
                     .fixedSize(horizontal: false, vertical: true)
                     
-                    // MARK: List / Content Area (In Progress Only)
+                    
+                    // MARK: In Progress
                     VStack(alignment: .leading, spacing: 16) {
+                        
                         Text("IN PROGRESS TASKS")
                             .font(.caption)
                             .fontWeight(.bold)
                             .foregroundColor(.secondary)
-                            .tracking(1.0)
-                            .padding(.top, 8)
+                            .tracking(1)
+                            .padding(.top,8)
                         
-                        if viewModel.isLoading && viewModel.inProgressOrders.isEmpty {
+                        if viewModel.isLoading &&
+                            viewModel.inProgressOrders.isEmpty {
+                            
                             ProgressView("Fetching Orders...")
                                 .frame(maxWidth: .infinity)
                                 .padding()
+                            
                         } else if viewModel.inProgressOrders.isEmpty {
+                            
                             Text("No tasks currently in progress.")
                                 .foregroundColor(.secondary)
                                 .padding()
+                            
                         } else {
-                            VStack(spacing: 12) {
-                                ForEach(viewModel.inProgressOrders, id: \.workOrderId) { order in
-                                    Button(action: {
+                            
+                            VStack(spacing:12) {
+                                ForEach(
+                                    viewModel.inProgressOrders,
+                                    id: \.workOrderId
+                                ) { order in
+                                    
+                                    Button {
                                         selectedDetailOrder = order
-                                    }) {
+                                    } label: {
                                         WorkOrderRowView(
                                             workOrder: order,
                                             showStatus: false,
@@ -94,101 +113,146 @@ struct WorkOrdersView: View {
                                             }
                                         )
                                     }
-                                    .buttonStyle(PlainButtonStyle())
+                                    .buttonStyle(.plain)
                                 }
                             }
                         }
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal,16)
             }
+            
             .navigationTitle("Work Orders")
             .background(Color(uiColor: .systemGroupedBackground))
+            
             .toolbar {
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(destination: NotificationsView()) {
-                        Image(systemName: "bell")
-                            .foregroundColor(Color(hex: "#A3352A"))
+                    NavigationLink(destination: MaintenanceNotificationsView()) {
                         
+                        ZStack(alignment: .topTrailing) {
+                            
+                            Image(systemName: "bell")
+                                .font(.headline)
+                                .foregroundColor(Color(hex:"#A3352A"))
+                            
+                            if unreadNotificationCount > 0 {
+                                
+                                Text("\(unreadNotificationCount)")
+                                    .font(.system(size:10, weight:.bold))
+                                    .foregroundColor(.white)
+                                    .padding(5)
+                                    .background(.red)
+                                    .clipShape(Circle())
+                                    .offset(x:8,y:-6)
+                            }
+                        }
                     }
                 }
-                
                 
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
+                    Button {
                         showingProfile = true
-                    }) {
-                        Image(systemName: "person.circle")
+                    } label: {
+                        Image(systemName:"person.circle")
                             .font(.title3)
-                            .foregroundColor(Color(hex: "#A3352A"))
+                            .foregroundColor(Color(hex:"#A3352A"))
                     }
                 }
-                
-                
-            }
-            .task {
-                if viewModel.workOrders.isEmpty {
-                    await viewModel.fetchWorkOrders()
-                }
-            }
-            .refreshable {
-                await viewModel.fetchWorkOrders()
             }
             
-            // MARK: - Floating Action Button
+            .task {
+                if viewModel.workOrders.isEmpty {
+                    await viewModel.fetchWorkOrders(profile: profile)
+                }
+                
+                await fetchUnreadCount()
+            }
+            
+            .refreshable {
+                await viewModel.fetchWorkOrders(profile: profile)
+                await fetchUnreadCount()
+            }
+            
+            // MARK: Floating Add Button
             .overlay(alignment: .bottomTrailing) {
-                Button(action: {
-                    showingAddOrder = true
-                }) {
-                    Image(systemName: "plus")
+                
+                NavigationLink(destination: AddEditWorkOrderView()) {
+                    Image(systemName:"plus")
                         .font(.title2)
                         .fontWeight(.bold)
                         .foregroundColor(.white)
-                        .frame(width: 60, height: 60)
-                        .background(Color(hex: "#A3352A")) // Deep Red
+                        .frame(width:60,height:60)
+                        .background(Color(hex:"#A3352A"))
                         .clipShape(Circle())
-                        .shadow(color: Color.black.opacity(0.2), radius: 6, x: 0, y: 4)
+                        .shadow(
+                            color: .black.opacity(0.2),
+                            radius:6,
+                            x:0,
+                            y:4
+                        )
                 }
-                .padding(.trailing, 24)
-                .padding(.bottom, 24)
+                .padding(.trailing,24)
+                .padding(.bottom,24)
             }
             
-            // MARK: - Modals (Sheets)
-            .sheet(item: $selectedDetailOrder, onDismiss: {
-                Task {
-                    try? await Task.sleep(nanoseconds: 500_000_000)
-                    await viewModel.fetchWorkOrders()
+            .sheet(
+                item: $selectedDetailOrder,
+                onDismiss: {
+                    Task {
+                        try? await Task.sleep(
+                            nanoseconds: 500_000_000
+                        )
+                        await viewModel.fetchWorkOrders(profile: profile)
+                    }
                 }
-            }) { order in
+            ) { order in
                 NavigationStack {
-                    // ACTUALLY OPEN THE VIEW INSTEAD OF THE TEXT PLACEHOLDER
                     WorkOrderDetailView(workOrder: order)
                 }
             }
-            .sheet(item: $selectedReportOrder, onDismiss: {
-                Task {
-                    try? await Task.sleep(nanoseconds: 500_000_000)
-                    await viewModel.fetchWorkOrders()
+            
+            .sheet(
+                item: $selectedReportOrder,
+                onDismiss: {
+                    Task {
+                        try? await Task.sleep(
+                            nanoseconds: 500_000_000
+                        )
+                        await viewModel.fetchWorkOrders(profile: profile)
+                    }
                 }
-            }) { order in
+            ) { order in
                 WorkOrderCompletionReportView(workOrder: order)
             }
-            .sheet(isPresented: $showingAddOrder, onDismiss: {
-                Task {
-                    try? await Task.sleep(nanoseconds: 500_000_000)
-                    await viewModel.fetchWorkOrders()
-                }
-            }) {
-                NavigationStack {
-                    AddEditWorkOrderView()
-                }
-            }
+            
             .sheet(isPresented: $showingProfile) {
-                MaintenanceProfileView(profile: profile, onSignOut: onSignOut)
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
+                MaintenanceProfileView(
+                    profile: profile,
+                    onSignOut: onSignOut
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
             }
+        }
+    }
+    
+    
+    // MARK: Functions belong inside the View
+    private func fetchUnreadCount() async {
+        do {
+            let response = try await SupabaseManager.shared.client
+                .from("notifications")
+                .select("id", head: true, count: .exact)
+                .eq("is_read", value: false)
+                .execute()
+            
+            await MainActor.run {
+                unreadNotificationCount = response.count ?? 0
+            }
+            
+        } catch {
+            print("🚨 Error fetching unread count: \(error)")
         }
     }
 }

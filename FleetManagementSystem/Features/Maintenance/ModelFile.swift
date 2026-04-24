@@ -116,10 +116,8 @@ struct InventoryItem: Identifiable, Codable {
 // MARK: - 2. Work Order Model
 struct WorkOrder: Identifiable, Codable {
     let workOrderId: UUID
-    
-    // NEW: The database foreign key
     var vehicleId: UUID
-    // NEW: The nested object where Supabase will put the joined data
+    var maintenancePersonnelId: UUID?
     var vehicle: WorkOrderVehicle?
     
     var priority: WorkOrderPriority
@@ -135,13 +133,13 @@ struct WorkOrder: Identifiable, Codable {
     let createdAt: Date?
     var updatedAt: Date?
     
-    // Satisfies Identifiable for SwiftUI
     var id: UUID { workOrderId }
     
     enum CodingKeys: String, CodingKey {
         case workOrderId = "work_order_id"
         case vehicleId = "vehicle_id"
-        case vehicle = "vehicles" // Supabase uses the table name for joined data
+        case maintenancePersonnelId = "maintenance_personnel_id"
+        case vehicle = "vehicles"
         case priority
         case status
         case isApproved = "is_approved"
@@ -154,6 +152,25 @@ struct WorkOrder: Identifiable, Codable {
         case images
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+  
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        
+        try container.encode(workOrderId, forKey: .workOrderId)
+        try container.encode(vehicleId, forKey: .vehicleId)
+        try container.encode(priority, forKey: .priority)
+        try container.encode(status, forKey: .status)
+        try container.encode(isApproved, forKey: .isApproved)
+        try container.encode(issueTitle, forKey: .issueTitle)
+        try container.encodeIfPresent(issueDescription, forKey: .issueDescription)
+        try container.encodeIfPresent(hoursWorked, forKey: .hoursWorked)
+        try container.encodeIfPresent(estCost, forKey: .estCost)
+        try container.encodeIfPresent(internalNotes, forKey: .internalNotes)
+        try container.encodeIfPresent(maintenanceNotes, forKey: .maintenanceNotes)
+        try container.encodeIfPresent(images, forKey: .images)
+        try container.encodeIfPresent(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(updatedAt, forKey: .updatedAt)
     }
 }
 

@@ -76,7 +76,7 @@ struct TripsListView: View {
                         .presentationDragIndicator(.visible)
                 }
 
-                floatingActionButton
+                //floatingActionButton
             }
         }
     }
@@ -197,19 +197,19 @@ struct TripsListView: View {
         .listRowSeparator(.hidden)
     }
 
-    private var floatingActionButton: some View {
-        NavigationLink(destination: CreateTripView()) {
-            Image(systemName: "plus")
-                .font(.title2.weight(.bold))
-                .foregroundColor(.white)
-                .frame(width: 56, height: 56)
-                .background(Color.TechBlue)
-                .clipShape(Circle())
-                .shadow(radius: 6)
-        }
-        .padding(.trailing, 20)
-        .padding(.bottom, 24)
-    }
+//    private var floatingActionButton: some View {
+//        NavigationLink(destination: CreateTripView()) {
+//            Image(systemName: "plus")
+//                .font(.title2.weight(.bold))
+//                .foregroundColor(.white)
+//                .frame(width: 56, height: 56)
+//                .background(Color.TechBlue)
+//                .clipShape(Circle())
+//                .shadow(radius: 6)
+//        }
+//        .padding(.trailing, 20)
+//        .padding(.bottom, 24)
+//    }
 }
 
 // MARK: - Hex Color Extension

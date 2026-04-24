@@ -125,11 +125,18 @@ struct MaintenanceStaffPickerView: View {
                 .eq("vehicle_id", value: vehicle.id)
                 .execute()
             
+            // NOTE: I changed "user_id" to "recipient_id" because that is what your notifications table uses!
             let notificationData: [String: AnyEncodable] = [
-                "user_id": AnyEncodable(technician.id),
+                "recipient_id": AnyEncodable(technician.id),
+                
+                // 🚨 NEW: Tell the mechanic who sent this!
+                // (Replace this with however you get the logged-in manager's ID, or hardcode your UUID to test it)
+                "sender_id": AnyEncodable("3695958a-2a6e-4cac-a311-7541e5c03a2f"),
+                
+                "type": AnyEncodable("Maintenance"), // <-- Add the type so the mechanic's view catches it!
                 "title": AnyEncodable("New Task: \(issueSummary)"),
                 "message": AnyEncodable("You have been assigned to repair \(vehicle.name)"),
-                "related_entity_id": AnyEncodable(taskId),
+                "related_entity_id": AnyEncodable(taskId), // This is the issue_id
                 "is_read": AnyEncodable(false)
             ]
             try await SupabaseManager.shared.client.from("notifications").insert(notificationData).execute()
