@@ -3,82 +3,82 @@ import SwiftUI
 struct ChatListView: View {
     let currentUserId: UUID
     @StateObject private var viewModel = ChatViewModel()
-    @State private var navigationPath = NavigationPath()
     @State private var isShowingNewChat = false
     @State private var pendingChatRoom: ChatRoom? = nil
-    @State private var accent = Color(red: 0.639, green: 0.207, blue: 0.165)
+    @State private var queuedChatRoom: ChatRoom? = nil
+    private let accent = AppTheme.primaryGreen
 
     var body: some View {
-        NavigationStack(path: $navigationPath) {
-            ZStack(alignment: .bottom) {
-                VStack(spacing: 0) {
-                    List {
-                        if viewModel.chats.isEmpty && !viewModel.isLoading {
-                            ContentUnavailableView(
-                                "No Messages",
-                                systemImage: "bubble.left.and.bubble.right",
-                                description: Text("Start a conversation with your team.")
-                            )
-                            .listRowSeparator(.hidden)
-                        } else {
-                            Section {
-                                ForEach(filteredChats) { chat in
-                                    NavigationLink(value: chat) {
-                                        let otherUserName = getOtherUserName(for: chat)
-                                        ChatInboxRow(chat: chat, accent: accent, otherUserName: otherUserName)
-                                    }
+        ZStack(alignment: .bottom) {
+            VStack(spacing: 0) {
+                List {
+                    if viewModel.chats.isEmpty && !viewModel.isLoading {
+                        ContentUnavailableView(
+                            "No Messages",
+                            systemImage: "bubble.left.and.bubble.right",
+                            description: Text("Start a conversation with your team.")
+                        )
+                        .listRowSeparator(.hidden)
+                    } else {
+                        Section {
+                            ForEach(filteredChats) { chat in
+                                NavigationLink {
+                                    DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel)
+                                } label: {
+                                    let otherUserName = getOtherUserName(for: chat)
+                                    ChatInboxRow(chat: chat, accent: accent, otherUserName: otherUserName)
                                 }
                             }
                         }
                     }
-                    .listStyle(PlainListStyle())
                 }
-
-                searchBar
-                    .padding(.bottom, 30)
-                    .padding(.horizontal, 20)
+                .listStyle(PlainListStyle())
             }
-            .navigationTitle("Chat")
-            .navigationDestination(for: ChatRoom.self) { chat in
-                DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel)
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    HStack(spacing: 16) {
-                        filterMenu
 
-                        Button {
-                            isShowingNewChat = true
-                        } label: {
-                            Image(systemName: "square.and.pencil")
-                                .font(.system(size: 18, weight: .medium))
-                                .foregroundColor(accent)
-                        }
+            searchBar
+                .padding(.bottom, 30)
+                .padding(.horizontal, 20)
+        }
+        .navigationTitle("Chat")
+        .tint(accent)
+        .navigationDestination(item: $pendingChatRoom) { chat in
+            DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel)
+        }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                HStack(spacing: 16) {
+                    filterMenu
+
+                    Button {
+                        isShowingNewChat = true
+                    } label: {
+                        Image(systemName: "square.and.pencil")
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundColor(accent)
                     }
                 }
             }
-            .sheet(isPresented: $isShowingNewChat, onDismiss: {
-                // Navigate AFTER sheet is fully dismissed — this is the fix
-                if let room = pendingChatRoom {
-                    print("🚀 Navigation triggered: \(room.id)")
-                    navigationPath.append(room)
-                    pendingChatRoom = nil
-                }
-            }) {
-                NewChatView(viewModel: viewModel, currentUserId: currentUserId) { room in
-                    print("🚀 Room received from NewChatView: \(room.id)")
-                    pendingChatRoom = room
-                    isShowingNewChat = false
-                }
+        }
+        .sheet(isPresented: $isShowingNewChat, onDismiss: {
+            // Navigate only after sheet closes to keep transition clean.
+            if let room = queuedChatRoom {
+                pendingChatRoom = room
+                queuedChatRoom = nil
             }
-            .task {
-                await viewModel.fetchUsers(currentUserId: currentUserId)
-                await viewModel.fetchChatRooms(userId: currentUserId)
+        }) {
+            NewChatView(viewModel: viewModel, currentUserId: currentUserId) { room in
+                print("🚀 Room received from NewChatView: \(room.id)")
+                queuedChatRoom = room
+                isShowingNewChat = false
             }
-            .refreshable {
-                await viewModel.fetchUsers(currentUserId: currentUserId)
-                await viewModel.fetchChatRooms(userId: currentUserId)
-            }
+        }
+        .task {
+            await viewModel.fetchUsers(currentUserId: currentUserId)
+            await viewModel.fetchChatRooms(userId: currentUserId)
+        }
+        .refreshable {
+            await viewModel.fetchUsers(currentUserId: currentUserId)
+            await viewModel.fetchChatRooms(userId: currentUserId)
         }
     }
 

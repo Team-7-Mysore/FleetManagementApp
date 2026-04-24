@@ -349,8 +349,12 @@ struct VehicleInspectionView: View {
     private func handleSubmitConfirmation() {
         if let trip {
             if isPostTripFlow {
-                vm.submitAndCompleteTrip(notes: overallNotes, trip: trip)
-                router.resetPath()
+                Task {
+                    let didComplete = await vm.submitAndCompleteTrip(notes: overallNotes, trip: trip)
+                    if didComplete {
+                        router.resetPath()
+                    }
+                }
             } else {
                 vm.submitAndStartTrip(notes: overallNotes, trip: trip)
                 router.path = NavigationPath([AppRoute.activeTrip(trip)])

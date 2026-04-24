@@ -111,24 +111,27 @@ final class DriverDashboardViewModel: ObservableObject {
                     .filter { $0.status == .completed }
                     .reduce(0) { $0 + $1.distance }
 
-                // Step 3: Get vehicle from first assigned or active trip
-                if let vehicleId = dtoTrips
-                    .first(where: {
-                        let status = $0.status.lowercased()
-                        return status == "assigned"
-                            || status == "planned"
-                            || status == "upcoming"
-                            || status == "scheduled"
-                            || status == "active"
-                            || status == "in_progress"
-                    })?
-                    .vehicleId {
+                // Step 3: Resolve assigned vehicle only from active/upcoming mapped trips.
+                let activeOrUpcomingTripIDs = Set(
+                    trips
+                        .filter { $0.status == .inProgress || $0.status == .planned }
+                        .map(\.id)
+                )
+
+                let currentAssignment = dtoTrips.first { dto in
+                    guard let id = UUID(uuidString: dto.tripId) else { return false }
+                    return activeOrUpcomingTripIDs.contains(id)
+                }
+
+                if let vehicleId = currentAssignment?.vehicleId, !vehicleId.isEmpty {
                     await fetchVehicle(vehicleId: vehicleId)
                 } else {
+                    self.assignedVehicle = nil
                     print("⚠️ No vehicle_id found in trips")
                 }
 
             } catch {
+                self.assignedVehicle = nil
                 print("❌ FETCH ERROR:", error)
             }
         }
@@ -172,6 +175,7 @@ final class DriverDashboardViewModel: ObservableObject {
 
             print("✅ Vehicle loaded:", self.assignedVehicle as Any)
         } catch {
+            self.assignedVehicle = nil
             print("❌ VEHICLE FETCH ERROR:", error)
         }
     }

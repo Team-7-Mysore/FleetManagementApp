@@ -26,7 +26,8 @@ struct DriverDashboardView: View {
                 // MARK: - Vehicle Info
                 VStack(alignment: .leading, spacing: 12) {
                     AppTheme.sectionHeader("Assigned Vehicle")
-                    if let vehicle = vm.assignedVehicle {
+                    if (vm.activeTrip != nil || !vm.upcomingTrips.isEmpty),
+                       let vehicle = vm.assignedVehicle {
                         vehicleCard(vehicle)
                     } else {
                         vehicleEmptyCard
@@ -38,9 +39,25 @@ struct DriverDashboardView: View {
                 upcomingTripsSection
             }
             .padding(.horizontal)
-            .padding(.bottom, 20)
+            .padding(.bottom, 96)
         }
         .background(AppTheme.pageBackground)
+        .overlay(alignment: .bottomTrailing) {
+            NavigationLink {
+                ChatListView(currentUserId: user.id)
+            } label: {
+                Image(systemName: "message.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 58, height: 58)
+                    .background(AppTheme.primaryGreen)
+                    .clipShape(Circle())
+                    .shadow(color: Color.black.opacity(0.18), radius: 10, x: 0, y: 6)
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 20)
+            .padding(.bottom, 24)
+        }
         .navigationTitle("Hi \(user.firstName)")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
