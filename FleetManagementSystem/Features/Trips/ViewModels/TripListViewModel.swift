@@ -45,6 +45,7 @@ final class TripListViewModel: ObservableObject {
 
    /// Available vehicles (not in maintenance, not inactive, and not currently on a trip)
    var availableVehicles: [Vehicle] {
+
        let maintenanceVehicleIDs = Set(workOrders.filter { $0.status == .pending || $0.status == .inProgress }.map { $0.vehicleId })
        
        return vehicles.filter { vehicle in
@@ -66,6 +67,7 @@ final class TripListViewModel: ObservableObject {
            
            return true
        }
+
    }
 
    var availableVehicleCount: Int { availableVehicles.count }

@@ -128,6 +128,7 @@ struct WorkOrdersView: View {
             .toolbar {
 
                 ToolbarItem(placement: .navigationBarTrailing) {
+
                     NavigationLink(
                         destination: MaintenanceNotificationsView(
                             unreadCount: $unreadNotificationCount
@@ -141,7 +142,6 @@ struct WorkOrdersView: View {
                                 .foregroundColor(Color(hex:"#A3352A"))
 
                             if unreadNotificationCount > 0 {
-
                                 Text("\(unreadNotificationCount)")
                                     .font(.system(size:10, weight:.bold))
                                     .foregroundColor(.white)
@@ -165,12 +165,24 @@ struct WorkOrdersView: View {
                 }
             }
 
+            // MARK: Real-Time & Auto-Fetch
             .task {
-                if viewModel.workOrders.isEmpty {
-                    await viewModel.fetchWorkOrders(profile: profile)
-                }
-                
+                // 1. Fetch fresh data immediately when the view appears
+                await viewModel.fetchWorkOrders(profile: profile)
                 await fetchUnreadCount()
+
+                // 2. Setup Supabase Realtime Listener
+                let channel = SupabaseManager.shared.client.channel("work_orders_realtime")
+                let changes = channel.postgresChange(AnyAction.self, schema: "public", table: "work_orders")
+
+                await channel.subscribe()
+
+                // 3. Listen for changes in the background
+                for await _ in changes {
+                    print("📡 Supabase Database updated! Refreshing UI instantly...")
+                    await viewModel.fetchWorkOrders(profile: profile)
+                    await fetchUnreadCount()
+                }
             }
 
             .refreshable {
@@ -181,7 +193,15 @@ struct WorkOrdersView: View {
             // MARK: Floating Add Button
             .overlay(alignment: .bottomTrailing) {
 
-                NavigationLink(destination: AddEditWorkOrderView()) {
+                NavigationLink(destination: AddEditWorkOrderView(maintenancePersonnelId: profile?.userId)
+                    .onDisappear {
+                        // Fallback: Force refresh precisely when the Add screen closes
+                        Task {
+                            await viewModel.fetchWorkOrders(profile: profile)
+                            await fetchUnreadCount()
+                        }
+                    }
+                ) {
                     Image(systemName:"plus")
                         .font(.title2)
                         .fontWeight(.bold)
@@ -241,39 +261,41 @@ struct WorkOrdersView: View {
         }
     }
 
-
     // MARK: Functions belong inside the View
-    struct NotificationIDOnly: Decodable {
-        let id: UUID
-    }
-
     private func fetchUnreadCount() async {
-        do {
-            // Delay slightly to allow any pending DB 'mark as read' updates from other screens to commit
-            try? await Task.sleep(nanoseconds: 800_000_000)
 
-            let session = try await SupabaseManager.shared.client.auth.session
+        do {
+            let session =
+            try await SupabaseManager.shared
+                .client.auth.session
+
             let currentUserId = session.user.id
 
-            let fetchedUnread: [NotificationIDOnly] = try await SupabaseManager.shared.client
+            let response =
+            try await SupabaseManager.shared.client
                 .from("notifications")
-                .select("id")
-                .eq("recipient_id", value: currentUserId.uuidString)
-                .eq("is_read", value: false)
+                .select(
+                    "id",
+                    head: true,
+                    count: .exact
+                )
+                .eq(
+                    "recipient_id",
+                    value: currentUserId.uuidString
+                )
+                .eq(
+                    "is_read",
+                    value: false
+                )
                 .execute()
-                .value
-
-            let locallyRead = UserDefaults.standard.stringArray(forKey: "LocalReadNotifications") ?? []
-            
-            // Filter out notifications we've already seen locally (in case DB hasn't caught up or updated properly)
-            let trulyUnread = fetchedUnread.filter { !locallyRead.contains($0.id.uuidString) }
 
             await MainActor.run {
-                unreadNotificationCount = trulyUnread.count
+                unreadNotificationCount =
+                response.count ?? 0
             }
 
         } catch {
-            print("Error fetching unread count: \(error)")
+            print(error)
         }
     }
 }
@@ -282,7 +304,7 @@ struct FilteredWorkOrdersView: View {
     let title: String
     let sections: [(header: String, orders: [WorkOrder])]
     var onRefresh: (() async -> Void)? = nil
-    let profile: UserProfile? // Added so we can pass it down to WorkOrderDetailView
+    let profile: UserProfile?
 
     @State private var selectedDetailOrder: WorkOrder?
     @State private var selectedReportOrder: WorkOrder?

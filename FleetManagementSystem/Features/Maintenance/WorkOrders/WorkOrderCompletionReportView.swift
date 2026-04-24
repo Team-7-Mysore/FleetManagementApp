@@ -1,7 +1,6 @@
 import SwiftUI
 import PDFKit
 
-// MARK: - Final Comprehensive Work Order Report View
 struct WorkOrderCompletionReportView: View {
     @Environment(\.dismiss) private var dismiss
     let workOrder: WorkOrder
@@ -14,7 +13,6 @@ struct WorkOrderCompletionReportView: View {
     @State private var isLoading: Bool = true
     @State private var isUploading: Bool = false
     
-    // A4 Paper standard dimensions (Points)
     private let pageWidth: CGFloat = 595.2
     private let pageHeight: CGFloat = 841.8
     
@@ -26,12 +24,10 @@ struct WorkOrderCompletionReportView: View {
                 if isLoading {
                     VStack(spacing: 16) {
                         ProgressView().scaleEffect(1.5)
-                        Text("Compiling Full Service History...")
-                            .font(.subheadline).foregroundColor(.secondary)
+                        Text("Compiling Final Report...")
                     }
                 } else {
                     ScrollView {
-                        // This is the preview the user sees on the iPhone screen
                         printableReportContent
                             .frame(maxWidth: .infinity)
                     }
@@ -42,10 +38,7 @@ struct WorkOrderCompletionReportView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     if isUploading {
-                        HStack(spacing: 8) {
-                            ProgressView()
-                            Text("Saving PDF...").font(.caption).foregroundColor(.secondary)
-                        }
+                        ProgressView()
                     } else {
                         Button("Done") { dismiss() }.fontWeight(.bold)
                     }
@@ -57,26 +50,20 @@ struct WorkOrderCompletionReportView: View {
         }
     }
     
-    // MARK: - COMPLETE REPORT LAYOUT
-    // This VStack contains every single piece of data from your models.
+    // MARK: - REPORT CONTENT
     private var printableReportContent: some View {
         VStack(spacing: 24) {
             
-            // 1. HEADER: Vehicle & Priority
+            // 1. VEHICLE HEADER
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Label(workOrder.vehicle?.vehicleName ?? "Unknown Vehicle",
-                              systemImage: workOrder.vehicle?.vehicleType?.sfSymbol ?? "car.fill")
-                        .font(.headline)
-                        
-                        Text("VIN: \(workOrder.vehicle?.vin ?? "N/A")")
-                        Text("PLATE: \(workOrder.vehicle?.numberPlate ?? "N/A")")
+                        Text(workOrder.vehicle?.vehicleName ?? "Fleet Vehicle")
+                            .font(.title2).bold()
+                        Text("VIN: \(workOrder.vehicle?.vin ?? "N/A")").font(.caption).foregroundColor(.secondary)
+                        Text("PLATE: \(workOrder.vehicle?.numberPlate ?? "N/A")").font(.caption).foregroundColor(.secondary)
                     }
-                    .font(.caption).foregroundColor(.secondary)
-                    
                     Spacer()
-                    
                     VStack(alignment: .trailing, spacing: 6) {
                         Text(workOrder.status.rawValue.uppercased())
                             .font(.caption2).bold().padding(.horizontal, 8).padding(.vertical, 4)
@@ -84,52 +71,52 @@ struct WorkOrderCompletionReportView: View {
                         
                         Text(workOrder.priority.rawValue.uppercased())
                             .font(.caption2).bold().padding(.horizontal, 8).padding(.vertical, 4)
-                            .background(workOrder.priority == .urgent ? Color.red.opacity(0.1) : Color.orange.opacity(0.1))
-                            .foregroundColor(workOrder.priority == .urgent ? .red : .orange).clipShape(Capsule())
+                            .background(Color.orange.opacity(0.1)).foregroundColor(.orange).clipShape(Capsule())
                     }
                 }
-                
                 Divider()
-                
                 HStack {
                     ReportDetailColumn(title: "REPORT ID", value: "#WO-\(workOrder.workOrderId.uuidString.prefix(8).uppercased())")
                     Spacer()
-                    ReportDetailColumn(title: "DATE COMPLETED", value: workOrder.updatedAt?.formatted(date: .abbreviated, time: .shortened) ?? "N/A")
+                    ReportDetailColumn(title: "COMPLETION DATE", value: workOrder.updatedAt?.formatted(date: .abbreviated, time: .shortened) ?? "N/A")
                 }
             }
-            .padding().background(Color(uiColor: .systemBackground)).cornerRadius(16)
+            .padding().background(Color.white).cornerRadius(16)
             
-            // 2. ISSUE SUMMARY
-            ReportSectionView(title: "COMPLAINT / ISSUE") {
+            // 2. ISSUE SUMMARY (Fixed Clipping)
+            ReportSectionView(title: "WORK PERFORMED") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(workOrder.issueTitle).font(.headline)
+                    Text(workOrder.issueTitle)
+                        .font(.headline)
+                        .fixedSize(horizontal: false, vertical: true) // Prevents title cut-off
+                    
                     if let desc = workOrder.issueDescription {
-                        Text(desc).font(.subheadline).foregroundColor(.secondary)
+                        Text(desc)
+                            .font(.subheadline).foregroundColor(.secondary)
+                            .fixedSize(horizontal: false, vertical: true) // Prevents description cut-off
                     }
                 }
                 .padding().frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color(uiColor: .systemGray6)).cornerRadius(12)
             }
             
-            // 3. TASKS PERFORMED
+            // 3. TASKS
             if !tasks.isEmpty {
-                ReportSectionView(title: "LABOUR & SERVICE TASKS") {
+                ReportSectionView(title: "SERVICE TASKS") {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(tasks) { task in
                             HStack {
                                 Image(systemName: "checkmark.circle.fill").foregroundColor(.blue)
                                 Text(task.description).font(.subheadline)
                                 Spacer()
-                            }
-                            .padding()
+                            }.padding()
                             if task.id != tasks.last?.id { Divider() }
                         }
-                    }
-                    .background(Color(uiColor: .systemBackground)).cornerRadius(12)
+                    }.background(Color.white).cornerRadius(12)
                 }
             }
             
-            // 4. PARTS INSTALLED
+            // 4. PARTS
             if !partsUI.isEmpty {
                 ReportSectionView(title: "PARTS & MATERIALS") {
                     VStack(alignment: .leading, spacing: 0) {
@@ -137,72 +124,52 @@ struct WorkOrderCompletionReportView: View {
                             HStack {
                                 VStack(alignment: .leading) {
                                     Text(part.name).font(.subheadline).bold()
-                                    Text("Qty: \(part.quantity) @ ₹\(String(format: "%.2f", part.unitCost))").font(.caption2).foregroundColor(.secondary)
+                                    Text("Qty: \(part.quantity) @ ₹\(String(format: "%.2f", part.unitCost))").font(.caption).foregroundColor(.secondary)
                                 }
                                 Spacer()
                                 Text("₹\(String(format: "%.2f", Double(part.quantity) * part.unitCost))").font(.subheadline).bold()
-                            }
-                            .padding()
+                            }.padding()
                             if part.id != partsUI.last?.id { Divider() }
                         }
-                    }
-                    .background(Color(uiColor: .systemBackground)).cornerRadius(12)
+                    }.background(Color.white).cornerRadius(12)
                 }
             }
             
-            // 5. FINANCIALS & METRICS
-            ReportSectionView(title: "SERVICE METRICS") {
+            // 5. COST METRICS (Removed "Est")
+            ReportSectionView(title: "FINANCIAL SUMMARY") {
                 VStack(spacing: 0) {
-                    ReportRowView(label: "Time Spent", value: "\(String(format: "%.1f", workOrder.hoursWorked ?? 0.0)) Hours")
+                    ReportRowView(label: "Labour Time", value: "\(String(format: "%.1f", workOrder.hoursWorked ?? 0.0)) Hours")
                     Divider()
-                    ReportRowView(label: "Grand Total (Est.)", value: "₹\(String(format: "%.2f", workOrder.estCost ?? 0.0))")
+                    ReportRowView(label: "Total Service Cost", value: "₹\(String(format: "%.2f", workOrder.estCost ?? 0.0))")
                         .foregroundColor(.blue)
                 }
-                .background(Color(uiColor: .systemBackground)).cornerRadius(12)
+                .background(Color.white).cornerRadius(12)
             }
             
-            // 6. NOTES (Maintenance + Internal)
-            ReportSectionView(title: "REMARKS") {
-                VStack(alignment: .leading, spacing: 12) {
-                    if let mNotes = workOrder.maintenanceNotes {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("MECHANIC NOTES").font(.caption2).bold().foregroundColor(.secondary)
-                            Text(mNotes).font(.subheadline)
-                        }
-                    }
-                    
-                    if let iNotes = workOrder.internalNotes {
-                        Divider()
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("INTERNAL OFFICE NOTES").font(.caption2).bold().foregroundColor(.secondary)
-                            Text(iNotes).font(.subheadline).italic()
-                        }
-                    }
-                }
-                .padding().frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(uiColor: .systemBackground)).cornerRadius(12)
-            }
-            
-            // 7. PHOTO DOCUMENTATION
-            if let images = workOrder.images, !images.isEmpty {
-                ReportSectionView(title: "ATTACHED DOCUMENTATION") {
-                    VStack(spacing: 16) {
+            // 6. PHOTO DOCUMENTATION (With Placeholder Fix)
+            ReportSectionView(title: "PHOTO DOCUMENTATION") {
+                VStack(spacing: 16) {
+                    if let images = workOrder.images, !images.isEmpty {
                         ForEach(images, id: \.self) { urlString in
-                            AsyncImage(url: URL(string: urlString)) { image in
-                                image.resizable().scaledToFit()
-                            } placeholder: {
-                                RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.1))
-                                    .frame(height: 200).overlay(ProgressView())
-                            }
-                            .cornerRadius(12)
+                            PDFImageComponent(urlString: urlString)
                         }
+                    } else {
+                        // Placeholder if no photos exist
+                        VStack(spacing: 12) {
+                            Image(systemName: "photo.on.rectangle.angled")
+                                .font(.largeTitle).foregroundColor(.gray.opacity(0.4))
+                            Text("No photo documentation provided for this report.")
+                                .font(.caption).foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity).padding(.vertical, 40)
+                        .background(Color.white).cornerRadius(12)
                     }
                 }
             }
             
-            Text("This is an electronically generated report.").font(.caption2).foregroundColor(.gray).padding(.top, 20)
+            Text("Generated on \(Date().formatted())").font(.caption2).foregroundColor(.gray)
         }
-        .padding(40) // Standard PDF Margins
+        .padding(40)
     }
     
     // MARK: - DATA FETCHING
@@ -217,12 +184,7 @@ struct WorkOrderCompletionReportView: View {
                 let fetchedInventory = try await viewModel.fetchInventory(for: inventoryIds)
                 for wp in fetchedParts {
                     if let inv = fetchedInventory.first(where: { $0.inventoryId == wp.inventoryId }) {
-                        mappedParts.append(PartDisplayInfo(
-                            inventoryId: inv.inventoryId,
-                            name: inv.partName,
-                            quantity: wp.quantityRequired,
-                            unitCost: inv.costPerUnit ?? 0.0
-                        ))
+                        mappedParts.append(PartDisplayInfo(inventoryId: inv.inventoryId, name: inv.partName, quantity: wp.quantityRequired, unitCost: inv.costPerUnit ?? 0.0))
                     }
                 }
             }
@@ -233,81 +195,83 @@ struct WorkOrderCompletionReportView: View {
                 self.isLoading = false
             }
             
-            // Wait for AsyncImages to trigger/load and SwiftUI to settle
-            try? await Task.sleep(nanoseconds: 1_200_000_000)
-            
-            await MainActor.run {
-                generateAndUploadPDF()
-            }
-            
+            // IMPORTANT: Increased delay to ensure all images in the report load into cache
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            await MainActor.run { generateAndUploadPDF() }
         } catch {
-            print("🚨 Failed to gather report data: \(error)")
             await MainActor.run { self.isLoading = false }
         }
     }
     
-    // MARK: - PDF RENDERER (OFF-SCREEN WINDOW FIX)
+    // MARK: - PDF RENDERER
     @MainActor
     private func generateAndUploadPDF() {
         isUploading = true
-        
-        // Setup Controller
         let controller = UIHostingController(rootView: printableReportContent.frame(width: pageWidth))
         let view = controller.view
         
-        // FIX: The "Blank Page" issue is solved by attaching the view to a window
         let window = UIWindow(frame: CGRect(origin: .zero, size: CGSize(width: pageWidth, height: pageHeight)))
         window.rootViewController = controller
         window.isHidden = true
         window.makeKeyAndVisible()
         
-        // Calculate dynamic height for multi-page support
         let targetSize = CGSize(width: pageWidth, height: .greatestFiniteMagnitude)
         let totalHeight = view?.sizeThatFits(targetSize).height ?? pageHeight
         view?.bounds = CGRect(origin: .zero, size: CGSize(width: pageWidth, height: totalHeight))
         
         let renderer = UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: pageWidth, height: pageHeight))
-        
         let pdfData = renderer.pdfData { context in
             var currentY: CGFloat = 0
             while currentY < totalHeight {
                 context.beginPage()
                 context.cgContext.saveGState()
                 context.cgContext.translateBy(x: 0, y: -currentY)
-                
-                // Use drawHierarchy (more reliable for SwiftUI)
+                // DrawHierarchy with afterScreenUpdates true is vital for images
                 view?.drawHierarchy(in: view?.bounds ?? .zero, afterScreenUpdates: true)
-                
                 context.cgContext.restoreGState()
                 currentY += pageHeight
             }
         }
         
-        // Upload to Supabase
         Task {
             do {
-                let uploadedURL = try await viewModel.uploadPDFReportToSupabase(
-                    pdfData: pdfData,
-                    workOrderId: workOrder.workOrderId.uuidString
-                )
-                
-                try await viewModel.saveReportDatabaseRecord(
-                    workOrderId: workOrder.workOrderId,
-                    reportUrl: uploadedURL,
-                    reportName: "Final_Service_Report_\(workOrder.workOrderId.uuidString.prefix(6))"
-                )
-                
-                print("✅ Full Report successfully uploaded: \(uploadedURL)")
+                let url = try await viewModel.uploadPDFReportToSupabase(pdfData: pdfData, workOrderId: workOrder.workOrderId.uuidString)
+                try await viewModel.saveReportDatabaseRecord(workOrderId: workOrder.workOrderId, reportUrl: url, reportName: "Final_Report_\(workOrder.workOrderId.uuidString.prefix(6))")
                 isUploading = false
-                window.isHidden = true // Clean up
+                window.isHidden = true
             } catch {
-                print("🚨 Failed PDF Process: \(error)")
                 isUploading = false
             }
         }
     }
 }
 
+// MARK: - CUSTOM IMAGE COMPONENT FOR PDF
+// Uses Data(contentsOf:) to force synchronous loading during PDF rendering
+struct PDFImageComponent: View {
+    let urlString: String
+    @State private var uiImage: UIImage? = nil
+    
+    var body: some View {
+        Group {
+            if let uiImage = uiImage {
+                Image(uiImage: uiImage)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxHeight: 300)
+                    .cornerRadius(12)
+            } else {
+                RoundedRectangle(cornerRadius: 12).fill(Color.gray.opacity(0.1))
+                    .frame(height: 200).overlay(ProgressView())
+            }
+        }
+        .task {
+            if let url = URL(string: urlString), let data = try? Data(contentsOf: url) {
+                self.uiImage = UIImage(data: data)
+            }
+        }
+    }
+}
 // MARK: - SHARED COMPONENTS
 struct ReportDetailColumn: View {
     let title: String
