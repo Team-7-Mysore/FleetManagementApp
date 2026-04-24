@@ -23,6 +23,7 @@ struct AddEditWorkOrderView: View {
     
     // MARK: - ViewModel Injection
     @StateObject private var viewModel = WorkOrderViewModel()
+    @State private var activeUserId: UUID? = nil
     
     // MARK: - State Variables
     // Using our local struct here so it doesn't mess with the rest of your app
@@ -61,16 +62,17 @@ struct AddEditWorkOrderView: View {
     var preSelectedVehicleId: UUID?
     var prefilledSummary: String?
     var prefilledDescription: String?
+    var maintenancePersonnelId: UUID?
     
     // Custom Initializer
-    init(sourceIssueId: UUID? = nil, preSelectedVehicleId: UUID? = nil, prefilledSummary: String? = nil, prefilledDescription: String? = nil, managerId: UUID? = nil) {
+    init(sourceIssueId: UUID? = nil, preSelectedVehicleId: UUID? = nil, prefilledSummary: String? = nil, prefilledDescription: String? = nil, managerId: UUID? = nil, maintenancePersonnelId: UUID? = nil) {
         self.sourceIssueId = sourceIssueId
         self.managerId = managerId
         self.preSelectedVehicleId = preSelectedVehicleId
         self.prefilledSummary = prefilledSummary
         self.prefilledDescription = prefilledDescription
+        self.maintenancePersonnelId = maintenancePersonnelId // Assign it here
     }
-    
     var body: some View {
         ZStack {
             Color(uiColor: .systemGroupedBackground)
@@ -110,6 +112,16 @@ struct AddEditWorkOrderView: View {
             await fetchVehicles()
             if let desc = prefilledDescription, !desc.isEmpty {
                 self.issueDescription = desc
+            }
+        }
+        .task {
+            // Fetch the user ID safely when the screen actually opens
+            do {
+                let user = try await SupabaseManager.shared.client.auth.user()
+                self.activeUserId = user.id
+                print("🎯 Active User ID grabbed successfully: \(user.id)")
+            } catch {
+                print("⚠️ Failed to grab user ID on load: \(error)")
             }
         }
         .navigationTitle("New Work Order")
@@ -425,9 +437,13 @@ struct AddEditWorkOrderView: View {
             do {
                 let newWorkOrderId = UUID()
                 
+                print("--- PRE-SAVE DEBUG ---")
+                print("Maintenance ID: \(String(describing: self.maintenancePersonnelId))")
+                
                 let newOrder = WorkOrder(
                     workOrderId: newWorkOrderId,
                     vehicleId: finalVehicleId,
+                    maintenancePersonnelId: self.activeUserId ?? self.maintenancePersonnelId,
                     vehicle: nil,
                     priority: priority,
                     status: .pending,
@@ -479,12 +495,16 @@ struct AddEditWorkOrderView: View {
                 
                 // 4. Send Approval Notification back to the Manager
                 if let actualManagerId = self.managerId {
+                    // Fetch the logged in personnel's ID to set as sender
+                    let session = try await SupabaseManager.shared.client.auth.session
+                    let currentUserId = session.user.id
+                    
                     let approvalNotification = NotificationInsertDTO(
                         recipient_id: actualManagerId,
-                        sender_id: nil,
+                        sender_id: currentUserId, 
                         title: "Approval Required",
                         message: "Work Order '\(issueTitle)' requires your approval.",
-                        type: "Maintenance", // Or NotificationType.maintenance.rawValue
+                        type: NotificationType.maintenance.rawValue,
                         related_entity_id: newWorkOrderId
                     )
                     
@@ -493,7 +513,6 @@ struct AddEditWorkOrderView: View {
                         .insert(approvalNotification)
                         .execute()
                 }
-                
                 await MainActor.run {
                     isSaving = false
                     dismiss()

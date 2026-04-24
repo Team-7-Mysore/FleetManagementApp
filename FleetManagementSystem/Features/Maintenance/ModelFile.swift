@@ -159,6 +159,7 @@ struct WorkOrder: Identifiable, Codable {
         
         try container.encode(workOrderId, forKey: .workOrderId)
         try container.encode(vehicleId, forKey: .vehicleId)
+        try container.encodeIfPresent(maintenancePersonnelId, forKey: .maintenancePersonnelId)
         try container.encode(priority, forKey: .priority)
         try container.encode(status, forKey: .status)
         try container.encode(isApproved, forKey: .isApproved)

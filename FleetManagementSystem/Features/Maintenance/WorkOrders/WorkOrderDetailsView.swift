@@ -42,6 +42,8 @@ struct WorkOrderDetailView: View {
     @State private var showingCompletionReport: Bool = false
     @State private var saveTask: Task<Void, Never>?
     
+    var isManagerApprovalMode: Bool = false
+    
     // MARK: - Live Cost Calculations
     private let defaultLabourRate = 125.0
     
@@ -97,7 +99,6 @@ struct WorkOrderDetailView: View {
                     ProgressView("Loading details...")
                         .padding(.top, 50)
                 } else {
-                    // ✅ Replaced the massive 150-line block with your extracted content!
                     mainContent
                 }
             }
@@ -148,7 +149,7 @@ struct WorkOrderDetailView: View {
             tasksSection
             partsSection
             WorkEntryAndDocumentationView(
-                viewModel: viewModel, // ✅ This required parameter was missing in the inline code!
+                viewModel: viewModel,
                 editedHoursWorked: $editedHoursWorked,
                 editedLabourCost: $editedLabourCost,
                 defaultLabourRate: defaultLabourRate,
@@ -327,7 +328,37 @@ struct WorkOrderDetailView: View {
     
     @ViewBuilder
     private var actionButtonSection: some View {
-        if workOrder.status == .pending {
+        // 1. Manager Mode Buttons (Approve / Decline)
+        if isManagerApprovalMode && !workOrder.isApproved && workOrder.status != .cancelled {
+            HStack(spacing: 16) {
+                Button(action: {
+                    Task { await handleApproval(approved: false) }
+                }) {
+                    Text("Decline")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.red)
+                        .cornerRadius(12)
+                }
+                
+                Button(action: {
+                    Task { await handleApproval(approved: true) }
+                }) {
+                    Text("Approve")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.green)
+                        .cornerRadius(12)
+                }
+            }
+            .padding(.top, 10)
+        }
+        // 2. Mechanic View (Start Work Order)
+        else if workOrder.status == .pending {
             Button {
                 if workOrder.isApproved {
                     startWorkOrder()
@@ -403,6 +434,67 @@ struct WorkOrderDetailView: View {
         }
     }
     
+    // MARK: - Manager Approval Logic
+    private func handleApproval(approved: Bool) async {
+        isSaving = true
+        cancelPendingSave() // Stop autosave if it's running
+        
+        do {
+            let newStatus = approved ? WorkOrderStatus.pending.rawValue : WorkOrderStatus.cancelled.rawValue
+            
+            struct ApprovalUpdate: Encodable {
+                let is_approved: Bool
+                let status: String
+            }
+            
+            try await SupabaseManager.shared.client
+                .from("work_orders")
+                .update(ApprovalUpdate(is_approved: approved, status: newStatus))
+                .eq("work_order_id", value: workOrder.workOrderId.uuidString)
+                .execute()
+            
+            // Send Notification back to the mechanic
+            await sendResponseNotificationToMechanic(approved: approved)
+            
+            await MainActor.run {
+                self.workOrder.isApproved = approved
+                self.isSaving = false
+                dismiss() // Close the view after deciding
+            }
+        } catch {
+            print("🚨 Failed to process approval: \(error)")
+            await MainActor.run { self.isSaving = false }
+        }
+    }
+    
+    private func sendResponseNotificationToMechanic(approved: Bool) async {
+        guard let mechanicId = workOrder.maintenancePersonnelId else { return }
+        
+        do {
+            let session = try await SupabaseManager.shared.client.auth.session
+            let managerId = session.user.id
+            
+            let statusString = approved ? "Approved" : "Declined"
+            
+            let responseNotification = NotificationInsertDTO(
+                recipient_id: mechanicId,
+                sender_id: managerId,
+                title: "Work Order \(statusString)",
+                message: "Your drafted Work Order '\(workOrder.issueTitle)' has been \(statusString.lowercased()).",
+                type: NotificationType.maintenance.rawValue,
+                related_entity_id: workOrder.workOrderId
+            )
+            
+            try await SupabaseManager.shared.client
+                .from("notifications")
+                .insert(responseNotification)
+                .execute()
+            
+        } catch {
+            print("🚨 Failed to send response notification: \(error)")
+        }
+    }
+    
     private func completeWorkOrderAndShowReport() {
         workOrder.status = .completed
         workOrder.updatedAt = Date()
@@ -447,7 +539,6 @@ struct WorkOrderDetailView: View {
                 try await viewModel.upsertTasks(tasks)
             }
             
-            // Re-map the parts to update DB
             let workOrderParts = partsUI.map { uiPart in
                 WorkOrderPart(
                     workOrderId: workOrder.workOrderId,
@@ -472,9 +563,7 @@ struct WorkOrderDetailView: View {
         let initialHours = workOrder.hoursWorked ?? 0.0
         editedHoursWorked = String(format: "%.1f", initialHours)
         
-        // Calculate initial labour cost based on hours
         editedLabourCost = String(format: "%.2f", initialHours * defaultLabourRate)
-        
         editablePhotos = workOrder.images ?? []
         
         do {
@@ -614,9 +703,8 @@ struct WorkEntryAndDocumentationView: View {
     @Binding var editedMaintenanceNotes: String
     @Binding var photos: [String]
     
-    // MARK: - Picker States
     @State private var showImagePicker = false
-    @State private var showSourceTypePicker = false // Triggers the Camera/Library popup
+    @State private var showSourceTypePicker = false
     @State private var imageSource: UIImagePickerController.SourceType = .photoLibrary
     @State private var photoToReplace: String? = nil
     
@@ -626,7 +714,6 @@ struct WorkEntryAndDocumentationView: View {
             maintenanceNotesSection
             photoDocumentationSection
         }
-        // MARK: - Camera / Photo Library Selection Popup
         .confirmationDialog("Select Image Source", isPresented: $showSourceTypePicker, titleVisibility: .visible) {
             Button("Camera") {
                 imageSource = .camera
@@ -638,7 +725,6 @@ struct WorkEntryAndDocumentationView: View {
             }
             Button("Cancel", role: .cancel) { }
         }
-        // MARK: - Image Upload Logic
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(sourceType: imageSource) { image in
                 if let imageData = image.jpegData(compressionQuality: 0.7) {
@@ -669,7 +755,6 @@ struct WorkEntryAndDocumentationView: View {
         }
     }
     
-    // MARK: - Extracted Sections for WorkEntryAndDocumentationView
     private var workEntrySection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeaderView(title: "WORK ENTRY")
@@ -945,34 +1030,32 @@ struct PartDetailRowView: View {
 
 #Preview {
     NavigationStack {
-        WorkOrderDetailView(workOrder: WorkOrder(
-            workOrderId: UUID(),
-            
-            // NEW: Added the required vehicleId
-            vehicleId: UUID(),
-            
-            // NEW: Added the joined vehicle object to populate the UI
-            vehicle: WorkOrderVehicle(
+        WorkOrderDetailView(
+            workOrder: WorkOrder(
+                workOrderId: UUID(),
                 vehicleId: UUID(),
-                vin: "FL-9902-XJ",
-                numberPlate: "UNIT-01",
-                vehicleName: "Freightliner Cascadia",
-                vehicleType: .car
+                maintenancePersonnelId: UUID(),
+                vehicle: WorkOrderVehicle(
+                    vehicleId: UUID(),
+                    vin: "FL-9902-XJ",
+                    numberPlate: "UNIT-01",
+                    vehicleName: "Freightliner Cascadia",
+                    vehicleType: .car
+                ),
+                priority: .high,
+                status: .pending,
+                isApproved: false,
+                issueTitle: "Engine System Fault",
+                issueDescription: "Operator reports intermittent power loss and check engine light.",
+                hoursWorked: 2.5,
+                estCost: 450.0,
+                internalNotes: nil,
+                maintenanceNotes: "Replaced air filtration system.",
+                images: nil,
+                createdAt: Date(),
+                updatedAt: Date()
             ),
-            
-            // The rest remains the same
-            priority: .high,
-            status: .inProgress,
-            isApproved: false,
-            issueTitle: "Engine System Fault",
-            issueDescription: "Operator reports intermittent power loss and check engine light.",
-            hoursWorked: 2.5,
-            estCost: 450.0,
-            internalNotes: nil,
-            maintenanceNotes: "Replaced air filtration system.",
-            images: nil,
-            createdAt: Date(),
-            updatedAt: Date()
-        ))
+            isManagerApprovalMode: true
+        )
     }
 }

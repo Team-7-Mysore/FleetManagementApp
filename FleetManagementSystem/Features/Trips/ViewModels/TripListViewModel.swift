@@ -28,7 +28,7 @@ final class TripListViewModel: ObservableObject {
 
    /// Available vehicles (not in maintenance)
    var availableVehicles: [Vehicle] {
-       let maintenanceVINs = Set(workOrders.filter { $0.status == .pending || $0.status == .inProgress }.map { $0.vehicleVin })
+       let maintenanceVINs = Set(workOrders.filter { $0.status == .pending || $0.status == .inProgress }.map { $0.vehicle?.vin })
        return vehicles.filter { !maintenanceVINs.contains($0.registrationNumber) }
    }
 

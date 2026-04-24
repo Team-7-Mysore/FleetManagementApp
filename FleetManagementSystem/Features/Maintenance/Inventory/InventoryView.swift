@@ -2,6 +2,9 @@ import SwiftUI
 
 struct InventoryView: View {
     @ObservedObject var viewModel: InventoryViewModel
+    let profile: UserProfile?
+    let onSignOut: () async -> Void
+    
     @State private var selectedItem: InventoryItem?
     @State private var navigatedCategory: String?
     @State private var showDeleteAlert = false
@@ -13,6 +16,14 @@ struct InventoryView: View {
     @State private var scannedName: String?
     @State private var scannedQuantity: Int?
     @State private var showNotifications = false
+    @State private var showingProfile = false // Added for Profile routing
+    
+    // Initializer added to receive profile data without breaking previews
+    init(viewModel: InventoryViewModel, profile: UserProfile? = nil, onSignOut: @escaping () async -> Void = {}) {
+        self.viewModel = viewModel
+        self.profile = profile
+        self.onSignOut = onSignOut
+    }
     
     var body: some View {
         NavigationStack {
@@ -50,16 +61,16 @@ struct InventoryView: View {
                                         selectedItem = item
                                     }
                                     .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive) {
-                                        itemToDelete = item
-                                        showDeleteAlert = true
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                        Button(role: .destructive) {
+                                            itemToDelete = item
+                                            showDeleteAlert = true
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
                                     }
-                                }
                             }
                         } header: {
                             Text("Low in Stock")
@@ -82,41 +93,36 @@ struct InventoryView: View {
             .navigationTitle("Inventory")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    HStack(spacing: 12) {
-                        // 🔔 Notification Bell
-                        Button {
-                            showNotifications = true
-                        } label: {
-                            ZStack {
-                                Image(systemName: "bell")
-                                    .font(.system(size: 18, weight: .medium))
-                                    .foregroundColor(.primary)
-                                
-                                if viewModel.notifications.count > 0 {
-                                    Text("\(viewModel.notifications.count)")
-                                        .font(.caption2)
-                                        .foregroundColor(.white)
-                                        .padding(4)
-                                        .background(Color.red)
-                                        .clipShape(Circle())
-                                        .offset(x: 8, y: -8)
-                                }
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    // 🔔 Notification Bell
+                    Button {
+                        showNotifications = true
+                    } label: {
+                        ZStack {
+                            Image(systemName: "bell")
+                                .font(.system(size: 18, weight: .medium))
+                                .foregroundColor(Color(hex:"#A3352A"))
+                            
+                            if viewModel.notifications.count > 0 {
+                                Text("\(viewModel.notifications.count)")
+                                    .font(.caption2)
+                                    .foregroundColor(.white)
+                                    .padding(4)
+                                    .background(Color.red)
+                                    .clipShape(Circle())
+                                    .offset(x: 8, y: -8)
                             }
                         }
-
-                        // 👤 Profile Icon
-                        Button {
-                            // placeholder for future profile action
-                        } label: {
-                            Image(systemName: "person.circle")
-                                .font(.system(size: 18, weight: .medium))
-                                .foregroundColor(.primary)
-                        }
                     }
-                    .padding(10)
-                    .background(Color(.systemGray6))
-                    .clipShape(Capsule())
+                    
+                    // 👤 Profile Icon
+                    Button {
+                        showingProfile = true
+                    } label: {
+                        Image(systemName: "person.circle")
+                            .font(.title3)
+                            .foregroundColor(Color(hex:"#A3352A"))
+                    }
                 }
             }
             .overlay(alignment: .bottomTrailing) {
@@ -128,7 +134,7 @@ struct InventoryView: View {
                                 .fill(Color(.systemBackground))
                                 .frame(width: 20, height: 10)
                                 .offset(x: -20) // Adjust to align with + button
-
+                            
                             VStack(spacing: 12) {
                                 Button {
                                     showOptions = false
@@ -142,7 +148,7 @@ struct InventoryView: View {
                                 }
                                 
                                 Divider()
-
+                                
                                 Button {
                                     showOptions = false
                                     navigateToManual = true
@@ -164,7 +170,7 @@ struct InventoryView: View {
                         .padding(.bottom, 80)
                         .transition(.scale.combined(with: .opacity))
                     }
-
+                    
                     Button {
                         withAnimation(.spring()) {
                             showOptions.toggle()
@@ -194,13 +200,18 @@ struct InventoryView: View {
                     prefilledQuantity: scannedQuantity
                 )
             }
+            
+            // MARK: - Standardized Navigation (Maintenance Personnel)
             .navigationDestination(isPresented: $showNotifications) {
-                NotificationView(
-                    notifications: viewModel.notifications,
-                    viewModel: viewModel
-                )
+                MaintenanceNotificationsView(unreadCount: .constant(viewModel.notifications.count))
             }
-
+            .sheet(isPresented: $showingProfile) {
+                // 🚨 Swap this with your actual Maintenance Profile View name if it's different!
+                MaintenanceProfileView(profile: profile, onSignOut: onSignOut)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
+            
             .fullScreenCover(isPresented: $showScanner) {
                 DocumentScanner(showScanner: $showScanner) { images in
                     guard let firstImage = images.first else { return }
@@ -222,7 +233,6 @@ struct InventoryView: View {
                 }
                 .ignoresSafeArea()
             }
-            .navigationBarTitleDisplayMode(.large)
             .navigationDestination(item: $navigatedCategory) { category in
                 VehiclePartsView(viewModel: viewModel, category: category)
             }
@@ -239,7 +249,7 @@ struct InventoryView: View {
                         }
                     }
                 }
-                Button("Cancel", role: .cancel) { 
+                Button("Cancel", role: .cancel) {
                     itemToDelete = nil
                 }
             } message: {
@@ -280,8 +290,6 @@ struct Triangle: Shape {
         return path
     }
 }
-
-
 
 #Preview {
     InventoryView(viewModel: InventoryViewModel())
