@@ -5,6 +5,7 @@ struct DriverDashboardView: View {
     let user: User
     @StateObject private var vm: DriverDashboardViewModel
     @EnvironmentObject private var router: AppRouter
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showNotifications = false
     @State private var showProfile = false
 
@@ -79,7 +80,21 @@ struct DriverDashboardView: View {
             DriverProfileView(user: user)
                 .environmentObject(router)
         }
-        .onAppear { vm.loadData() }
+        .onAppear {
+            vm.loadData()
+            vm.startAutoRefresh()
+        }
+        .onDisappear {
+            vm.stopAutoRefresh()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                vm.loadData()
+            }
+        }
+        .refreshable {
+            vm.loadData()
+        }
     }
 
     // MARK: - Route Summary Card

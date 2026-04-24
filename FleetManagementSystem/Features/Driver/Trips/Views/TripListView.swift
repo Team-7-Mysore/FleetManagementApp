@@ -4,6 +4,7 @@ import SwiftUI
 struct TripListView: View {
     let user: User
     @StateObject private var vm: DriverTripViewModel
+    @Environment(\.scenePhase) private var scenePhase
 
     init(user: User) {
         self.user = user
@@ -59,7 +60,21 @@ struct TripListView: View {
         .background(AppTheme.pageBackground)
         .navigationTitle("My Trips")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { vm.loadData() }
+        .onAppear {
+            vm.loadData()
+            vm.startAutoRefresh()
+        }
+        .onDisappear {
+            vm.stopAutoRefresh()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                vm.loadData()
+            }
+        }
+        .refreshable {
+            vm.loadData()
+        }
     }
 
     // MARK: - Active Trip Banner

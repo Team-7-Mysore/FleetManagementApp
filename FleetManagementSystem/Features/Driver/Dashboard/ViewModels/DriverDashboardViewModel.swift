@@ -43,15 +43,20 @@ final class DriverDashboardViewModel: ObservableObject {
     @Published private(set) var fuelEfficiency: Double?
 
     private let user: User
+    private var isLoading = false
+    private var refreshTimer: Timer?
 
     init(user: User) {
         self.user = user
     }
 
     func loadData() {
+        guard !isLoading else { return }
+        isLoading = true
         print("🚀 loadData called")
 
         Task {
+            defer { isLoading = false }
             do {
                 // Step 1: Get driver_id
                 let driverResponse = try await SupabaseManager.shared.client
@@ -127,6 +132,27 @@ final class DriverDashboardViewModel: ObservableObject {
                 print("❌ FETCH ERROR:", error)
             }
         }
+    }
+
+    func startAutoRefresh(interval: TimeInterval = 5) {
+        guard refreshTimer == nil else { return }
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.loadData()
+            }
+        }
+        timer.tolerance = 1.0
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
+    }
+
+    func stopAutoRefresh() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
+
+    deinit {
+        refreshTimer?.invalidate()
     }
 
     private func fetchVehicle(vehicleId: String) async {

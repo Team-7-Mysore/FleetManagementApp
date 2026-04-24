@@ -12,6 +12,8 @@ final class DriverTripViewModel: ObservableObject {
 
     private let user: User
     private var driverId: String?
+    private var isLoading = false
+    private var refreshTimer: Timer?
 
     enum TripFilter: String, CaseIterable, Identifiable {
         case upcoming   = "Upcoming"
@@ -25,7 +27,10 @@ final class DriverTripViewModel: ObservableObject {
     }
 
     func loadData() {
+        guard !isLoading else { return }
+        isLoading = true
         Task {
+            defer { isLoading = false }
             do {
                 // Step 1: Resolve driver_id
                 if driverId == nil {
@@ -70,6 +75,27 @@ final class DriverTripViewModel: ObservableObject {
                 print("❌ DriverTripViewModel loadData error:", error)
             }
         }
+    }
+
+    func startAutoRefresh(interval: TimeInterval = 5) {
+        guard refreshTimer == nil else { return }
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.loadData()
+            }
+        }
+        timer.tolerance = 1.0
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
+    }
+
+    func stopAutoRefresh() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
+
+    deinit {
+        refreshTimer?.invalidate()
     }
 
     var filteredTrips: [TripMap] {
