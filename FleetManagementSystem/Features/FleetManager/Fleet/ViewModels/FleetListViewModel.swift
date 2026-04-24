@@ -144,17 +144,23 @@ private extension FleetListViewModel {
         }
 
         return rows.compactMap { row in
-            guard let idString = stringValue(row["vehicle_id"]),
-                  let id = UUID(uuidString: idString) else { return nil }
+            let idString = stringValue(row["vehicle_id"])
+            guard let idString = idString,
+                  let id = UUID(uuidString: idString) else { 
+                return nil 
+            }
+            
+            let vehicleType = preferredText(stringValue(row["vehicle_type"]), fallback: nil, defaultValue: "Unknown")
+            let vehicleName = preferredText(stringValue(row["vehicle_name"]), fallback: stringValue(row["number_plate"]), defaultValue: "Unnamed Vehicle")
 
             var vehicle = Vehicle(
                 id: id,
-                name: preferredText(stringValue(row["vehicle_name"]), fallback: stringValue(row["number_plate"]), defaultValue: "Unnamed Vehicle"),
+                name: vehicleName,
                 registrationNumber: preferredText(stringValue(row["number_plate"]), fallback: nil, defaultValue: "No Plate"),
                 brand: stringValue(row["brand"]),
                 model: stringValue(row["model"]),
                 imageURL: stringValue(row["image_url"]),
-                vehicleType: preferredText(stringValue(row["vehicle_type"]), fallback: nil, defaultValue: "Unknown"),
+                vehicleType: vehicleType,
                 fuelType: stringValue(row["fuel_type"]),
                 modelYear: stringValue(row["model_year"])
             )

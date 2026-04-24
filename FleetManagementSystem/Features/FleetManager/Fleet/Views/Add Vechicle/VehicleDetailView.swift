@@ -64,33 +64,19 @@ struct VehicleDetailView: View {
 
                 // MARK: - Registration Details
                 Section(header: Text("Registration Details")) {
-                    if isEditing {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("VIN")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(Color(.systemGray2))
-                            
-                            TextField("Enter 17-digit VIN", text: binding(\.vin))
+                    HStack {
+                        Text("VIN")
+                        Spacer()
+                        if isEditing {
+                            TextField("VIN", text: binding(\.vin))
+                                .multilineTextAlignment(.trailing)
+                                .foregroundColor(.blue)
                                 .textInputAutocapitalization(.characters)
                                 .disableAutocorrection(true)
-                                .onChange(of: draftVehicle?.vin) { _, newValue in
-                                    if let val = newValue, val.count > 17 {
-                                        draftVehicle?.vin = String(val.prefix(17))
-                                    }
-                                }
-                            
-                            if let vin = draftVehicle?.vin, !vin.isEmpty {
-                                HStack(spacing: 4) {
-                                    Image(systemName: vin.count == 17 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                                        .font(.system(size: 12))
-                                    Text(vin.count == 17 ? "Valid VIN" : "Incomplete VIN")
-                                        .font(.system(size: 12, weight: .medium))
-                                }
-                                .foregroundColor(vin.count == 17 ? .green : .red)
-                            }
+                        } else {
+                            Text(currentVehicle.vin.isEmpty ? "—" : currentVehicle.vin)
+                                .foregroundColor(.secondary)
                         }
-                    } else {
-                        InfoRow(title: "VIN", value: currentVehicle.vin.isEmpty ? "—" : currentVehicle.vin, isEditing: false, text: nil)
                     }
                     
                     InfoRow(title: "RC Number", value: currentVehicle.rcNumber.isEmpty ? "—" : currentVehicle.rcNumber, isEditing: isEditing, text: binding(\.rcNumber))
@@ -101,9 +87,36 @@ struct VehicleDetailView: View {
 
                 // MARK: - Documents
                 Section(header: Text("Required Documents")) {
-                    let requiredTypes = ["RC", "INSURANCE", "PUC"]
-                    ForEach(requiredTypes, id: \.self) { type in
-                        documentRowLogic(for: type)
+                    ForEach(["RC", "INSURANCE", "PUC"], id: \.self) { type in
+                        let doc = vm.documents.first { $0.type.uppercased() == type.uppercased() }
+                        let hasDocument = doc != nil && !doc!.fileURL.isEmpty
+                        
+                        if isEditing {
+                            Button {
+                                activeDocumentType = type
+                                isImportingDocument = true
+                            } label: {
+                                HStack {
+                                    Text(type)
+                                    Spacer()
+                                    Text(hasDocument ? "Replace" : "Upload")
+                                        .font(.subheadline)
+                                        .foregroundColor(.blue)
+                                }
+                            }
+                        } else {
+                            if hasDocument, let url = URL(string: doc!.fileURL) {
+                                Link(destination: url) {
+                                    Label(type, systemImage: "doc.text.fill")
+                                }
+                            } else {
+                                HStack {
+                                    Text(type)
+                                    Spacer()
+                                    Text("Missing").font(.caption).foregroundColor(.secondary)
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -262,12 +275,20 @@ struct VehicleDetailView: View {
     }
 
     private func saveChanges() async {
-        guard let draft = draftVehicle else { return }
+        guard var draft = draftVehicle else { return }
+        print("DEBUG saveChanges: draft.imageURL before = \(draft.imageURL ?? "nil")")
+        print("DEBUG saveChanges: vm.vehicle?.imageURL = \(vm.vehicle?.imageURL ?? "nil")")
+        
+        draft.imageURL = vm.vehicle?.imageURL
         vm.vehicle = draft
         isEditing = false
         draftVehicle = nil
         isSaving = true
+        
+        print("DEBUG saveChanges: vm.vehicle.imageURL = \(vm.vehicle?.imageURL ?? "nil")")
+        
         let success = await vm.updateVehicle()
+        
         if success { await vm.fetchVehicle(vehicleId: vehicle.id) }
         isSaving = false
     }

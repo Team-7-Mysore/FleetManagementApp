@@ -108,6 +108,7 @@ class VehicleDetailViewModel: ObservableObject {
                 print("Vehicle documents response:", String(data: documentsData, encoding: .utf8) ?? "")
                 let fetchedDocuments = try Self.parseDocuments(from: documentsData)
                 print("Vehicle documents count:", fetchedDocuments.count)
+                print("Vehicle documents types:", fetchedDocuments.map { $0.type })
                 self.documents = fetchedDocuments
                 self.documentsErrorMessage = nil
             } catch {
@@ -129,6 +130,12 @@ class VehicleDetailViewModel: ObservableObject {
 
         do {
             errorMessage = nil
+            
+            // Convert empty strings to nil for date fields
+            let regDate: String? = vehicle.registrationDate.isEmpty ? nil : vehicle.registrationDate
+            let rcExpiry: String? = vehicle.rcExpiryDate.isEmpty ? nil : vehicle.rcExpiryDate
+            let pucExpiry: String? = vehicle.pucExpiryDate.isEmpty ? nil : vehicle.pucExpiryDate
+            
             let payload = VehicleUpdatePayload(
                 vehicle_name: vehicle.name,
                 number_plate: vehicle.registrationNumber,
@@ -140,9 +147,9 @@ class VehicleDetailViewModel: ObservableObject {
                 model_year: vehicle.modelYear,
                 vin: vehicle.vin,
                 registration_no: vehicle.rcNumber,
-                registration_date: vehicle.registrationDate,
-                rc_expiry_date: vehicle.rcExpiryDate,
-                puc_expiry_date: vehicle.pucExpiryDate
+                registration_date: regDate,
+                rc_expiry_date: rcExpiry,
+                puc_expiry_date: pucExpiry
             )
 
             try await SupabaseManager.shared.client
@@ -245,24 +252,20 @@ class VehicleDetailViewModel: ObservableObject {
     }
 
     func syncDocuments(for vehicleID: UUID) async throws {
+        let records: [[String: AnyEncodable]] = documents.map { doc in
+            [
+                "vehicle_id": AnyEncodable(vehicleID.uuidString),
+                "document_type": AnyEncodable(doc.type),
+                "file_url": AnyEncodable(doc.fileURL)
+            ]
+        }
+        
         try await SupabaseManager.shared.client
             .from("vehicle_documents")
             .delete()
             .eq("vehicle_id", value: vehicleID)
             .execute()
-
-        let records = documents
-            .filter { !$0.fileURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-            .map {
-            [
-                "vehicle_id": vehicleID.uuidString,
-                "document_type": $0.type,
-                "file_url": $0.fileURL
-            ]
-        }
-
-        guard !records.isEmpty else { return }
-
+        
         try await SupabaseManager.shared.client
             .from("vehicle_documents")
             .insert(records)
@@ -372,17 +375,18 @@ private extension VehicleDetailViewModel {
 
         let parsed: [VehicleDocument] = rows.compactMap { row in
             guard let type = stringValue(row["document_type"])?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !type.isEmpty,
-                  let fileURL = stringValue(row["file_url"])?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !fileURL.isEmpty else {
+                  !type.isEmpty else {
                 return nil
             }
+            
+            let fileURL = stringValue(row["file_url"])?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let fileName = stringValue(row["file_name"]) ?? ""
 
             return VehicleDocument(
-                id: type.uppercased(),
-                type: type.uppercased(),
+                id: stringValue(row["document_id"]) ?? type,
+                type: type,
                 fileURL: fileURL,
-                fileName: row["file_name"] as? String ?? URL(string: fileURL)?.lastPathComponent
+                fileName: fileName
             )
         }
 

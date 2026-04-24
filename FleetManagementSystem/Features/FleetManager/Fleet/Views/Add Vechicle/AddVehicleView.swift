@@ -130,11 +130,17 @@ struct AddVehicleView: View {
                     Picker("Vehicle Type", selection: $vm.vehicleType) {
                         ForEach(["Truck", "Car", "Bike", "Bus"], id: \.self) { Text($0).tag($0) }
                     }
+                    
+                    Picker("Fuel Type", selection: $vm.fuelType) {
+                        ForEach(["Petrol", "Diesel", "Electric", "CNG", "Hybrid"], id: \.self) { Text($0).tag($0) }
+                    }
                 }
                 
                 // MARK: - Docs & Dates
                 Section(header: Text("Required Documents").font(.headline)) {
                     documentRow(title: "RC Document", isUploaded: vm.rcURL != nil, fileName: vm.rcFileName, type: "RC")
+                    documentRow(title: "Insurance", isUploaded: vm.insuranceURL != nil, fileName: vm.insuranceFileName, type: "INSURANCE")
+                    documentRow(title: "PUC", isUploaded: vm.pucURL != nil, fileName: vm.pucFileName, type: "PUC")
                 }
                 
                 Section(header: Text("Validity").font(.headline)) {
