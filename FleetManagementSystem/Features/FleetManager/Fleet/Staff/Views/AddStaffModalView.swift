@@ -1,4 +1,3 @@
-
 //
 //  AddStaffModalView.swift
 //  FleetManagementSystem
@@ -61,18 +60,77 @@ struct AddStaffModalView: View {
     @State private var showImagePicker: Bool = false
     @State private var showFullImage: Bool = false
 
+    @State private var showValidationAlert: Bool = false
+    @State private var validationMessage: String = ""
+
     private func syncToModel() {
         model.firstName = firstNameText
         model.lastName  = lastNameText
         model.email     = emailText
         model.phoneNo   = phoneText
     }
+    
+    private func validateFields() -> Bool {
+        // Check for empty required fields
+        if firstNameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            validationMessage = "First Name is required."
+            return false
+        }
+        if lastNameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            validationMessage = "Last Name is required."
+            return false
+        }
+        if emailText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            validationMessage = "Email Address is required."
+            return false
+        }
+        if phoneText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            validationMessage = "Phone Number is required."
+            return false
+        }
+        if model.selectedRole == nil {
+            validationMessage = "Please select a Staff Role."
+            return false
+        }
+        // Basic email format validation
+        let email = emailText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !email.contains("@") || !email.contains(".") {
+            validationMessage = "Please enter a valid Email Address."
+            return false
+        }
+        // Phone number validation: digits only, length exactly 10
+        let phone = phoneText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let digitsOnly = phone.allSatisfy { $0.isWholeNumber }
+        if !digitsOnly {
+            validationMessage = "Phone Number should contain digits only."
+            return false
+        }
+        if phone.count != 10 {
+            validationMessage = "Phone Number must be exactly 10 digits."
+            return false
+        }
+        if model.selectedRole == .driver {
+            if model.licenceImage == nil {
+                validationMessage = "Driver's licence image is required."
+                return false
+            }
+            if model.licenceNumber.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                validationMessage = "Licence Number is required for drivers."
+                return false
+            }
+            if model.licenceExpiryDate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                validationMessage = "Licence Expiry Date is required for drivers."
+                return false
+            }
+        }
+        return true
+    }
 
     var body: some View {
         Form {
 
             // MARK: Personal Details
-            Section(header: Text("Personal Details")) {
+            Section(header: Text("Personal Details").foregroundColor(.primary)) {
 
                 TextField("First Name", text: $firstNameText)
                     .autocapitalization(.words)
@@ -88,14 +146,14 @@ struct AddStaffModalView: View {
                     .disableAutocorrection(true)
                     .onChange(of: emailText) { _ in syncToModel() }
 
-                TextField("Phone Number (Optional)", text: $phoneText)
+                TextField("Phone Number", text: $phoneText)
                     .keyboardType(.phonePad)
                     .onChange(of: phoneText) { _ in syncToModel() }
             }
 
 
             // MARK: Role
-            Section(header: Text("Role")) {
+            Section(header: Text("Role").foregroundColor(.primary)) {
                 Picker("Staff Role", selection: $model.selectedRole) {
                     Text("Select Role").tag(StaffRole?.none)
                     ForEach(StaffRole.allCases) { role in
@@ -120,7 +178,7 @@ struct AddStaffModalView: View {
             if model.selectedRole == .driver {
                 if let image = model.licenceImage {
                     // Uploaded state — compact row
-                    Section(header: Text("Driver's Licence"), footer: Text("Make sure the licence is clearly visible and not blurry.")) {
+                    Section(header: Text("Driver's Licence").foregroundColor(.primary), footer: Text("Make sure the licence is clearly visible and not blurry.")) {
                         HStack(spacing: 12) {
                             Image(systemName: "photo.badge.checkmark")
                                 .font(.title2)
@@ -166,7 +224,7 @@ struct AddStaffModalView: View {
                         }
                     }
 
-                    Section(header: Text("Licence Details")) {
+                    Section(header: Text("Licence Details").foregroundColor(.primary)) {
                         TextField("Licence Number", text: $model.licenceNumber)
                             .autocapitalization(.allCharacters)
                             .disableAutocorrection(true)
@@ -177,7 +235,7 @@ struct AddStaffModalView: View {
 
                 } else {
                     // Not yet uploaded state
-                    Section(header: Text("Driver's Licence"),
+                    Section(header: Text("Driver's Licence").foregroundColor(.primary),
                             footer: Text("A licence image is required for drivers.")) {
                         Button {
                             showImagePicker = true
@@ -206,10 +264,13 @@ struct AddStaffModalView: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Next") {
-                    syncToModel()
-                    onNext()
+                    if validateFields() {
+                        syncToModel()
+                        onNext()
+                    } else {
+                        showValidationAlert = true
+                    }
                 }
-                .disabled(!model.isFormValid)
             }
         }
         .onAppear {
@@ -243,6 +304,11 @@ struct AddStaffModalView: View {
                 }
             }
         }
+        .alert("Validation Error", isPresented: $showValidationAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(validationMessage)
+        }
     }
 }
 
@@ -255,3 +321,4 @@ struct AddStaffModalView: View {
         )
     }
 }
+

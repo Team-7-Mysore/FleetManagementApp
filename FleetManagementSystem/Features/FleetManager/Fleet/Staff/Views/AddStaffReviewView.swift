@@ -42,14 +42,14 @@ struct AddStaffReviewView: View {
             }
 
             // MARK: Details
-            Section(header: Text("Staff Details")) {
+            Section(header: Text("Staff Details").foregroundColor(.primary)) {
                 LabeledContent("Email", value: model.email)
                 LabeledContent("Phone", value: model.phoneNo.isEmpty ? "—" : model.phoneNo)
                 LabeledContent("Role", value: model.selectedRole?.rawValue ?? "—")
             }
 
             if model.selectedRole == .driver {
-                Section(header: Text("Licence Details")) {
+                Section(header: Text("Licence Details").foregroundColor(.primary)) {
                     LabeledContent("Licence Number", value: model.licenceNumber.isEmpty ? "—" : model.licenceNumber)
                     LabeledContent("Expiry Date", value: model.licenceExpiryDate.isEmpty ? "—" : model.licenceExpiryDate)
                 }
@@ -57,7 +57,7 @@ struct AddStaffReviewView: View {
 
             // MARK: Account Info
             Section(
-                header: Text("Account Creation"),
+                header: Text("Account Creation").foregroundColor(.primary),
                 footer: Text("Login details will be sent to \(model.email.isEmpty ? "the user" : model.email) after creation.")
             ) {
                 HStack(spacing: 12) {
