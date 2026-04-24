@@ -158,25 +158,43 @@ final class InspectionViewModel: ObservableObject {
         loadData()
     }
 
-    func submitAndCompleteTrip(notes: String, trip: TripMap) {
-        guard let inspection = currentInspection else { return }
+    func submitAndCompleteTrip(notes: String, trip: TripMap) async -> Bool {
+        guard let inspection = currentInspection else { return false }
         service.submitInspection(id: inspection.id, notes: notes)
 
-        Task {
-            do {
-                try await SupabaseManager.shared.client
-                    .from("trips")
-                    .update([
-                        "status": "completed",
-                        "end_time": ISO8601DateFormatter().string(from: Date())
-                    ])
-                    .eq("trip_id", value: trip.id.uuidString)
-                    .execute()
-            } catch {
-                print("❌ submitAndCompleteTrip error:", error)
+        do {
+            let completedAt = ISO8601DateFormatter().string(from: Date())
+
+            try await SupabaseManager.shared.client
+                .from("trips")
+                .update([
+                    "status": "completed",
+                    "end_time": completedAt
+                ])
+                .eq("trip_id", value: trip.id.uuidString)
+                .execute()
+            let emptyID = "00000000-0000-0000-0000-000000000000"
+            let candidateVehicleId = trip.vehicleId.uuidString
+
+            if !candidateVehicleId.isEmpty, candidateVehicleId != emptyID {
+                do {
+                    try await SupabaseManager.shared.client
+                        .from("vehicles")
+                        .update(["status": "unassigned"])
+                        .eq("vehicle_id", value: candidateVehicleId)
+                        .execute()
+                } catch {
+                    print("⚠️ vehicle unassign update failed:", error)
+                }
             }
+
+            loadData()
+            return true
+        } catch {
+            print("❌ submitAndCompleteTrip error:", error)
+            loadData()
+            return false
         }
-        loadData()
     }
 
     var canSubmit: Bool {

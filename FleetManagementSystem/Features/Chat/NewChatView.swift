@@ -49,6 +49,7 @@ struct NewChatView: View {
             }
             .navigationTitle("New Chat")
             .navigationBarTitleDisplayMode(.inline)
+            .tint(AppTheme.primaryGreen)
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always))
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {

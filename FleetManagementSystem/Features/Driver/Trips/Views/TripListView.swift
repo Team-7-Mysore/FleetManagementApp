@@ -4,6 +4,9 @@ import SwiftUI
 struct TripListView: View {
     let user: User
     @StateObject private var vm: DriverTripViewModel
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var showDateFilterSheet = false
+    @State private var draftFilterDate = Date()
 
     init(user: User) {
         self.user = user
@@ -37,7 +40,7 @@ struct TripListView: View {
                     EmptyStateView(
                         icon: "map",
                         title: "No Trips",
-                        message: "No \(vm.selectedFilter.rawValue.lowercased()) trips to show."
+                        message: emptyStateMessage
                     )
                     .padding(.top, 40)
                 } else {
@@ -58,8 +61,91 @@ struct TripListView: View {
         }
         .background(AppTheme.pageBackground)
         .navigationTitle("My Trips")
-        .navigationBarTitleDisplayMode(.large)
-        .onAppear { vm.loadData() }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    prepareFilterSheet()
+                    showDateFilterSheet = true
+                } label: {
+                    Image(
+                        systemName: vm.filterDate(for: vm.selectedFilter) == nil
+                            ? "line.3.horizontal.decrease.circle"
+                            : "line.3.horizontal.decrease.circle.fill"
+                    )
+                    .foregroundStyle(AppTheme.primaryGreen)
+                }
+            }
+        }
+        .sheet(isPresented: $showDateFilterSheet) {
+            NavigationStack {
+                VStack(spacing: 0) {
+                    DatePicker(
+                        "Trip Date",
+                        selection: $draftFilterDate,
+                        displayedComponents: [.date]
+                    )
+                    .datePickerStyle(.graphical)
+                    .labelsHidden()
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+
+                    Spacer(minLength: 0)
+                }
+                .background(AppTheme.pageBackground)
+                .navigationTitle("Filter")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            showDateFilterSheet = false
+                        } label: {
+                            Image(systemName: "xmark")
+                                .foregroundStyle(AppTheme.primaryGreen)
+                                .fontWeight(.medium)
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Apply") {
+                            let selectedDate = Calendar.current.startOfDay(for: draftFilterDate)
+                            vm.setFilterDate(selectedDate, for: vm.selectedFilter)
+                            showDateFilterSheet = false
+                        }
+                        .foregroundStyle(AppTheme.primaryGreen)
+                    }
+                }
+            }
+        }
+        .onAppear {
+            vm.loadData()
+            vm.startAutoRefresh()
+        }
+        .onDisappear {
+            vm.stopAutoRefresh()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                vm.loadData()
+            }
+        }
+        .refreshable {
+            vm.loadData()
+        }
+    }
+
+    private var emptyStateMessage: String {
+        if let date = vm.filterDate(for: vm.selectedFilter) {
+            return "No \(vm.selectedFilter.rawValue.lowercased()) trips for \(date.formatted(date: .abbreviated, time: .omitted))."
+        }
+        return "No \(vm.selectedFilter.rawValue.lowercased()) trips to show."
+    }
+
+    private func prepareFilterSheet() {
+        if let selectedDate = vm.filterDate(for: vm.selectedFilter) {
+            draftFilterDate = selectedDate
+        } else {
+            draftFilterDate = Date()
+        }
     }
 
     // MARK: - Active Trip Banner
@@ -181,7 +267,7 @@ struct TripListView: View {
         switch status {
         case .planned:    return AppTheme.statusInfo
         case .inProgress: return AppTheme.primaryGreen
-        case .completed:  return .secondary
+        case .completed:  return AppTheme.primaryGreen
         case .cancelled:  return AppTheme.statusDanger
         }
     }

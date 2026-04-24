@@ -2,7 +2,7 @@ import SwiftUI
 
 struct UserRowView: View {
     let user: AppUser
-    let accent = Color(red: 0.639, green: 0.207, blue: 0.165)
+    let accent = AppTheme.primaryGreen
     
     var body: some View {
         HStack(spacing: 15) {

@@ -11,6 +11,7 @@ class ChatViewController: MessagesViewController {
     
     private var messages: [MessageKitMessage] = []
     private var timer: Timer?
+    private let accentColor = UIColor(red: 26/255, green: 122/255, blue: 61/255, alpha: 1.0)
 
     init(chatRoomId: UUID, currentUser: Sender, otherUser: Sender, viewModel: ChatViewModel) {
         self.chatRoomId = chatRoomId
@@ -57,7 +58,7 @@ class ChatViewController: MessagesViewController {
     
     private func setupInputBar() {
         messageInputBar.delegate = self
-        messageInputBar.sendButton.setTitleColor(UIColor(red: 163/255, green: 53/255, blue: 42/255, alpha: 1.0), for: .normal) // #A3352A
+        messageInputBar.sendButton.setTitleColor(accentColor, for: .normal)
     }
     
     private func loadMessages() {
@@ -96,7 +97,7 @@ extension ChatViewController: MessagesDataSource {
 extension ChatViewController: MessagesDisplayDelegate {
     func backgroundColor(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> UIColor {
         return isFromCurrentSender(message: message) 
-            ? UIColor(red: 163/255, green: 53/255, blue: 42/255, alpha: 1.0) // #A3352A
+            ? accentColor
             : UIColor.systemGray5
     }
     

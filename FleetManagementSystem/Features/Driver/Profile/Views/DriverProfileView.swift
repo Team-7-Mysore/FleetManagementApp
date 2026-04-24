@@ -47,7 +47,6 @@ struct DriverProfileView: View {
                 // MARK: - Account Info
                 Section("Account") {
                     profileRow(icon: "envelope", title: "Email", value: user.email)
-                    profileRow(icon: "phone", title: "Phone", value: user.phone)
                     profileRow(icon: "calendar", title: "Member Since",
                                value: user.joinDate.formatted(date: .abbreviated, time: .omitted))
                 }
@@ -73,7 +72,7 @@ struct DriverProfileView: View {
                         }
                         .padding(.vertical, 4)
 
-                        profileRow(icon: "number", title: "License", value: vehicle.licensePlate)
+                        profileRow(icon: "number", title: "Number Plate", value: vehicle.licensePlate)
                     }
                 }
 
@@ -114,9 +113,26 @@ struct DriverProfileView: View {
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .tint(AppTheme.primaryGreen)
+//                ToolbarItem(placement: .topBarLeading) {
+//                    Button(action: {
+//                        dismiss()
+//                    }) {
+//                        Image(systemName: "xmark")
+//                            .foregroundColor(AppTheme.primaryGreen)
+//                            .font(.title2)
+//                    }
+//                }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: {
+                        dismiss()
+                    }) {
+                        ZStack {
+
+                            Image(systemName: "xmark")
+                                .foregroundColor(AppTheme.primaryGreen)
+                                .fontWeight(.medium)
+                        }
+                    }
                 }
             }
             .confirmationDialog("Log Out", isPresented: $showLogoutConfirmation) {
@@ -159,16 +175,16 @@ struct DriverProfileView: View {
                 decoder.dateDecodingStrategy = .custom { decoder in
                     let container = try decoder.singleValueContainer()
                     let str = try container.decode(String.self)
-                    let formatter = DateFormatter()
-                    formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-                    formatter.timeZone = TimeZone(secondsFromGMT: 0)
-                    if let date = formatter.date(from: str) { return date }
+                    if let date = BackendDateParser.parse(str) { return date }
                     throw DecodingError.dataCorruptedError(in: container,
                         debugDescription: "Invalid date: \(str)")
                 }
 
                 let dtoTrips = try decoder.decode([TripDTO].self, from: tripRes.data)
-                let completed = dtoTrips.filter { $0.status == "completed" }
+                let completed = dtoTrips.filter {
+                    let status = $0.status.lowercased()
+                    return status == "completed" || status == "done"
+                }
 
                 self.totalTrips = completed.count
                 self.totalMiles = completed.compactMap { $0.distanceTravelled }.reduce(0, +)
@@ -176,7 +192,15 @@ struct DriverProfileView: View {
 
                 // Step 3: Fetch vehicle from first active/assigned trip
                 if let vehicleId = dtoTrips
-                    .first(where: { $0.status == "assigned" || $0.status == "active" })?
+                    .first(where: {
+                        let status = $0.status.lowercased()
+                        return status == "assigned"
+                            || status == "planned"
+                            || status == "upcoming"
+                            || status == "scheduled"
+                            || status == "active"
+                            || status == "in_progress"
+                    })?
                     .vehicleId {
 
                     let vRes = try await SupabaseManager.shared.client

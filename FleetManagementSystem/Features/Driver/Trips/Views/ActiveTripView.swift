@@ -1,5 +1,6 @@
 import SwiftUI
 import MapKit
+import Supabase
 // MARK: - Active Trip View
 struct ActiveTripView: View {
     let trip: TripMap
@@ -11,10 +12,18 @@ struct ActiveTripView: View {
     @State private var showReportIssue = false
     @State private var timer: Timer?
 
+    // SOS State
+    @State private var showSOSConfirmation = false
+
     // MapKit State
     @State private var route: MKRoute?
     @State private var cameraPosition: MapCameraPosition = .automatic
     @StateObject private var locationManager = LocationManager()
+    @State private var distance: Double = 0
+    @State private var eta: Double = 0
+
+    // Route persistence — tracks the routes table row for this trip
+    @State private var savedRouteId: UUID?
     
     // Database points with fallbacks to demonstration points
     var startPoint: CLLocationCoordinate2D {
@@ -29,6 +38,25 @@ struct ActiveTripView: View {
             return CLLocationCoordinate2D(latitude: coord.latitude, longitude: coord.longitude)
         }
         return CLLocationCoordinate2D(latitude: 12.9716, longitude: 77.5946)
+    }
+    
+    private var formattedDistance: String {
+        guard distance > 0 else { return "--" }
+        return String(format: "%.1f km", distance / 1000)
+    }
+
+    private var formattedETA: String {
+        guard eta > 0 else { return "--" }
+        
+        let minutes = Int(eta / 60)
+        let hours = minutes / 60
+        let remainingMinutes = minutes % 60
+        
+        if hours > 0 {
+            return "\(hours)h \(remainingMinutes)m"
+        } else {
+            return "\(minutes)m"
+        }
     }
 
     var body: some View {
@@ -52,14 +80,21 @@ struct ActiveTripView: View {
                 MapUserLocationButton()
             }
             .frame(maxHeight: .infinity)
+            .overlay(alignment: .bottomTrailing) {
+                SOSButton {
+                    showSOSConfirmation = true
+                }
+                .padding(.trailing, 20)
+                .padding(.bottom, 20)
+            }
 
             // MARK: - Bottom Panel
             VStack(spacing: 16) {
                 // Trip info bar
                 HStack(spacing: 24) {
-                    tripInfoItem(value: trip.formattedDistance, label: "Distance")
+                    tripInfoItem(value: formattedDistance, label: "Distance")
                     Divider().frame(height: 36)
-                    tripInfoItem(value: trip.formattedETA, label: "ETA")
+                    tripInfoItem(value: formattedETA, label: "ETA")
                     Divider().frame(height: 36)
                     tripInfoItem(value: formattedElapsed, label: "Elapsed")
                 }
@@ -146,17 +181,27 @@ struct ActiveTripView: View {
         } message: {
             Text("Are you sure you want to end this trip?")
         }
+        .alert("Call Emergency Services?", isPresented: $showSOSConfirmation) {
+            Button("Call Now", role: .destructive) {
+                callEmergency()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will immediately dial emergency contact. Only proceed in a genuine emergency.")
+        }
         .sheet(isPresented: $showReportIssue) {
             ReportIssueView(user: user, vehicle: nil)
         }
-        .onAppear { 
+        .onAppear {
+            // Seed emergency contact (replace with user-configurable value later)
+            UserDefaults.standard.set("+918408880436", forKey: "emergency_contact")
+            savedRouteId = trip.routeId   // carry any already-stored route_id
             startTimer()
             createRoute()
             locationManager.requestLocation()
         }
         .onDisappear { stopTimer() }
     }
-
 
     private func tripInfoItem(value: String, label: String) -> some View {
         VStack(spacing: 2) {
@@ -228,12 +273,19 @@ struct ActiveTripView: View {
             
             DispatchQueue.main.async {
                 self.route = route
+                self.distance = route.distance
+                self.eta = route.expectedTravelTime
                 let rect = route.polyline.boundingMapRect
                 let paddedRect = rect.insetBy(dx: -rect.size.width * 0.12,
                                               dy: -rect.size.height * 0.12)
                 let region = MKCoordinateRegion(paddedRect)
-
                 self.cameraPosition = .region(region)
+
+                // Persist the calculated route to Supabase (always latest optimized route)
+                let currentRouteId = self.savedRouteId
+                Task {
+                    await self.saveRoute(mkRoute: route, existingRouteId: currentRouteId)
+                }
             }
         }
     }
@@ -246,6 +298,194 @@ struct ActiveTripView: View {
         destinationItem.openInMaps(launchOptions: [
             MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
         ])
+    }
+
+    // MARK: - Route Persistence
+
+    /// Encodes the MKDirections result and upserts it into the `routes` table.
+    /// INSERT path: trip has no route_id yet → creates a new row and links it back to the trip.
+    /// UPDATE path: trip already has a route_id → overwrites with the latest optimized polyline.
+    @MainActor
+    private func saveRoute(mkRoute: MKRoute, existingRouteId: UUID?) async {
+        // 1. Encode polyline into a JSON [[lat, lng]] string
+        let pointCount = mkRoute.polyline.pointCount
+        var rawCoords = [CLLocationCoordinate2D](repeating: CLLocationCoordinate2D(), count: pointCount)
+        mkRoute.polyline.getCoordinates(&rawCoords, range: NSRange(location: 0, length: pointCount))
+        let coordPairs = rawCoords.map { [$0.latitude, $0.longitude] }
+        guard
+            let jsonData = try? JSONSerialization.data(withJSONObject: coordPairs),
+            let polylineString = String(data: jsonData, encoding: .utf8)
+        else {
+            print("❌ saveRoute: failed to encode polyline")
+            return
+        }
+
+        let distanceMeters = mkRoute.distance
+        let etaSeconds     = mkRoute.expectedTravelTime
+
+        do {
+            if let existingRouteId {
+                // UPDATE the existing routes row with fresh optimized data
+                struct RouteUpdate: Encodable {
+                    let distance: Double
+                    let estimated_time: Double
+                    let polyline_data: String
+                }
+                try await SupabaseManager.shared.client
+                    .from("routes")
+                    .update(RouteUpdate(
+                        distance: distanceMeters,
+                        estimated_time: etaSeconds,
+                        polyline_data: polylineString
+                    ))
+                    .eq("route_id", value: existingRouteId.uuidString)
+                    .execute()
+                print("✅ saveRoute: updated route \(existingRouteId)")
+
+            } else {
+                // INSERT a new routes row, then link it back to the trip
+                struct RouteInsert: Encodable {
+                    let start_location: String
+                    let end_location: String
+                    let distance: Double
+                    let estimated_time: Double
+                    let polyline_data: String
+                }
+                struct RouteResponse: Decodable {
+                    let route_id: UUID
+                }
+
+                let inserted: [RouteResponse] = try await SupabaseManager.shared.client
+                    .from("routes")
+                    .insert(RouteInsert(
+                        start_location: trip.startLocation,
+                        end_location: trip.endLocation,
+                        distance: distanceMeters,
+                        estimated_time: etaSeconds,
+                        polyline_data: polylineString
+                    ))
+                    .select("route_id")
+                    .execute()
+                    .value
+
+                guard let newRouteId = inserted.first?.route_id else {
+                    print("❌ saveRoute: no route_id returned from insert")
+                    return
+                }
+
+                // Link the new route to this trip
+                try await SupabaseManager.shared.client
+                    .from("trips")
+                    .update(["route_id": newRouteId.uuidString])
+                    .eq("trip_id", value: trip.id.uuidString)
+                    .execute()
+
+                // Update local state so subsequent opens take the UPDATE path
+                savedRouteId = newRouteId
+                print("✅ saveRoute: created route \(newRouteId) and linked to trip \(trip.id)")
+            }
+        } catch {
+            print("❌ saveRoute error: \(error)")
+        }
+    }
+
+    private func callEmergency() {
+        let feedback = UINotificationFeedbackGenerator()
+        feedback.notificationOccurred(.error)
+
+        // READ the stored number (set() stores, string(forKey:) reads)
+        let rawNumber = UserDefaults.standard.string(forKey: "emergency_contact") ?? "112"
+
+        // Percent-encode so '+91...' doesn't break URL(string:)
+        let encoded = rawNumber.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "112"
+
+        // Use tel: (not tel://) — correct RFC scheme for phone calls
+        guard let url = URL(string: "tel:\(encoded)") else { return }
+
+        if UIApplication.shared.canOpenURL(url) {
+            UIApplication.shared.open(url)
+        }
+    }
+}
+
+// MARK: - SOS Button
+struct SOSButton: View {
+    let onConfirmed: () -> Void
+
+    @State private var isHolding = false
+    @State private var progress: CGFloat = 0
+    @State private var holdTask: Task<Void, Never>? = nil
+
+    private let holdDuration: Double = 1.8
+
+    var body: some View {
+        ZStack {
+            // Progress ring (while holding)
+            if isHolding {
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(
+                        Color(red: 1, green: 0.23, blue: 0.19),
+                        style: StrokeStyle(lineWidth: 4, lineCap: .round)
+                    )
+                    .frame(width: 68, height: 68)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.linear(duration: holdDuration), value: progress)
+            }
+
+            // Static button
+            Circle()
+                .fill(Color(red: 1, green: 0.23, blue: 0.19))
+                .frame(width: 60, height: 60)
+                .shadow(color: Color.black.opacity(0.25), radius: 8, x: 0, y: 4)
+                .overlay {
+                    Text("SOS")
+                        .font(.system(size: 16, weight: .black))
+                        .foregroundStyle(.white)
+                        .tracking(1.5)
+                }
+                .scaleEffect(isHolding ? 1.08 : 1.0)
+                .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isHolding)
+        }
+        .accessibilityLabel("Emergency SOS button")
+        .accessibilityHint("Hold for 2 seconds to call emergency services")
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if !isHolding { startHold() }
+                }
+                .onEnded { _ in
+                    cancelHold()
+                }
+        )
+    }
+
+    private func startHold() {
+        isHolding = true
+        progress = 0
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.linear(duration: holdDuration)) {
+            progress = 1.0
+        }
+        holdTask = Task {
+            try? await Task.sleep(nanoseconds: UInt64(holdDuration * 1_000_000_000))
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                isHolding = false
+                progress = 0
+                onConfirmed()
+            }
+        }
+    }
+
+    private func cancelHold() {
+        guard isHolding else { return }
+        holdTask?.cancel()
+        holdTask = nil
+        withAnimation(.easeOut(duration: 0.2)) { progress = 0 }
+        isHolding = false
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 }
 

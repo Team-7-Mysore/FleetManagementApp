@@ -43,15 +43,20 @@ final class DriverDashboardViewModel: ObservableObject {
     @Published private(set) var fuelEfficiency: Double?
 
     private let user: User
+    private var isLoading = false
+    private var refreshTimer: Timer?
 
     init(user: User) {
         self.user = user
     }
 
     func loadData() {
+        guard !isLoading else { return }
+        isLoading = true
         print("🚀 loadData called")
 
         Task {
+            defer { isLoading = false }
             do {
                 // Step 1: Get driver_id
                 let driverResponse = try await SupabaseManager.shared.client
@@ -83,10 +88,7 @@ final class DriverDashboardViewModel: ObservableObject {
                 decoder.dateDecodingStrategy = .custom { decoder in
                     let container = try decoder.singleValueContainer()
                     let dateStr = try container.decode(String.self)
-                    let formatter = DateFormatter()
-                    formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-                    formatter.timeZone = TimeZone(secondsFromGMT: 0)
-                    if let date = formatter.date(from: dateStr) { return date }
+                    if let date = BackendDateParser.parse(dateStr) { return date }
                     throw DecodingError.dataCorruptedError(
                         in: container,
                         debugDescription: "Invalid date format: \(dateStr)"
@@ -109,19 +111,51 @@ final class DriverDashboardViewModel: ObservableObject {
                     .filter { $0.status == .completed }
                     .reduce(0) { $0 + $1.distance }
 
-                // Step 3: Get vehicle from first assigned or active trip
-                if let vehicleId = dtoTrips
-                    .first(where: { $0.status == "assigned" || $0.status == "in_progress" })?
-                    .vehicleId {
+                // Step 3: Resolve assigned vehicle only from active/upcoming mapped trips.
+                let activeOrUpcomingTripIDs = Set(
+                    trips
+                        .filter { $0.status == .inProgress || $0.status == .planned }
+                        .map(\.id)
+                )
+
+                let currentAssignment = dtoTrips.first { dto in
+                    guard let id = UUID(uuidString: dto.tripId) else { return false }
+                    return activeOrUpcomingTripIDs.contains(id)
+                }
+
+                if let vehicleId = currentAssignment?.vehicleId, !vehicleId.isEmpty {
                     await fetchVehicle(vehicleId: vehicleId)
                 } else {
+                    self.assignedVehicle = nil
                     print("⚠️ No vehicle_id found in trips")
                 }
 
             } catch {
+                self.assignedVehicle = nil
                 print("❌ FETCH ERROR:", error)
             }
         }
+    }
+
+    func startAutoRefresh(interval: TimeInterval = 5) {
+        guard refreshTimer == nil else { return }
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.loadData()
+            }
+        }
+        timer.tolerance = 1.0
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
+    }
+
+    func stopAutoRefresh() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
+
+    deinit {
+        refreshTimer?.invalidate()
     }
 
     private func fetchVehicle(vehicleId: String) async {
@@ -141,6 +175,7 @@ final class DriverDashboardViewModel: ObservableObject {
 
             print("✅ Vehicle loaded:", self.assignedVehicle as Any)
         } catch {
+            self.assignedVehicle = nil
             print("❌ VEHICLE FETCH ERROR:", error)
         }
     }

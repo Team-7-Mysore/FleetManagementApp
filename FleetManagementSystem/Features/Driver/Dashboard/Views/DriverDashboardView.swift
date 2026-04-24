@@ -5,6 +5,7 @@ struct DriverDashboardView: View {
     let user: User
     @StateObject private var vm: DriverDashboardViewModel
     @EnvironmentObject private var router: AppRouter
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showNotifications = false
     @State private var showProfile = false
 
@@ -25,7 +26,8 @@ struct DriverDashboardView: View {
                 // MARK: - Vehicle Info
                 VStack(alignment: .leading, spacing: 12) {
                     AppTheme.sectionHeader("Assigned Vehicle")
-                    if let vehicle = vm.assignedVehicle {
+                    if (vm.activeTrip != nil || !vm.upcomingTrips.isEmpty),
+                       let vehicle = vm.assignedVehicle {
                         vehicleCard(vehicle)
                     } else {
                         vehicleEmptyCard
@@ -33,16 +35,29 @@ struct DriverDashboardView: View {
                 }
                 .padding(.top, 8)
 
-                // MARK: - Stats Row
-                statsRow
-
                 // MARK: - Upcoming Trips
                 upcomingTripsSection
             }
             .padding(.horizontal)
-            .padding(.bottom, 20)
+            .padding(.bottom, 96)
         }
         .background(AppTheme.pageBackground)
+        .overlay(alignment: .bottomTrailing) {
+            NavigationLink {
+                ChatListView(currentUserId: user.id)
+            } label: {
+                Image(systemName: "message.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 58, height: 58)
+                    .background(AppTheme.primaryGreen)
+                    .clipShape(Circle())
+                    .shadow(color: Color.black.opacity(0.18), radius: 10, x: 0, y: 6)
+            }
+            .buttonStyle(.plain)
+            .padding(.trailing, 20)
+            .padding(.bottom, 24)
+        }
         .navigationTitle("Hi \(user.firstName)")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
@@ -82,7 +97,21 @@ struct DriverDashboardView: View {
             DriverProfileView(user: user)
                 .environmentObject(router)
         }
-        .onAppear { vm.loadData() }
+        .onAppear {
+            vm.loadData()
+            vm.startAutoRefresh()
+        }
+        .onDisappear {
+            vm.stopAutoRefresh()
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
+                vm.loadData()
+            }
+        }
+        .refreshable {
+            vm.loadData()
+        }
     }
 
     // MARK: - Route Summary Card
@@ -284,44 +313,84 @@ struct DriverDashboardView: View {
     // MARK: - Vehicle Card
     @ViewBuilder
     private func vehicleCard(_ vehicle: Vehicle) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Image(systemName: vehicle.imageSystemName)
-                    .font(.title2)
-                    .foregroundStyle(AppTheme.primaryGreen)
-                    .frame(width: 48, height: 48)
-                    .background(AppTheme.lightGreen)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(vehicle.licensePlate).font(.subheadline.weight(.semibold))
-                    Text("\(vehicle.make) \(vehicle.model ?? "") • \(vehicle.year > 0 ? String(vehicle.year) : "—")")
-                        .font(.caption).foregroundStyle(.secondary)
+        // Mock data since `Vehicle` model doesn't track live document statuses directly
+        let documentsValid = true
+        
+        // Determine fuel type and icon
+        let fuelTypeName = vehicle.fuelType ?? "Petrol"
+        let isEV = fuelTypeName.localizedCaseInsensitiveContains("ev") || fuelTypeName.localizedCaseInsensitiveContains("electric")
+        let fuelIcon = isEV ? "bolt.fill" : "fuelpump.fill"
+        
+        VStack(alignment: .leading, spacing: 16) {
+            // 1. Header Section
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(vehicle.licensePlate)
+                        .font(.system(.title2, design: .default, weight: .bold))
+                        .foregroundStyle(.primary)
+                    
+                    HStack(spacing: 6) {
+                        Image(systemName: vehicle.imageSystemName)
+                        let modelText = "\(vehicle.make) \(vehicle.model ?? "")".trimmingCharacters(in: .whitespaces)
+                        Text(modelText.isEmpty ? vehicle.vehicleType.capitalized : modelText)
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
                 }
+                
                 Spacer()
+                
+                // Subtle iconography highlight
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.primaryGreen.opacity(0.1))
+                        .frame(width: 48, height: 48)
+                    Image(systemName: vehicle.imageSystemName)
+                        .font(.title3)
+                        .foregroundStyle(AppTheme.primaryGreen)
+                }
             }
-
-            Divider()
-
-            HStack(spacing: 0) {
-                vehicleInfoItem(icon: "fuelpump", value: "\(vehicle.fuelPercentage)%", label: "Fuel")
-                Divider().frame(height: 30)
-                vehicleInfoItem(icon: "speedometer", value: vehicle.formattedMileage, label: "Mileage")
-                Divider().frame(height: 30)
-                vehicleInfoItem(icon: "number", value: vehicle.licensePlate, label: "Plate")
+            
+            // 2. Status Row
+            HStack(spacing: 8) {
+                // Documents Badge
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(documentsValid ? AppTheme.primaryGreen : AppTheme.statusDanger)
+                        .frame(width: 6, height: 6)
+                    Text(documentsValid ? "Docs Valid" : "Docs Expired")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(documentsValid ? AppTheme.primaryGreen : AppTheme.statusDanger)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Capsule().fill((documentsValid ? AppTheme.primaryGreen : AppTheme.statusDanger).opacity(0.1)))
+                
+                // Fuel Type Badge
+                HStack(spacing: 6) {
+                    Image(systemName: fuelIcon)
+                    Text(fuelTypeName.capitalized)
+                }
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(Color.secondary.opacity(0.1)))
             }
         }
         .padding(16)
-        .cardStyle()
-    }
-
-    private func vehicleInfoItem(icon: String, value: String, label: String) -> some View {
-        VStack(spacing: 4) {
-            Image(systemName: icon).font(.caption).foregroundStyle(AppTheme.primaryGreen)
-            Text(value).font(.caption.weight(.semibold).monospacedDigit())
-            Text(label).font(.caption2).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
+        .background(AppTheme.cardBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(documentsValid ? Color.clear : AppTheme.statusDanger.opacity(0.3), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(
+            color: documentsValid ? Color.black.opacity(0.06) : AppTheme.statusDanger.opacity(0.15),
+            radius: documentsValid ? 12 : 16,
+            x: 0,
+            y: 4
+        )
     }
 
     // MARK: - Quick Actions (Report Issue)
@@ -336,7 +405,7 @@ struct DriverDashboardView: View {
                         .font(.headline).foregroundStyle(AppTheme.statusDanger)
                 }
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Report Issue").font(.headline).foregroundStyle(.primary)
+                    Text("Report Issue").font(.headline).foregroundStyle(Color(.label))
                     Text("Log defect or safety concern").font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -349,13 +418,7 @@ struct DriverDashboardView: View {
         }
     }
 
-    // MARK: - Stats Row
-    private var statsRow: some View {
-        HStack(spacing: 12) {
-            StatCard(icon: "road.lanes", title: "Total Miles", value: String(format: "%.0f", vm.totalMiles))
-            StatCard(icon: "truck.box", title: "Total Trips", value: "\(vm.totalTrips)")
-        }
-    }
+
 
     // MARK: - Upcoming Trips Section
     private var upcomingTripsSection: some View {

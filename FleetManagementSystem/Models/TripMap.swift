@@ -1,5 +1,35 @@
 import Foundation
 
+enum BackendDateParser {
+    static func parse(_ raw: String) -> Date? {
+        let isoWithFractional = ISO8601DateFormatter()
+        isoWithFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = isoWithFractional.date(from: raw) {
+            return date
+        }
+
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        if let date = iso.date(from: raw) {
+            return date
+        }
+
+        let formatterWithMillis = DateFormatter()
+        formatterWithMillis.locale = Locale(identifier: "en_US_POSIX")
+        formatterWithMillis.timeZone = TimeZone(secondsFromGMT: 0)
+        formatterWithMillis.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS"
+        if let date = formatterWithMillis.date(from: raw) {
+            return date
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+        return formatter.date(from: raw)
+    }
+}
+
 // MARK: - Trip Status
 enum TripStatus: String, Codable, CaseIterable, Identifiable {
     case planned    = "Planned"
@@ -52,6 +82,7 @@ struct TripMap: Identifiable, Codable, Hashable {
     var route: [Coordinate]
     var startCoordinate: Coordinate?
     var endCoordinate: Coordinate?
+    var routeId: UUID?
 
     var isActive: Bool { status == .inProgress }
 
@@ -95,6 +126,7 @@ struct TripDTO: Decodable {
     let originLongitude: Double?
     let destinationLatitude: Double?
     let destinationLongitude: Double?
+    let routeId: String?
 
     enum CodingKeys: String, CodingKey {
         case tripId = "trip_id"
@@ -111,6 +143,7 @@ struct TripDTO: Decodable {
         case originLongitude = "origin_longitude"
         case destinationLatitude = "destination_latitude"
         case destinationLongitude = "destination_longitude"
+        case routeId = "route_id"
     }
 }
 
@@ -135,13 +168,15 @@ extension TripMap {
 
         // 🔥 STATUS MAPPING (IMPORTANT)
         switch dto.status.lowercased() {
-        case "assigned":
+        case "assigned", "planned", "upcoming", "scheduled":
             self.status = .planned
-        case "in_progress":
+
+        case "active", "in_progress", "inprogress", "started":
+
             self.status = .inProgress
-        case "completed":
+        case "completed", "done":
             self.status = .completed
-        case "cancelled":
+        case "cancelled", "canceled":
             self.status = .cancelled
         default:
             self.status = .planned
@@ -161,5 +196,7 @@ extension TripMap {
         } else {
             self.endCoordinate = nil
         }
+
+        self.routeId = dto.routeId.flatMap { UUID(uuidString: $0) }
     }
 }

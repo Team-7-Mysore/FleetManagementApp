@@ -9,14 +9,18 @@ final class DriverTripViewModel: ObservableObject {
     @Published private(set) var upcomingTrips: [TripMap] = []
     @Published private(set) var completedTrips: [TripMap] = []
     @Published var selectedFilter: TripFilter = .upcoming
+    @Published var upcomingFilterDate: Date?
+    @Published var completedFilterDate: Date?
 
     private let user: User
     private var driverId: String?
+    private var isLoading = false
+    private var refreshTimer: Timer?
 
     enum TripFilter: String, CaseIterable, Identifiable {
         case upcoming   = "Upcoming"
         case completed  = "Completed"
-        case all        = "All"
+//        case all        = "All"
         var id: String { rawValue }
     }
 
@@ -25,7 +29,10 @@ final class DriverTripViewModel: ObservableObject {
     }
 
     func loadData() {
+        guard !isLoading else { return }
+        isLoading = true
         Task {
+            defer { isLoading = false }
             do {
                 // Step 1: Resolve driver_id
                 if driverId == nil {
@@ -52,10 +59,7 @@ final class DriverTripViewModel: ObservableObject {
                 decoder.dateDecodingStrategy = .custom { decoder in
                     let container = try decoder.singleValueContainer()
                     let str = try container.decode(String.self)
-                    let formatter = DateFormatter()
-                    formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-                    formatter.timeZone = TimeZone(secondsFromGMT: 0)
-                    if let date = formatter.date(from: str) { return date }
+                    if let date = BackendDateParser.parse(str) { return date }
                     throw DecodingError.dataCorruptedError(in: container,
                         debugDescription: "Invalid date: \(str)")
                 }
@@ -75,11 +79,66 @@ final class DriverTripViewModel: ObservableObject {
         }
     }
 
+    func startAutoRefresh(interval: TimeInterval = 5) {
+        guard refreshTimer == nil else { return }
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.loadData()
+            }
+        }
+        timer.tolerance = 1.0
+        RunLoop.main.add(timer, forMode: .common)
+        refreshTimer = timer
+    }
+
+    func stopAutoRefresh() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+    }
+
+    deinit {
+        refreshTimer?.invalidate()
+    }
+
     var filteredTrips: [TripMap] {
         switch selectedFilter {
-        case .upcoming:  return upcomingTrips
-        case .completed: return completedTrips
-        case .all:       return upcomingTrips + completedTrips + (activeTrip.map { [$0] } ?? [])
+        case .upcoming:
+            let source = upcomingTrips + (activeTrip.map { [$0] } ?? [])
+            guard let filterDate = upcomingFilterDate else { return source }
+            return source.filter { trip in
+                Calendar.current.isDate(tripDate(for: trip), inSameDayAs: filterDate)
+            }
+        case .completed:
+            guard let filterDate = completedFilterDate else { return completedTrips }
+            return completedTrips.filter { trip in
+                Calendar.current.isDate(tripDate(for: trip), inSameDayAs: filterDate)
+            }
+//        case .all:       return upcomingTrips + completedTrips + (activeTrip.map { [$0] } ?? [])
+        }
+    }
+
+    private func tripDate(for trip: TripMap) -> Date {
+        if trip.status == .completed {
+            return trip.endTime ?? trip.startTime ?? trip.scheduledStartTime
+        }
+        return trip.scheduledStartTime
+    }
+
+    func filterDate(for segment: TripFilter) -> Date? {
+        switch segment {
+        case .upcoming:
+            return upcomingFilterDate
+        case .completed:
+            return completedFilterDate
+        }
+    }
+
+    func setFilterDate(_ date: Date?, for segment: TripFilter) {
+        switch segment {
+        case .upcoming:
+            upcomingFilterDate = date
+        case .completed:
+            completedFilterDate = date
         }
     }
 
@@ -112,6 +171,21 @@ final class DriverTripViewModel: ObservableObject {
                     ])
                     .eq("trip_id", value: trip.id.uuidString)
                     .execute()
+
+                let emptyID = "00000000-0000-0000-0000-000000000000"
+                let vehicleID = trip.vehicleId.uuidString
+                if vehicleID != emptyID {
+                    do {
+                        try await SupabaseManager.shared.client
+                            .from("vehicles")
+                            .update(["status": "unassigned"])
+                            .eq("vehicle_id", value: vehicleID)
+                            .execute()
+                    } catch {
+                        print("⚠️ vehicle unassign update failed:", error)
+                    }
+                }
+
                 loadData()
             } catch {
                 print("❌ endTrip error:", error)

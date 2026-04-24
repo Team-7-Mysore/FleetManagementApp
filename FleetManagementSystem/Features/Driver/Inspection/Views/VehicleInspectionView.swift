@@ -129,15 +129,27 @@ struct VehicleInspectionView: View {
             }
 
             // Notes
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Overall Notes")
-                    .font(.subheadline.weight(.semibold))
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Image(systemName: "note.text")
+                        .foregroundStyle(AppTheme.primaryGreen)
+                        .font(.subheadline)
+                    Text("Overall Notes")
+                        .font(.subheadline.weight(.semibold))
+                }
                 TextEditor(text: $overallNotes)
-                    .frame(height: 80)
-                    .padding(8)
+                    .frame(height: 90)
+                    .scrollContentBackground(.hidden)
+                    .padding(10)
                     .background(Color(.tertiarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color(.separator).opacity(0.4), lineWidth: 1)
+                    )
             }
+            .padding(16)
+            .cardStyle()
             .padding(.top, 4)
 
             // Action Button
@@ -250,9 +262,24 @@ struct VehicleInspectionView: View {
                     }
                 }
             } else {
-                Text(item.status.rawValue)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(itemColor(item.status))
+                HStack(spacing: 8) {
+                    Text(item.status.rawValue)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(itemColor(item.status))
+                    if item.status == .pass {
+                        Button {
+                            vm.updateItem(itemId: item.id, status: .pending)
+                        } label: {
+                            Image(systemName: "pencil")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 26, height: 26)
+                                .background(Color(.systemGray5))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
         }
         .padding(14)
@@ -322,8 +349,12 @@ struct VehicleInspectionView: View {
     private func handleSubmitConfirmation() {
         if let trip {
             if isPostTripFlow {
-                vm.submitAndCompleteTrip(notes: overallNotes, trip: trip)
-                router.resetPath()
+                Task {
+                    let didComplete = await vm.submitAndCompleteTrip(notes: overallNotes, trip: trip)
+                    if didComplete {
+                        router.resetPath()
+                    }
+                }
             } else {
                 vm.submitAndStartTrip(notes: overallNotes, trip: trip)
                 router.path = NavigationPath([AppRoute.activeTrip(trip)])
