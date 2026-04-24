@@ -54,9 +54,11 @@ struct StaffListView: View {
                                 .listRowSeparator(.hidden)
                             }
                         }
-                    } header: {
-                        staffSectionHeader
-                    } 
+                    } footer: {
+                        if !vm.isLoading && !vm.filteredStaff.isEmpty {
+                            Text("Pull down to refresh the latest staff status.")
+                        }
+                    }
                 }
                 .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
@@ -66,8 +68,41 @@ struct StaffListView: View {
                 .navigationBarTitleDisplayMode(.large)
                 .toolbar {
                     ToolbarItemGroup(placement: .topBarTrailing) {
-                        toolbarIconButton(systemName: "slider.horizontal.3") { showFilter = true }
-                        toolbarIconButton(systemName: "bell") {}
+                        Menu {
+                            // ── Status ──
+                            Picker("Status", selection: $vm.selectedStatus) {
+                                Text("All Statuses").tag(Optional<AccountStatus>.none)
+                                ForEach(AccountStatus.allCases, id: \.self) { status in
+                                    Label(status.displayName, systemImage: statusMenuIcon(status))
+                                        .tag(Optional(status))
+                                }
+                            }
+
+                            Divider()
+
+                            // ── Role ──
+                            Picker("Role", selection: $vm.selectedRole) {
+                                Text("All Roles").tag(Optional<UserRole>.none)
+                                ForEach([UserRole.driver, UserRole.maintenance], id: \.self) { role in
+                                    Label(role.displayName, systemImage: role.icon)
+                                        .tag(Optional(role))
+                                }
+                            }
+
+                            if vm.activeFilterCount > 0 {
+                                Divider()
+                                Button(role: .destructive) {
+                                    vm.clearFilters()
+                                } label: {
+                                    Label("Clear Filters", systemImage: "xmark.circle")
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "slider.horizontal.3")
+                                .symbolVariant(vm.activeFilterCount > 0 ? .fill : .none)
+                                .foregroundStyle(vm.activeFilterCount > 0 ? Color.TechBlue : .primary)
+                                .font(.body.weight(.semibold))
+                        }
                     }
                 }
                 .task { vm.fetchStaff() }
@@ -104,18 +139,6 @@ struct StaffListView: View {
     }
 
 
-    private var staffSectionHeader: some View {
-        HStack {
-            Text("All Staff")
-            Spacer()
-            if vm.activeFilterCount > 0 {
-                Button("Clear Filters") { vm.clearFilters() }
-                    .font(.subheadline.weight(.semibold))
-                    .textCase(nil)
-            }
-        }
-    }
-
     // MARK: - Loading State
 
     private var staffLoadingState: some View {
@@ -131,12 +154,13 @@ struct StaffListView: View {
         .listRowSeparator(.hidden)
     }
 
-    // MARK: - Toolbar Button
+    // MARK: - Helpers
 
-    private func toolbarIconButton(systemName: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.body.weight(.semibold))
+    private func statusMenuIcon(_ status: AccountStatus) -> String {
+        switch status {
+        case .active:   return "checkmark.circle.fill"
+        case .pending:  return "clock.fill"
+        case .inactive: return "minus.circle.fill"
         }
     }
 }
@@ -202,12 +226,9 @@ private struct StaffCard: View {
 
     private var accentColor: Color {
         switch staff.role {
-        case .driver:
-            return Color(red: 59/255,  green: 13/255,  blue: 17/255)
-        case .maintenance:
-            return Color(red: 30/255,  green: 80/255,  blue: 160/255)
-        case .fleetManager:
-            return Color(red: 40/255,  green: 120/255, blue: 70/255)
+        case .driver:      return Color(red: 59/255,  green: 13/255,  blue: 17/255)
+        case .maintenance: return Color(red: 30/255,  green: 80/255,  blue: 160/255)
+        case .manager:     return Color(red: 40/255,  green: 120/255, blue: 70/255)
         }
     }
 
@@ -294,9 +315,8 @@ private struct StaffCard: View {
 
 
 // MARK: - Status Badge
-// MARK: - Account Status Badge
 
-private struct AccountStatusBadge: View {
+private struct StatusBadge1: View {
     let status: AccountStatus
 
     var body: some View {
@@ -380,7 +400,7 @@ struct StaffFilterSheet: View {
         }
     }
 
-    private func roleRow(_ role: AppUserRole) -> some View {
+    private func roleRow(_ role: UserRole) -> some View {
         HStack(spacing: 10) {
             Image(systemName: role.icon)
                 .font(.system(size: 14))
@@ -414,7 +434,7 @@ struct StaffFilterSheet: View {
 
                 // ── Role ──
                 Section("Role") {
-                    ForEach([AppUserRole.driver, AppUserRole.maintenance], id: \.self) { role in
+                    ForEach([UserRole.driver, UserRole.maintenance], id: \.self) { role in
                         roleRow(role)
                     }
                 }
@@ -489,3 +509,4 @@ private struct EmptyStaffView: View {
 #Preview {
     StaffListView()
 }
+

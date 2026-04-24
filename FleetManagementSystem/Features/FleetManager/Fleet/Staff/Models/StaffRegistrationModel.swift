@@ -1,21 +1,21 @@
-
 //
 //  StaffRegistrationModel.swift
 //  FleetManagementSystem
 //
-//  Data model for the Add Person / Staff onboarding flow.
-//  Inserts directly into public.users via Supabase on confirm.
+//  Clean model: handles UI state, validation, licence parsing.
+//  Backend work is handled by Edge Function.
 //
 
 import Foundation
 import Combine
-import Supabase
+import UIKit
+import Vision
 
 // MARK: - Role
 
 enum StaffRole: String, CaseIterable, Identifiable {
-    case driver      = "Driver"
-    case maintenance = "Maintenance Staff"
+    case driver      = "driver"
+    case maintenance = "maintenance"
 
     var id: String { rawValue }
 
@@ -28,71 +28,76 @@ enum StaffRole: String, CaseIterable, Identifiable {
 
     var description: String {
         switch self {
-        case .driver:      return "Manages vehicle operations and deliveries"
-        case .maintenance: return "Handles vehicle maintenance and repairs"
+        case .driver:
+            return "Manages vehicle operations and deliveries"
+        case .maintenance:
+            return "Handles vehicle maintenance and repairs"
         }
     }
 
-    /// Matches the `user_role` enum values in the DB
-    var dbValue: String {
-        switch self {
-        case .driver:      return "driver"
-        case .maintenance: return "maintenance"
-        }
-    }
-}
-
-// MARK: - Supabase Insert Payload
-
-private struct UserInsert: Encodable {
-    let name:       String
-    let email:      String
-    let role:       String
-    let phone_no:   String?
-    let created_by: String
-    let username:   String
+    var dbValue: String { rawValue }
 }
 
 // MARK: - Model
 
 class StaffRegistrationModel: ObservableObject {
 
-    // Step 1 — Basic Info & Role
+    // MARK: Step 1 — Basic Info
+
     @Published var firstName:    String     = ""
     @Published var lastName:     String     = ""
     @Published var email:        String     = ""
     @Published var phoneNo:      String     = ""
     @Published var selectedRole: StaffRole? = nil
 
-    // Auto-generated username (no "@" prefix stored in DB)
-    var generatedUsername: String {
-        guard !firstName.isEmpty else { return "" }
-        let base = (firstName + lastName)
-            .lowercased()
-            .filter { $0.isLetter || $0.isNumber }
-        return base.isEmpty ? "" : base
+    // MARK: Driver-specific
+
+    @Published var licenceImage: UIImage? = nil {
+        didSet {
+            if let img = licenceImage {
+                extractLicenceData(from: img)
+            } else {
+                licenceNumber = ""
+                licenceExpiryDate = ""
+            }
+        }
     }
 
-    /// Display version shown in UI (with @ prefix)
-    var displayUsername: String {
-        generatedUsername.isEmpty ? "" : "@\(generatedUsername)"
-    }
+    @Published var licenceNumber: String = ""
+    @Published var licenceExpiryDate: String = ""
 
-    var fullName: String { "\(firstName) \(lastName)".trimmingCharacters(in: .whitespaces) }
+    // MARK: UI State
 
-    // Navigation
-    @Published var currentStep:       Int    = 1
-    @Published var isCreatingAccount: Bool   = false
-    @Published var accountCreated:    Bool   = false
+    @Published var currentStep:       Int     = 1
+    @Published var isCreatingAccount: Bool    = false
+    @Published var accountCreated:    Bool    = false
     @Published var errorMessage:      String? = nil
+
+    // MARK: Computed
+
+    var fullName: String {
+        "\(firstName) \(lastName)".trimmingCharacters(in: .whitespaces)
+    }
 
     // MARK: Validation
 
     var isFormValid: Bool {
-        !firstName.trimmingCharacters(in: .whitespaces).isEmpty &&
-        !lastName.trimmingCharacters(in: .whitespaces).isEmpty &&
-        isValidEmail(email) &&
-        selectedRole != nil
+        guard
+            !firstName.trimmingCharacters(in: .whitespaces).isEmpty,
+            !lastName.trimmingCharacters(in: .whitespaces).isEmpty,
+            isValidEmail(email),
+            let role = selectedRole
+        else {
+            return false
+        }
+
+        if role == .driver {
+            return licenceImage != nil &&
+                   !licenceNumber.trimmingCharacters(in: .whitespaces).isEmpty &&
+                   !licenceExpiryDate.trimmingCharacters(in: .whitespaces).isEmpty
+        }
+
+        return true
     }
 
     private func isValidEmail(_ email: String) -> Bool {
@@ -100,42 +105,83 @@ class StaffRegistrationModel: ObservableObject {
         return NSPredicate(format: "SELF MATCHES %@", pattern).evaluate(with: email)
     }
 
-    // MARK: Account Creation — Supabase insert into public.users
+    // MARK: Licence OCR
 
-    /// Admin UUID who is creating the staff account
-    private let adminUserId = "c1ebd8dd-2a0d-458c-ba34-b1d3fc550f13"
+    private func extractLicenceData(from image: UIImage) {
+        guard let cgImage = image.cgImage else { return }
 
-    func createAccount(completion: @escaping () -> Void) {
-        guard let role = selectedRole else { return }
+        let request = VNRecognizeTextRequest { [weak self] request, error in
+            guard let observations = request.results as? [VNRecognizedTextObservation],
+                  error == nil else { return }
 
-        isCreatingAccount = true
-        errorMessage      = nil
+            let recognizedStrings = observations.compactMap {
+                $0.topCandidates(1).first?.string
+            }
 
-        let payload = UserInsert(
-            name:       fullName,
-            email:      email.lowercased().trimmingCharacters(in: .whitespaces),
-            role:       role.dbValue,
-            phone_no:   phoneNo.trimmingCharacters(in: .whitespaces).isEmpty ? nil : phoneNo.trimmingCharacters(in: .whitespaces),
-            created_by: adminUserId,
-            username:   generatedUsername
-        )
+            DispatchQueue.main.async {
+                self?.parseExtractedText(recognizedStrings)
+            }
+        }
 
-        Task { @MainActor in
-            do {
-                try await SupabaseManager.shared.client
-                    .from("users")
-                    .insert(payload)
-                    .execute()
+        request.recognitionLevel = .accurate
 
-                isCreatingAccount = false
-                accountCreated    = true
-                completion()
-            } catch {
-                isCreatingAccount = false
-                errorMessage      = error.localizedDescription
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            try? handler.perform([request])
+        }
+    }
+
+    private func parseExtractedText(_ lines: [String]) {
+        let datePattern = "(\\d{2}[/-]\\d{2}[/-]\\d{2,4})"
+
+        for line in lines {
+            let cleanLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // Extract expiry date
+            if licenceExpiryDate.isEmpty,
+               let range = cleanLine.range(of: datePattern, options: .regularExpression) {
+                licenceExpiryDate = String(cleanLine[range])
+            }
+
+            // Extract licence number
+            let noSpaces = cleanLine.replacingOccurrences(of: " ", with: "")
+            let alphanumericPattern = "^[A-Z0-9]{6,20}$"
+
+            if licenceNumber.isEmpty,
+               noSpaces.range(of: alphanumericPattern, options: .regularExpression) != nil,
+               noSpaces.range(of: datePattern, options: .regularExpression) == nil,
+               !noSpaces.lowercased().contains("licence"),
+               !noSpaces.lowercased().contains("driver"),
+               !noSpaces.lowercased().contains("state") {
+
+                licenceNumber = noSpaces
             }
         }
     }
+
+    // MARK: Date Conversion
+
+    func parsedExpiryDateForDB() -> String? {
+        let formatter = DateFormatter()
+        let formats = [
+            "dd/MM/yyyy", "dd-MM-yyyy",
+            "MM/dd/yyyy", "MM-dd-yyyy",
+            "dd/MM/yy", "yyyy-MM-dd"
+        ]
+
+        for format in formats {
+            formatter.dateFormat = format
+            if let date = formatter.date(from: licenceExpiryDate) {
+                formatter.dateFormat = "yyyy-MM-dd"
+                return formatter.string(from: date)
+            }
+        }
+
+        return nil
+    }
+
+    // MARK: Reset
 
     func reset() {
         firstName         = ""
@@ -143,6 +189,9 @@ class StaffRegistrationModel: ObservableObject {
         email             = ""
         phoneNo           = ""
         selectedRole      = nil
+        licenceImage      = nil
+        licenceNumber     = ""
+        licenceExpiryDate = ""
         currentStep       = 1
         isCreatingAccount = false
         accountCreated    = false

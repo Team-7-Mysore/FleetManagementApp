@@ -50,8 +50,7 @@ struct FleetManagementSystemApp: App {
             }
         }
     }
-    
-    // MARK: - Session Check
+
     private func checkSession() async {
         do {
             let session = try await SupabaseManager.shared.client.auth.session
@@ -80,30 +79,48 @@ struct FleetManagementSystemApp: App {
                 .single()
                 .execute()
                 .value
+
             
             await MainActor.run {
                 appSession.setAuthenticated(profile: profile)
             }
+
         } catch {
             print("❌ Profile fetch error:", error)
         }
     }
-    
-    // MARK: - Deep Link
+
     private func handleDeepLink(_ url: URL) {
+        print("📩 Deep link received:", url)
+
         Task {
             do {
                 let params = authParams(from: url)
-                
+
                 if let accessToken = params["access_token"],
-                   let refreshToken = params["refresh_token"] {
+                   let refreshToken = params["refresh_token"],
+                   !accessToken.isEmpty,
+                   !refreshToken.isEmpty {
+
                     try await SupabaseManager.shared.client.auth.setSession(
                         accessToken: accessToken,
                         refreshToken: refreshToken
                     )
-                } else if params["code"] != nil {
-                    _ = try await SupabaseManager.shared.client.auth.session(from: url)
+
+                    print("✅ Session restored via tokens")
                 }
+
+                // Case 2: Code-based login
+                else if params["code"] != nil {
+                    _ = try await SupabaseManager.shared.client.auth.session(from: url)
+                    print("✅ Session restored via auth code")
+                }
+
+                else {
+                    print("❌ Invalid deep link")
+                    return
+                }
+
                 
                 let session = try await SupabaseManager.shared.client.auth.session
                 
@@ -122,22 +139,26 @@ struct FleetManagementSystemApp: App {
                     
                     await fetchUserProfile()
                 }
+
             } catch {
                 print("❌ Deep link error:", error)
             }
         }
     }
-    
-    // MARK: - URL Params
+
+
+    // MARK: - Extract URL Params
     private func authParams(from url: URL) -> [String: String] {
         var result: [String: String] = [:]
-        
+
+        // Query params
+
         if let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems {
             for item in queryItems {
                 result[item.name] = item.value
             }
         }
-        
+
         if let fragment = URLComponents(url: url, resolvingAgainstBaseURL: false)?.fragment,
            let fragmentItems = URLComponents(string: "?\(fragment)")?.queryItems {
             for item in fragmentItems {

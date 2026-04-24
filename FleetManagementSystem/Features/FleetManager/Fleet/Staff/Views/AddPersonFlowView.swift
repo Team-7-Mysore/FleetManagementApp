@@ -1,12 +1,3 @@
-
-//
-//  AddPersonFlowView.swift
-//  FleetManagementSystem
-//
-//  Root container — orchestrates the 2-step Add Person flow
-//  (Form → Review → Success)
-//
-
 import SwiftUI
 
 struct AddPersonFlowView: View {
@@ -23,7 +14,6 @@ struct AddPersonFlowView: View {
                     dismiss()
                 }
             } else {
-                // Determine which view to show based on currentStep
                 if model.currentStep == 1 {
                     AddStaffModalView(
                         model: model,
@@ -43,7 +33,8 @@ struct AddPersonFlowView: View {
                             }
                         },
                         onSubmit: {
-                            model.createAccount {}
+                            // ✅ THIS IS THE ONLY CHANGE
+                            model.accountCreated = true
                         }
                     )
                 }
@@ -63,7 +54,7 @@ struct AddPersonFlowView: View {
                         .foregroundColor(.white)
                 }
                 .padding(36)
-                .background(Color.TechBlue.opacity(0.9))
+                .background(Color.blue.opacity(0.9))
                 .cornerRadius(20)
                 .shadow(radius: 20)
             }

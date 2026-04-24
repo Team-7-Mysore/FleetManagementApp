@@ -118,12 +118,12 @@ private struct SuccessStepRow: View {
     }
 }
 
-#Preview {
-    let m = StaffRegistrationModel()
-    m.firstName    = "Jane"
-    m.lastName     = "Smith"
-    m.email        = "jane@company.com"
-    m.selectedRole = .maintenance
-    m.accountCreated = true
-    return AddStaffSuccessView(model: m, onDone: {})
-}
+//#Preview {
+//    let m = StaffRegistrationModel()
+//    m.firstName    = "Jane"
+//    m.lastName     = "Smith"
+//    m.email        = "jane@company.com"
+//    m.selectedRole = .maintenance
+//    m.accountCreated = true
+//    return AddStaffSuccessView(model: m, onDone: {})
+//}
