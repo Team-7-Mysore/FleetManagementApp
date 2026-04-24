@@ -97,20 +97,26 @@ final class FleetListViewModel: ObservableObject {
         do {
             let response = try await SupabaseManager.shared.client
                 .from("work_orders")
-                .select("vehicle_vin, status")
+                .select("vehicle_id, status")
                 .eq("status", value: "Completed")
                 .execute()
             
             guard let rows = try JSONSerialization.jsonObject(with: response.data) as? [[String: Any]] else { return }
             
             for row in rows {
-                guard let vin = row["vehicle_vin"] as? String else { continue }
+                guard let vehicleId = row["vehicle_id"] as? String else { continue }
                 
                 try await SupabaseManager.shared.client
                     .from("vehicles")
                     .update(["status": "active"])
-                    .eq("vin", value: vin)
+                    .eq("vehicle_id", value: vehicleId)
                     .eq("status", value: "under_maintenance")
+                    .execute()
+                
+                try await SupabaseManager.shared.client
+                    .from("maintenance_issues")
+                    .delete()
+                    .eq("vehicle_id", value: vehicleId)
                     .execute()
             }
         } catch {
