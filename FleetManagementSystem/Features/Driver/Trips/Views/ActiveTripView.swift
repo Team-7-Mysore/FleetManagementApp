@@ -1,5 +1,6 @@
 import SwiftUI
 import MapKit
+import Supabase
 // MARK: - Active Trip View
 struct ActiveTripView: View {
     let trip: TripMap
@@ -20,6 +21,9 @@ struct ActiveTripView: View {
     @StateObject private var locationManager = LocationManager()
     @State private var distance: Double = 0
     @State private var eta: Double = 0
+
+    // Route persistence — tracks the routes table row for this trip
+    @State private var savedRouteId: UUID?
     
     // Database points with fallbacks to demonstration points
     var startPoint: CLLocationCoordinate2D {
@@ -191,6 +195,7 @@ struct ActiveTripView: View {
         .onAppear {
             // Seed emergency contact (replace with user-configurable value later)
             UserDefaults.standard.set("+918408880436", forKey: "emergency_contact")
+            savedRouteId = trip.routeId   // carry any already-stored route_id
             startTimer()
             createRoute()
             locationManager.requestLocation()
@@ -274,8 +279,13 @@ struct ActiveTripView: View {
                 let paddedRect = rect.insetBy(dx: -rect.size.width * 0.12,
                                               dy: -rect.size.height * 0.12)
                 let region = MKCoordinateRegion(paddedRect)
-
                 self.cameraPosition = .region(region)
+
+                // Persist the calculated route to Supabase (always latest optimized route)
+                let currentRouteId = self.savedRouteId
+                Task {
+                    await self.saveRoute(mkRoute: route, existingRouteId: currentRouteId)
+                }
             }
         }
     }
@@ -290,14 +300,95 @@ struct ActiveTripView: View {
         ])
     }
 
-//    private func callEmergency() {
-//        let feedback = UINotificationFeedbackGenerator()
-//        feedback.notificationOccurred(.error)
-//        if let url = URL(string: "tel://112") {
-//            UIApplication.shared.open(url)
-//        }
-//    }
-    
+    // MARK: - Route Persistence
+
+    /// Encodes the MKDirections result and upserts it into the `routes` table.
+    /// INSERT path: trip has no route_id yet → creates a new row and links it back to the trip.
+    /// UPDATE path: trip already has a route_id → overwrites with the latest optimized polyline.
+    @MainActor
+    private func saveRoute(mkRoute: MKRoute, existingRouteId: UUID?) async {
+        // 1. Encode polyline into a JSON [[lat, lng]] string
+        let pointCount = mkRoute.polyline.pointCount
+        var rawCoords = [CLLocationCoordinate2D](repeating: CLLocationCoordinate2D(), count: pointCount)
+        mkRoute.polyline.getCoordinates(&rawCoords, range: NSRange(location: 0, length: pointCount))
+        let coordPairs = rawCoords.map { [$0.latitude, $0.longitude] }
+        guard
+            let jsonData = try? JSONSerialization.data(withJSONObject: coordPairs),
+            let polylineString = String(data: jsonData, encoding: .utf8)
+        else {
+            print("❌ saveRoute: failed to encode polyline")
+            return
+        }
+
+        let distanceMeters = mkRoute.distance
+        let etaSeconds     = mkRoute.expectedTravelTime
+
+        do {
+            if let existingRouteId {
+                // UPDATE the existing routes row with fresh optimized data
+                struct RouteUpdate: Encodable {
+                    let distance: Double
+                    let estimated_time: Double
+                    let polyline_data: String
+                }
+                try await SupabaseManager.shared.client
+                    .from("routes")
+                    .update(RouteUpdate(
+                        distance: distanceMeters,
+                        estimated_time: etaSeconds,
+                        polyline_data: polylineString
+                    ))
+                    .eq("route_id", value: existingRouteId.uuidString)
+                    .execute()
+                print("✅ saveRoute: updated route \(existingRouteId)")
+
+            } else {
+                // INSERT a new routes row, then link it back to the trip
+                struct RouteInsert: Encodable {
+                    let start_location: String
+                    let end_location: String
+                    let distance: Double
+                    let estimated_time: Double
+                    let polyline_data: String
+                }
+                struct RouteResponse: Decodable {
+                    let route_id: UUID
+                }
+
+                let inserted: [RouteResponse] = try await SupabaseManager.shared.client
+                    .from("routes")
+                    .insert(RouteInsert(
+                        start_location: trip.startLocation,
+                        end_location: trip.endLocation,
+                        distance: distanceMeters,
+                        estimated_time: etaSeconds,
+                        polyline_data: polylineString
+                    ))
+                    .select("route_id")
+                    .execute()
+                    .value
+
+                guard let newRouteId = inserted.first?.route_id else {
+                    print("❌ saveRoute: no route_id returned from insert")
+                    return
+                }
+
+                // Link the new route to this trip
+                try await SupabaseManager.shared.client
+                    .from("trips")
+                    .update(["route_id": newRouteId.uuidString])
+                    .eq("trip_id", value: trip.id.uuidString)
+                    .execute()
+
+                // Update local state so subsequent opens take the UPDATE path
+                savedRouteId = newRouteId
+                print("✅ saveRoute: created route \(newRouteId) and linked to trip \(trip.id)")
+            }
+        } catch {
+            print("❌ saveRoute error: \(error)")
+        }
+    }
+
     private func callEmergency() {
         let feedback = UINotificationFeedbackGenerator()
         feedback.notificationOccurred(.error)

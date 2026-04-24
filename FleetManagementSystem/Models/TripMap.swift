@@ -82,6 +82,7 @@ struct TripMap: Identifiable, Codable, Hashable {
     var route: [Coordinate]
     var startCoordinate: Coordinate?
     var endCoordinate: Coordinate?
+    var routeId: UUID?
 
     var isActive: Bool { status == .inProgress }
 
@@ -125,6 +126,7 @@ struct TripDTO: Decodable {
     let originLongitude: Double?
     let destinationLatitude: Double?
     let destinationLongitude: Double?
+    let routeId: String?
 
     enum CodingKeys: String, CodingKey {
         case tripId = "trip_id"
@@ -141,6 +143,7 @@ struct TripDTO: Decodable {
         case originLongitude = "origin_longitude"
         case destinationLatitude = "destination_latitude"
         case destinationLongitude = "destination_longitude"
+        case routeId = "route_id"
     }
 }
 
@@ -191,5 +194,7 @@ extension TripMap {
         } else {
             self.endCoordinate = nil
         }
+
+        self.routeId = dto.routeId.flatMap { UUID(uuidString: $0) }
     }
 }
