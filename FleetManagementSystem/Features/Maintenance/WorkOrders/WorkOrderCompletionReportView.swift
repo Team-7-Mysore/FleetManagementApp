@@ -283,7 +283,7 @@ struct ReportHeaderCard: View {
                 // VIN gets its own full-width row now
                 ReportDetailColumn(
                     title: "VIN",
-                    value: workOrder.vehicleVin
+                    value: workOrder.vehicleVin?.uppercased() ?? "N/A",
                 )
             }
         }
