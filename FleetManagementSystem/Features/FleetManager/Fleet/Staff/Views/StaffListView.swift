@@ -54,8 +54,6 @@ struct StaffListView: View {
                                 .listRowSeparator(.hidden)
                             }
                         }
-                    } header: {
-                        staffSectionHeader
                     } footer: {
                         if !vm.isLoading && !vm.filteredStaff.isEmpty {
                             Text("Pull down to refresh the latest staff status.")
@@ -70,8 +68,41 @@ struct StaffListView: View {
                 .navigationBarTitleDisplayMode(.large)
                 .toolbar {
                     ToolbarItemGroup(placement: .topBarTrailing) {
-                        toolbarIconButton(systemName: "slider.horizontal.3") { showFilter = true }
-                        toolbarIconButton(systemName: "bell") {}
+                        Menu {
+                            // ── Status ──
+                            Picker("Status", selection: $vm.selectedStatus) {
+                                Text("All Statuses").tag(Optional<AccountStatus>.none)
+                                ForEach(AccountStatus.allCases, id: \.self) { status in
+                                    Label(status.displayName, systemImage: statusMenuIcon(status))
+                                        .tag(Optional(status))
+                                }
+                            }
+
+                            Divider()
+
+                            // ── Role ──
+                            Picker("Role", selection: $vm.selectedRole) {
+                                Text("All Roles").tag(Optional<UserRole>.none)
+                                ForEach([UserRole.driver, UserRole.maintenance], id: \.self) { role in
+                                    Label(role.displayName, systemImage: role.icon)
+                                        .tag(Optional(role))
+                                }
+                            }
+
+                            if vm.activeFilterCount > 0 {
+                                Divider()
+                                Button(role: .destructive) {
+                                    vm.clearFilters()
+                                } label: {
+                                    Label("Clear Filters", systemImage: "xmark.circle")
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "slider.horizontal.3")
+                                .symbolVariant(vm.activeFilterCount > 0 ? .fill : .none)
+                                .foregroundStyle(vm.activeFilterCount > 0 ? Color.TechBlue : .primary)
+                                .font(.body.weight(.semibold))
+                        }
                     }
                 }
                 .task { vm.fetchStaff() }
@@ -108,18 +139,6 @@ struct StaffListView: View {
     }
 
 
-    private var staffSectionHeader: some View {
-        HStack {
-            Text("All Staff")
-            Spacer()
-            if vm.activeFilterCount > 0 {
-                Button("Clear Filters") { vm.clearFilters() }
-                    .font(.subheadline.weight(.semibold))
-                    .textCase(nil)
-            }
-        }
-    }
-
     // MARK: - Loading State
 
     private var staffLoadingState: some View {
@@ -135,12 +154,13 @@ struct StaffListView: View {
         .listRowSeparator(.hidden)
     }
 
-    // MARK: - Toolbar Button
+    // MARK: - Helpers
 
-    private func toolbarIconButton(systemName: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.body.weight(.semibold))
+    private func statusMenuIcon(_ status: AccountStatus) -> String {
+        switch status {
+        case .active:   return "checkmark.circle.fill"
+        case .pending:  return "clock.fill"
+        case .inactive: return "minus.circle.fill"
         }
     }
 }
@@ -489,3 +509,4 @@ private struct EmptyStaffView: View {
 #Preview {
     StaffListView()
 }
+
