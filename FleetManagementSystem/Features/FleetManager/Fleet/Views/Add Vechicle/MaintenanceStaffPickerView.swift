@@ -4,6 +4,7 @@ import Supabase
 struct MaintenanceStaffPickerView: View {
     let vehicle: Vehicle
     @Environment(\.dismiss) var dismiss
+    var onCompleted: (() -> Void)?
     
     @State private var staff: [AppUser] = []
     @State private var isLoading = true
@@ -134,7 +135,10 @@ struct MaintenanceStaffPickerView: View {
             ]
             try await SupabaseManager.shared.client.from("notifications").insert(notificationData).execute()
             
-            await MainActor.run { dismiss() }
+            await MainActor.run { 
+                dismiss() 
+                onCompleted?()
+            }
         } catch {
             await MainActor.run {
                 self.errorMessage = "Assignment failed: \(error.localizedDescription)"

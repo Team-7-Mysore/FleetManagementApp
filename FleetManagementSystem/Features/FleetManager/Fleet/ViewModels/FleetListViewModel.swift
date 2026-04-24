@@ -83,10 +83,38 @@ final class FleetListViewModel: ObservableObject {
 
             // Parsing logic usually happens here via parseVehicles helper
             self.vehicles = try Self.parseVehicles(from: response.data)
+            
+            await checkAndUpdateCompletedWorkOrders()
+            
             isLoading = false
         } catch {
             print("❌ Supabase Fetch Error: \(error)")
             isLoading = false
+        }
+    }
+    
+    func checkAndUpdateCompletedWorkOrders() async {
+        do {
+            let response = try await SupabaseManager.shared.client
+                .from("work_orders")
+                .select("vehicle_vin, status")
+                .eq("status", value: "Completed")
+                .execute()
+            
+            guard let rows = try JSONSerialization.jsonObject(with: response.data) as? [[String: Any]] else { return }
+            
+            for row in rows {
+                guard let vin = row["vehicle_vin"] as? String else { continue }
+                
+                try await SupabaseManager.shared.client
+                    .from("vehicles")
+                    .update(["status": "active"])
+                    .eq("vin", value: vin)
+                    .eq("status", value: "under_maintenance")
+                    .execute()
+            }
+        } catch {
+            print("❌ Error checking completed work orders: \(error)")
         }
     }
 
@@ -169,6 +197,7 @@ private extension FleetListViewModel {
             vehicle.registrationDate = stringValue(row["registration_date"]) ?? ""
             vehicle.rcExpiryDate = stringValue(row["rc_expiry_date"]) ?? ""
             vehicle.pucExpiryDate = stringValue(row["puc_expiry_date"]) ?? ""
+            vehicle.status = stringValue(row["status"])
             return vehicle
         }
     }

@@ -316,7 +316,7 @@ struct CompactVehicleRow: View {
             
             Spacer()
             
-            Text(vehicle.status?.uppercased() ?? "ACTIVE")
+            Text(vehicle.statusDisplayName)
                 .font(.system(size: 10, weight: .black))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)

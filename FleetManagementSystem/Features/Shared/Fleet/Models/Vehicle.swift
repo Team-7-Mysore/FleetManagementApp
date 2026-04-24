@@ -102,21 +102,21 @@ struct Vehicle: Identifiable, Codable {
     var fuelPercentage: Int { 75 }
     var formattedMileage: String { "N/A" }
     
-    var statusColor: Color {
+var statusColor: Color {
         switch status?.lowercased() {
         case "active": return .green
-        case "maintenance": return .orange
+        case "maintenance", "under_maintenance": return .orange
         case "inactive": return .gray
         case "out_of_service": return .red
         default: return .blue
         }
     }
-
+    
     var statusDisplayName: String {
         guard let status = status else { return "UNKNOWN" }
         switch status.lowercased() {
         case "active": return "ACTIVE"
-        case "maintenance": return "MAINTENANCE"
+        case "maintenance", "under_maintenance": return "MAINTENANCE"
         case "inactive": return "INACTIVE"
         case "out_of_service": return "OUT OF SERVICE"
         default: return status.uppercased()

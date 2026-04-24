@@ -20,9 +20,11 @@ struct VehicleDetailView: View {
     
     // State for the Image Selection Pop-up
     @State private var showImageSourceDialog = false
+    var onMaintenanceAssigned: (() -> Void)?
     
-    init(vehicle: Vehicle) {
+    init(vehicle: Vehicle, onMaintenanceAssigned: (() -> Void)? = nil) {
         self.vehicle = vehicle
+        self.onMaintenanceAssigned = onMaintenanceAssigned
         _vm = StateObject(wrappedValue: VehicleDetailViewModel(initialVehicle: vehicle))
     }
 
@@ -171,7 +173,12 @@ struct VehicleDetailView: View {
         .task { await vm.fetchVehicle(vehicleId: vehicle.id) }
         .refreshable { await vm.fetchVehicle(vehicleId: vehicle.id) }
         .sheet(isPresented: $showStaffSelection) {
-            if let v = vm.vehicle { MaintenanceStaffPickerView(vehicle: v) }
+            if let v = vm.vehicle { MaintenanceStaffPickerView(vehicle: v, onCompleted: {
+                Task {
+                    await vm.fetchVehicle(vehicleId: v.id)
+                    onMaintenanceAssigned?()
+                }
+            })}
         }
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(sourceType: sourceType) { image in
