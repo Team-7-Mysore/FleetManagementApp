@@ -1,13 +1,15 @@
+//FleetManagementSystemApp
+
 import SwiftUI
 import Supabase
 
 @main
 struct FleetManagementSystemApp: App {
-
+    
     @StateObject private var appSession = AppSession()
     @State private var showSetPassword = false
     @State private var isLoading = true
-
+    
     var body: some Scene {
         WindowGroup {
             Group {
@@ -38,6 +40,7 @@ struct FleetManagementSystemApp: App {
             }
             .tint(Color(hex: "#A3352A"))
             .onAppear {
+                NotificationManager.shared.requestPermission()
                 Task {
                     await checkSession()
                 }
@@ -47,25 +50,29 @@ struct FleetManagementSystemApp: App {
             }
         }
     }
-
+    
     // MARK: - Session Check
     private func checkSession() async {
         do {
             let session = try await SupabaseManager.shared.client.auth.session
-            if session != nil {
+            
+            if !session.isExpired {
+                print("✅ Valid session found")
                 await fetchUserProfile()
+            } else {
+                print("❌ Session expired")
             }
         } catch {
-            print("❌ Session error:", error)
+            print("❌ No session found:", error)
         }
+        
         isLoading = false
     }
-
     // MARK: - Fetch User Profile
     private func fetchUserProfile() async {
         do {
             let user = try await SupabaseManager.shared.client.auth.user()
-
+            
             let profile: UserProfile = try await SupabaseManager.shared.client
                 .from("users")
                 .select()
@@ -73,19 +80,21 @@ struct FleetManagementSystemApp: App {
                 .single()
                 .execute()
                 .value
-
-            appSession.setAuthenticated(profile: profile)
+            
+            await MainActor.run {
+                appSession.setAuthenticated(profile: profile)
+            }
         } catch {
             print("❌ Profile fetch error:", error)
         }
     }
-
+    
     // MARK: - Deep Link
     private func handleDeepLink(_ url: URL) {
         Task {
             do {
                 let params = authParams(from: url)
-
+                
                 if let accessToken = params["access_token"],
                    let refreshToken = params["refresh_token"] {
                     try await SupabaseManager.shared.client.auth.setSession(
@@ -95,33 +104,47 @@ struct FleetManagementSystemApp: App {
                 } else if params["code"] != nil {
                     _ = try await SupabaseManager.shared.client.auth.session(from: url)
                 }
-
-                let isInvite = params["type"] == "invite"
-                showSetPassword = isInvite
-                await fetchUserProfile()
+                
+                let session = try await SupabaseManager.shared.client.auth.session
+                
+                if !session.isExpired {
+                    print("✅ Valid session found")
+                    await fetchUserProfile()
+                } else {
+                    print("❌ Session expired")
+                }
+                if !session.isExpired {
+                    let isInvite = params["type"] == "invite"
+                    
+                    await MainActor.run {
+                        showSetPassword = isInvite
+                    }
+                    
+                    await fetchUserProfile()
+                }
             } catch {
                 print("❌ Deep link error:", error)
             }
         }
     }
-
+    
     // MARK: - URL Params
     private func authParams(from url: URL) -> [String: String] {
         var result: [String: String] = [:]
-
+        
         if let queryItems = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems {
             for item in queryItems {
                 result[item.name] = item.value
             }
         }
-
+        
         if let fragment = URLComponents(url: url, resolvingAgainstBaseURL: false)?.fragment,
            let fragmentItems = URLComponents(string: "?\(fragment)")?.queryItems {
             for item in fragmentItems {
                 result[item.name] = item.value
             }
         }
-
+        
         return result
     }
 }

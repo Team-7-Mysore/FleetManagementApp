@@ -1,32 +1,40 @@
-import SwiftUI
 
-struct DocumentUploadComponent: View {
+import Combine
+import SwiftUI
+struct DocumentUploadComponent<Action: View>: View {
     let title: String
     var isUploaded: Bool = false
     var fileName: String? = nil
+    let action: Action // The menu or button view
+    
+    init(title: String, isUploaded: Bool = false, fileName: String? = nil, @ViewBuilder action: () -> Action) {
+        self.title = title
+        self.isUploaded = isUploaded
+        self.fileName = fileName
+        self.action = action()
+    }
     
     var body: some View {
-        HStack {
-            Text(title.capitalized)
-                .foregroundColor(.primary)
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.body)
+                    .foregroundColor(.primary)
+                
+                if let fileName = fileName, !fileName.isEmpty {
+                    Text(fileName.components(separatedBy: "/").last ?? fileName)
+                        .font(.caption)
+                        .foregroundColor(Color(.secondaryLabel))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+            }
             
             Spacer()
             
-            if isUploaded {
-                HStack(spacing: 4) {
-                    Text("Replace")
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                }
-                .foregroundColor(.blue)
-            } else {
-                HStack(spacing: 4) {
-                    Text("Upload")
-                    Image(systemName: "square.and.arrow.up")
-                }
-                .foregroundColor(.blue)
-            }
+            // Render the action view (the Menu or Button)
+            action
         }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
+        .padding(.vertical, 8)
     }
 }

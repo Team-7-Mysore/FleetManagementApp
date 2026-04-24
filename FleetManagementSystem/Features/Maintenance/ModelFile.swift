@@ -116,12 +116,13 @@ struct InventoryItem: Identifiable, Codable {
 // MARK: - 2. Work Order Model
 struct WorkOrder: Identifiable, Codable {
     let workOrderId: UUID
-    var vehicleVin: String
-    var vehicleName: String?
-    var fleetUnitId: String
-    var vehicleType: VehicleType
+    var vehicleId: UUID
+    var maintenancePersonnelId: UUID?
+    var vehicle: WorkOrderVehicle?
+    
     var priority: WorkOrderPriority
     var status: WorkOrderStatus
+    var isApproved: Bool
     var issueTitle: String
     var issueDescription: String?
     var hoursWorked: Double?
@@ -131,18 +132,17 @@ struct WorkOrder: Identifiable, Codable {
     var images: [String]?
     let createdAt: Date?
     var updatedAt: Date?
-
-    // Satisfies Identifiable for SwiftUI
+    
     var id: UUID { workOrderId }
-
+    
     enum CodingKeys: String, CodingKey {
         case workOrderId = "work_order_id"
-        case vehicleVin = "vehicle_vin"
-        case vehicleName = "vehicle_name"
-        case fleetUnitId = "fleet_unit_id"
-        case vehicleType = "vehicle_type" // Added to coding keys!
+        case vehicleId = "vehicle_id"
+        case maintenancePersonnelId = "maintenance_personnel_id"
+        case vehicle = "vehicles"
         case priority
         case status
+        case isApproved = "is_approved"
         case issueTitle = "issue_title"
         case issueDescription = "issue_description"
         case hoursWorked = "hours_worked"
@@ -152,6 +152,25 @@ struct WorkOrder: Identifiable, Codable {
         case images
         case createdAt = "created_at"
         case updatedAt = "updated_at"
+    }
+  
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        
+        try container.encode(workOrderId, forKey: .workOrderId)
+        try container.encode(vehicleId, forKey: .vehicleId)
+        try container.encode(priority, forKey: .priority)
+        try container.encode(status, forKey: .status)
+        try container.encode(isApproved, forKey: .isApproved)
+        try container.encode(issueTitle, forKey: .issueTitle)
+        try container.encodeIfPresent(issueDescription, forKey: .issueDescription)
+        try container.encodeIfPresent(hoursWorked, forKey: .hoursWorked)
+        try container.encodeIfPresent(estCost, forKey: .estCost)
+        try container.encodeIfPresent(internalNotes, forKey: .internalNotes)
+        try container.encodeIfPresent(maintenanceNotes, forKey: .maintenanceNotes)
+        try container.encodeIfPresent(images, forKey: .images)
+        try container.encodeIfPresent(createdAt, forKey: .createdAt)
+        try container.encodeIfPresent(updatedAt, forKey: .updatedAt)
     }
 }
 
@@ -191,6 +210,43 @@ struct WorkOrderPart: Codable {
     }
 }
 
+// MARK: - Helper Struct for Joined Vehicle Data
+struct WorkOrderVehicle: Codable {
+    let vehicleId: UUID
+    let vin: String?
+    let numberPlate: String?
+    let vehicleName: String?
+    
+    // NEW: Add this line so Swift knows about the type!
+    let vehicleType: VehicleType?
+    
+    enum CodingKeys: String, CodingKey {
+        case vehicleId = "vehicle_id"
+        case vin
+        case numberPlate = "number_plate"
+        case vehicleName = "vehicle_name"
+        
+        // NEW: Map it to the database column
+        case vehicleType = "vehicle_type"
+    }
+}
+
+// MARK: - Work Order Report
+struct WorkOrderReportRecord: Codable, Identifiable {
+    var id: UUID?
+    var workOrderId: UUID
+    var reportUrl: String
+    var reportName: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case id = "report_id"
+        case workOrderId = "work_order_id"
+        case reportUrl = "report_url"
+        case reportName = "report_name"
+    }
+}
+
+
 // MARK: - 5. Chat Room
 struct ChatRoom: Identifiable, Codable, Hashable {
     let id: UUID
@@ -200,6 +256,7 @@ struct ChatRoom: Identifiable, Codable, Hashable {
     let createdAt: Date?
     var updatedAt: Date?         // Useful for sorting the inbox by "most recently active"
     var lastMessage: String?     // Local property for inbox preview
+    var participantIds: [UUID] = []  // Local property for participant IDs
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -274,4 +331,15 @@ struct ChatParticipantWithRoom: Codable {
 
 extension Color {
     static let TechBlue = Color(red: 0/255, green: 89/255, blue: 184/255)
+}
+
+
+struct ParticipantUserIdWithRoom: Codable {
+    let chatRoomId: UUID
+    let userId: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case chatRoomId = "chat_room_id"
+        case userId = "user_id"
+    }
 }

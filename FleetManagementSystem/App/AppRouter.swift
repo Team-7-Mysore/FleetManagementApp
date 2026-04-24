@@ -9,7 +9,7 @@ enum AppRoute: Hashable {
 
     case activeTrip(TripMap)
     case vehicleInspection(TripMap?, type: InspectionType)
-
+    
     // Custom Hashable implementation because associated values include optionals
     func hash(into hasher: inout Hasher) {
         switch self {
@@ -22,7 +22,7 @@ enum AppRoute: Hashable {
             hasher.combine(type.rawValue)
         }
     }
-
+    
     static func == (lhs: AppRoute, rhs: AppRoute) -> Bool {
         switch (lhs, rhs) {
         case (.activeTrip(let l), .activeTrip(let r)):
@@ -44,14 +44,14 @@ enum AppRoute: Hashable {
 final class AppRouter: ObservableObject {
     @Published var path = NavigationPath()
     var onSignOut: (() async -> Void)?
-
+    
     func resetPath() {
         path = NavigationPath()
     }
-
+    
     func signOut() {
         resetPath()
-
+        
         if let onSignOut {
             Task {
                 await onSignOut()

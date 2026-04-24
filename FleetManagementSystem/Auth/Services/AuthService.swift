@@ -3,14 +3,15 @@ import Supabase
 
 final class AuthService {
     private let client: SupabaseClient
-
+    
     init(client: SupabaseClient = SupabaseManager.shared.client) {
         self.client = client
     }
-
+    
     func signIn(email: String, password: String) async throws -> UserProfile {
         let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-
+        
+        
         print("🔐 AuthService: Signing in with email: \(normalizedEmail)")
         let response = try await client.auth.signIn(email: normalizedEmail, password: password)
         print("✅ AuthService: Auth successful, user ID: \(response.user.id)")
@@ -20,11 +21,13 @@ final class AuthService {
         return profile
     }
 
+    
     func signOut() async throws {
         try await client.auth.signOut()
     }
-
+    
     private func fetchProfile(userId: UUID) async throws -> UserProfile {
+        
         print("📥 AuthService: Fetching profile for user ID: \(userId)")
         print("📥 AuthService: Querying users table with user_id = \(userId.uuidString)")
         

@@ -4,37 +4,54 @@ struct AddPartView: View {
     @Environment(\.dismiss) var dismiss
     @ObservedObject var viewModel: InventoryViewModel
     
-    @State private var partName: String = ""
+    @State private var partName: String
     @State private var vehicleCategory: String = "Car"
     @State private var categoryDescription: String = ""
     @State private var supplier: String = ""
-    @State private var quantity: Int = 1
+    @State private var quantityText: String
     @State private var costPerUnitText: String = ""
     @State private var sku: String = ""
     @State private var location: String = ""
+    
+    init(viewModel: InventoryViewModel, prefilledName: String? = nil, prefilledQuantity: Int? = nil) {
+        self.viewModel = viewModel
+        self._partName = State(initialValue: prefilledName ?? "")
+        if let pq = prefilledQuantity, pq > 0 {
+            self._quantityText = State(initialValue: "\(pq)")
+        } else {
+            self._quantityText = State(initialValue: "1")
+        }
+    }
     
     let categories = ["Car", "Truck", "Bike", "Bus"]
     
     @State private var isSaving = false
     @State private var errorMessage: String?
     
+    // Duplicate Handling State
+    @State private var showDuplicateAlert = false
+    @State private var duplicateItem: InventoryItem?
+    
     var body: some View {
         Form {
                 Section {
-                    HStack {
-                        Spacer()
+                    VStack(spacing: 12) {
                         ZStack {
-                            Circle()
+                            RoundedRectangle(cornerRadius: 20)
                                 .fill(Color(.systemGray6))
-                                .frame(width: 80, height: 80)
+                                .frame(width: 100, height: 100)
                             
                             Image(systemName: "camera.fill")
-                                .font(.system(size: 30))
-                                .foregroundColor(.gray)
+                                .font(.system(size: 32))
+                                .foregroundColor(.gray.opacity(0.6))
                         }
-                        Spacer()
+                        
+                        Text("Upload Part Image")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.secondary)
                     }
-                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
                     .listRowBackground(Color.clear)
                 }
                 
@@ -52,14 +69,21 @@ struct AddPartView: View {
                 }
                 
                 Section("Inventory Details") {
-                    Stepper(value: $quantity, in: 0...10000) {
-                        HStack {
-                            Text("Quantity")
-                            Spacer()
-                            Text("\(quantity)")
-                                .foregroundColor(quantityColor(for: quantity))
-                                .fontWeight(.bold)
-                        }
+                    HStack {
+                        Text("Quantity")
+                        Spacer()
+                        TextField("1", text: $quantityText)
+                            .keyboardType(.numberPad)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundColor(quantityColor(for: Int(quantityText) ?? 0))
+                            .fontWeight(.bold)
+                            .onChange(of: quantityText) { newValue in
+                                // Only allow numbers
+                                let filtered = newValue.filter { "0123456789".contains($0) }
+                                if filtered != newValue {
+                                    quantityText = filtered
+                                }
+                            }
                     }
                     
                     HStack {
@@ -85,7 +109,7 @@ struct AddPartView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") {
                         Task {
-                            await savePart()
+                            await checkAndSave()
                         }
                     }
                     .disabled(partName.trimmingCharacters(in: .whitespaces).isEmpty || isSaving)
@@ -107,6 +131,19 @@ struct AddPartView: View {
                     Text(error)
                 }
             }
+            .alert("Duplicate Part Found", isPresented: $showDuplicateAlert) {
+                Button("Combine") {
+                    Task {
+                        await combineWithExisting()
+                    }
+                }
+                Button("Rename", role: .none) { }
+                Button("Cancel", role: .destructive) { }
+            } message: {
+                if let item = duplicateItem {
+                    Text("A part named '\(item.partName)' already exists in \(item.vehicleCategory ?? ""). Choose to combine quantities or rename this part.")
+                }
+            }
     }
     
     private func quantityColor(for quantity: Int) -> Color {
@@ -119,11 +156,29 @@ struct AddPartView: View {
         }
     }
     
-    private func savePart() async {
+    private func checkAndSave() async {
         isSaving = true
         errorMessage = nil
         
+        let trimmedName = partName.trimmingCharacters(in: .whitespaces)
+        
+        // 1. Check for duplicates
+        if let duplicate = await viewModel.checkForDuplicate(name: trimmedName, category: vehicleCategory) {
+            self.duplicateItem = duplicate
+            self.showDuplicateAlert = true
+            self.isSaving = false
+            return
+        }
+        
+        // 2. Perform regular save if no duplicate
+        await performSave()
+    }
+    
+    private func performSave() async {
+        isSaving = true
+        
         let cost = Double(costPerUnitText.replacingOccurrences(of: ",", with: "."))
+        let quantity = Int(quantityText) ?? 1
         
         // Auto-generate SKU if empty
         let trimmedSKU = sku.trimmingCharacters(in: .whitespaces)
@@ -144,6 +199,22 @@ struct AddPartView: View {
                 location: location.trimmingCharacters(in: .whitespaces),
                 imageUrl: nil
             )
+            isSaving = false
+            dismiss()
+        } catch {
+            isSaving = false
+            errorMessage = error.localizedDescription
+        }
+    }
+    
+    private func combineWithExisting() async {
+        guard let item = duplicateItem else { return }
+        isSaving = true
+        
+        let addedQuantity = Int(quantityText) ?? 1
+        
+        do {
+            try await viewModel.combineInventoryItem(id: item.inventoryId, additionalQuantity: addedQuantity)
             isSaving = false
             dismiss()
         } catch {

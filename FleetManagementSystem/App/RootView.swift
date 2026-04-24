@@ -4,7 +4,7 @@ import SwiftUI
 
 struct RootView: View {
     @StateObject private var appSession = AppSession()
-
+    
     var body: some View {
         Group {
             if let profile = appSession.profile {
@@ -14,7 +14,7 @@ struct RootView: View {
             }
         }
     }
-
+    
     @ViewBuilder
     private func roleBasedView(for profile: UserProfile) -> some View {
         switch profile.role {

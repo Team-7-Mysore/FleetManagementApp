@@ -3,9 +3,32 @@ import Combine
 import Foundation
 import Supabase
 
+// MARK: - UI Models (Renamed to avoid conflict with MaintenanceTask)
+struct MaintenanceAlert: Identifiable {
+    let id: UUID
+    let unitNumber: String
+    let serviceType: String
+    let icon: String
+    let iconBgColor: Color
+    let iconForegroundColor: Color
+    let status: MaintenanceAlertStatus // Renamed
+    let timeRemaining: String
+}
+
+// Renamed from MaintenanceStatus to MaintenanceAlertStatus
+enum MaintenanceAlertStatus: String {
+    case overdue = "OVERDUE"
+    case dueSoon = "DUE SOON"
+    
+    var color: Color {
+        self == .overdue ? Color(red: 0.9, green: 0.4, blue: 0.4) : Color(red: 0.9, green: 0.6, blue: 0.3)
+    }
+}
+
 @MainActor
 final class FleetListViewModel: ObservableObject {
     @Published var vehicles: [Vehicle] = []
+    @Published var maintenanceAlerts: [MaintenanceAlert] = []
     @Published var isLoading = false
     @Published var searchText = ""
     @Published var errorMessage: String?
@@ -14,90 +37,144 @@ final class FleetListViewModel: ObservableObject {
         vehicles.count
     }
     
-    // For demo purposes, we'll use a hardcoded trend
-    var trendText: String {
-        "+4% this month"
-    }
+ 
+    func deleteVehicle(_ vehicle: Vehicle) async {
+        do {
+            // ✅ DELETE FROM SUPABASE
+            try await SupabaseManager.shared.client
+                .from("vehicles")
+                .delete()
+                .eq("vehicle_id", value: vehicle.id.uuidString)
+                .execute()
 
+          
+            DispatchQueue.main.async {
+                self.vehicles.removeAll { $0.id == vehicle.id }
+            }
+
+        } catch {
+            print("❌ Error deleting vehicle: \(error)")
+        }
+    }
     func fetchVehicles() async {
         isLoading = true
-        errorMessage = nil
         do {
             let response = try await SupabaseManager.shared.client
                 .from("vehicles")
-                .select("vehicle_id, vehicle_name, number_plate, brand, model, image_url, vehicle_type, fuel_type, model_year")
+                .select("""
+                    vehicle_id, 
+                    vehicle_name, 
+                    number_plate, 
+                    brand, 
+                    model, 
+                    image_url, 
+                    vehicle_type, 
+                    fuel_type, 
+                    model_year, 
+                    status,
+                    vin,
+                    registration_no,
+                    registration_date,
+                    rc_expiry_date,
+                    puc_expiry_date
+                """)
                 .order("vehicle_name", ascending: true)
                 .execute()
 
-            vehicles = try Self.parseVehicles(from: response.data)
+            // Parsing logic usually happens here via parseVehicles helper
+            self.vehicles = try Self.parseVehicles(from: response.data)
             isLoading = false
         } catch {
-            print("❌ FetchVehicles error: \(error)")
-            vehicles = []
-            errorMessage = error.localizedDescription
+            print("❌ Supabase Fetch Error: \(error)")
+            isLoading = false
+        }
+    }
+
+    func fetchMaintenanceAlerts() async {
+        isLoading = true
+        do {
+            let response = try await SupabaseManager.shared.client
+                .from("maintenance_issues")
+                .select("""
+                    *,
+                    vehicles (
+                        number_plate,
+                        vehicle_name
+                    )
+                """)
+                .neq("status", value: "completed")
+                .order("created_at", ascending: false)
+                .execute()
+
+            let rows = try JSONSerialization.jsonObject(with: response.data) as? [[String: Any]] ?? []
+            
+            self.maintenanceAlerts = rows.compactMap { row in
+                let vehicleData = row["vehicles"] as? [String: Any]
+                let plate = vehicleData?["number_plate"] as? String ?? "Unknown"
+                let desc = row["description"] as? String ?? "No Description"
+                let statusStr = row["status"] as? String ?? "pending"
+                
+                // Using the new unique UI status name
+                let uiStatus: MaintenanceAlertStatus = (statusStr == "pending") ? .overdue : .dueSoon
+                
+                return MaintenanceAlert(
+                    id: UUID(uuidString: row["id"] as? String ?? "") ?? UUID(),
+                    unitNumber: plate,
+                    serviceType: desc,
+                    icon: uiStatus == .overdue ? "wrench.and.screwdriver.fill" : "clock.badge.exclamationmark.fill",
+                    iconBgColor: uiStatus == .overdue ? Color(red: 0.98, green: 0.9, blue: 0.9) : Color(red: 0.98, green: 0.95, blue: 0.88),
+                    iconForegroundColor: uiStatus.color,
+                    status: uiStatus,
+                    timeRemaining: uiStatus == .overdue ? "Urgent" : "Active"
+                )
+            }
+            isLoading = false
+        } catch {
+            print("❌ Alert Fetch Error: \(error)")
             isLoading = false
         }
     }
 }
 
+// MARK: - Parsing Helpers
 private extension FleetListViewModel {
     static func parseVehicles(from data: Data) throws -> [Vehicle] {
         guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            throw NSError(
-                domain: "FleetList",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "Vehicle response was not a JSON array."]
-            )
+            throw NSError(domain: "FleetList", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid JSON"])
         }
 
         return rows.compactMap { row in
             guard let idString = stringValue(row["vehicle_id"]),
-                  let id = UUID(uuidString: idString) else {
-                return nil
-            }
+                  let id = UUID(uuidString: idString) else { return nil }
 
-            let plate = stringValue(row["number_plate"])
-            let name = stringValue(row["vehicle_name"])
-            let type = stringValue(row["vehicle_type"])
-
-            return Vehicle(
+            var vehicle = Vehicle(
                 id: id,
-                name: preferredText(name, fallback: plate, defaultValue: "Unnamed Vehicle"),
-                registrationNumber: preferredText(plate, fallback: nil, defaultValue: "No Plate"),
+                name: preferredText(stringValue(row["vehicle_name"]), fallback: stringValue(row["number_plate"]), defaultValue: "Unnamed Vehicle"),
+                registrationNumber: preferredText(stringValue(row["number_plate"]), fallback: nil, defaultValue: "No Plate"),
                 brand: stringValue(row["brand"]),
                 model: stringValue(row["model"]),
                 imageURL: stringValue(row["image_url"]),
-                vehicleType: preferredText(type, fallback: nil, defaultValue: "Unknown"),
+                vehicleType: preferredText(stringValue(row["vehicle_type"]), fallback: nil, defaultValue: "Unknown"),
                 fuelType: stringValue(row["fuel_type"]),
                 modelYear: stringValue(row["model_year"])
             )
+            vehicle.vin = stringValue(row["vin"]) ?? ""
+            vehicle.rcNumber = stringValue(row["registration_no"]) ?? ""
+            vehicle.registrationDate = stringValue(row["registration_date"]) ?? ""
+            vehicle.rcExpiryDate = stringValue(row["rc_expiry_date"]) ?? ""
+            vehicle.pucExpiryDate = stringValue(row["puc_expiry_date"]) ?? ""
+            return vehicle
         }
     }
 
     static func stringValue(_ value: Any?) -> String? {
-        switch value {
-        case let string as String:
-            return string
-        case let number as NSNumber:
-            return number.stringValue
-        case is NSNull, nil:
-            return nil
-        default:
-            return String(describing: value!)
-        }
+        if value is NSNull || value == nil { return nil }
+        return "\(value!)"
     }
 
     static func preferredText(_ primary: String?, fallback: String?, defaultValue: String) -> String {
-        let primaryTrimmed = primary?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let primaryTrimmed, !primaryTrimmed.isEmpty {
-            return primaryTrimmed
-        }
-
-        let fallbackTrimmed = fallback?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let fallbackTrimmed, !fallbackTrimmed.isEmpty {
-            return fallbackTrimmed
-        }
-
+        if let p = primary, !p.trimmingCharacters(in: .whitespaces).isEmpty { return p }
+        if let f = fallback, !f.trimmingCharacters(in: .whitespaces).isEmpty { return f }
         return defaultValue
     }
 }

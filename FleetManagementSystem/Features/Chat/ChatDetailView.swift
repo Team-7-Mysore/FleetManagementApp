@@ -24,3 +24,4 @@ struct ChatDetailView: View {
         }
     }
 }
+

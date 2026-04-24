@@ -15,6 +15,7 @@ struct TripsListView: View {
    }
 
 
+
    var body: some View {
        NavigationStack {
            ZStack(alignment: .bottomTrailing) {
@@ -22,6 +23,7 @@ struct TripsListView: View {
                    VStack(spacing: 20) {
                        // Fleet Overview Cards
                        fleetOverviewSection
+
 
                        // Ongoing Trips Section
                        ongoingTripsSection
@@ -167,6 +169,7 @@ struct TripsListView: View {
                    .foregroundColor(.TechBlue)
            }
 
+
            ForEach(Array(vm.vehiclesInMaintenance.prefix(3))) { workOrder in
                MaintenanceVehicleCard(workOrder: workOrder)
            }
@@ -223,6 +226,7 @@ struct TripsListView: View {
        .padding(.trailing, 20)
        .padding(.bottom, 24)
    }
+
 }
 
 
@@ -314,7 +318,7 @@ struct MaintenanceVehicleCard: View {
        VStack(alignment: .leading, spacing: 8) {
            // Top row - Vehicle name and status badge
            HStack {
-               Text(workOrder.vehicleName ?? workOrder.vehicleVin)
+               Text(workOrder.vehicle?.vehicleName ?? workOrder.vehicle?.numberPlate ?? "Fleet Vehicle")
                    .font(.headline.weight(.bold))
                    .foregroundColor(.primary)
                

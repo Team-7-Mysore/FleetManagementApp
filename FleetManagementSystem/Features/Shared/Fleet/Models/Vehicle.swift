@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 struct Vehicle: Identifiable, Codable {
     var id: UUID
@@ -10,51 +11,53 @@ struct Vehicle: Identifiable, Codable {
     var vehicleType: String
     var fuelType: String?
     var modelYear: String?
-
-    // Additional display properties (computed from existing fields)
-    var make: String { brand ?? "Unknown" }
-    var licensePlate: String { registrationNumber }
-    var year: Int { Int(modelYear ?? "") ?? 0 }
-    var fuelPercentage: Int { 75 } // Placeholder - extend DB if needed
-    var formattedMileage: String { "N/A" } // Placeholder - extend DB if needed
-
-    var imageSystemName: String {
-        let type = vehicleType.lowercased()
-        if type.contains("bike") || type.contains("motor") {
-            return "motorcycle.fill"
-        } else if type.contains("car") || type.contains("sedan") || type.contains("suv") {
-            return "car.side.fill"
-        } else {
-            return "truck.box.fill"
-        }
-    }
+    var status: String?
+    
+    // Required fields
+    var vin: String = ""
+    var rcNumber: String = ""
+    var registrationDate: String = ""
+    var rcExpiryDate: String = ""
+    var pucExpiryDate: String = ""
 
     enum CodingKeys: String, CodingKey {
         case id = "vehicle_id"
         case name = "vehicle_name"
         case registrationNumber = "number_plate"
-        case brand
-        case model
+        case brand, model, status
         case imageURL = "image_url"
         case vehicleType = "vehicle_type"
         case fuelType = "fuel_type"
         case modelYear = "model_year"
+        case vin
+        case rcNumber = "registration_no"
+        case registrationDate = "registration_date"
+        case rcExpiryDate = "rc_expiry_date"
+        case pucExpiryDate = "puc_expiry_date"
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-
         id = try container.decode(UUID.self, forKey: .id)
         name = try container.decode(String.self, forKey: .name)
         registrationNumber = try container.decode(String.self, forKey: .registrationNumber)
         brand = try container.decodeIfPresent(String.self, forKey: .brand)
+        status = try container.decodeIfPresent(String.self, forKey: .status)
         model = try container.decodeIfPresent(String.self, forKey: .model)
         imageURL = try container.decodeIfPresent(String.self, forKey: .imageURL)
         vehicleType = (try container.decodeIfPresent(String.self, forKey: .vehicleType)) ?? "Unknown"
         fuelType = try container.decodeIfPresent(String.self, forKey: .fuelType)
 
-        // Handle model_year which can be either Int or String in the database
-        if let intYear = try? container.decodeIfPresent(Int.self, forKey: .modelYear) {
+        vin = try container.decodeIfPresent(String.self, forKey: .vin) ?? ""
+        rcNumber = try container.decodeIfPresent(String.self, forKey: .rcNumber) ?? ""
+        registrationDate = try container.decodeIfPresent(String.self, forKey: .registrationDate) ?? ""
+        rcExpiryDate = try container.decodeIfPresent(String.self, forKey: .rcExpiryDate) ?? ""
+        pucExpiryDate = try container.decodeIfPresent(String.self, forKey: .pucExpiryDate) ?? ""
+        
+        if let stringYear = try container.decodeIfPresent(String.self, forKey: .modelYear) {
+            modelYear = stringYear
+        } else if let intYear = try container.decodeIfPresent(Int.self, forKey: .modelYear) {
+
             modelYear = String(intYear)
         } else if let stringYear = try? container.decodeIfPresent(String.self, forKey: .modelYear) {
             modelYear = stringYear
@@ -85,7 +88,6 @@ struct Vehicle: Identifiable, Codable {
         self.modelYear = modelYear
     }
 
-    // MARK: - Init from VehicleDTO
     init(dto: VehicleDTO) {
         self.id = UUID(uuidString: dto.vehicleId) ?? UUID()
         self.name = dto.vehicleName ?? dto.numberPlate ?? "Unnamed Vehicle"
@@ -96,5 +98,43 @@ struct Vehicle: Identifiable, Codable {
         self.vehicleType = dto.vehicleType ?? "Unknown"
         self.fuelType = dto.fuelType
         self.modelYear = dto.modelYear.map { String($0) }
+    }
+
+    var make: String { brand ?? "Unknown" }
+    var licensePlate: String { registrationNumber }
+    var year: Int { Int(modelYear ?? "") ?? 0 }
+    var fuelPercentage: Int { 75 }
+    var formattedMileage: String { "N/A" }
+    
+    var statusColor: Color {
+        switch status?.lowercased() {
+        case "active": return .green
+        case "maintenance": return .orange
+        case "inactive": return .gray
+        case "out_of_service": return .red
+        default: return .blue
+        }
+    }
+
+    var statusDisplayName: String {
+        guard let status = status else { return "UNKNOWN" }
+        switch status.lowercased() {
+        case "active": return "ACTIVE"
+        case "maintenance": return "MAINTENANCE"
+        case "inactive": return "INACTIVE"
+        case "out_of_service": return "OUT OF SERVICE"
+        default: return status.uppercased()
+        }
+    }
+    
+    var imageSystemName: String {
+        let type = vehicleType.lowercased()
+        if type.contains("bike") || type.contains("motor") {
+            return "motorcycle.fill"
+        } else if type.contains("car") || type.contains("sedan") || type.contains("suv") {
+            return "car.side.fill"
+        } else {
+            return "truck.box.fill"
+        }
     }
 }

@@ -41,7 +41,7 @@ final class AuthViewModel: ObservableObject {
         } catch {
             print("❌ Sign in error: \(error)")
             print("❌ Error details: \(error.localizedDescription)")
-            
+
             // Provide more specific error messages
             if let decodingError = error as? DecodingError {
                 switch decodingError {

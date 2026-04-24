@@ -29,11 +29,12 @@ struct NewChatView: View {
                         UserRowView(user: user)
                     }
                     .buttonStyle(.plain)
+                    .disabled(viewModel.isCreatingRoom)
                 }
             }
             .navigationTitle("New Chat")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search names or emails")
+            .searchable(text: $searchText)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") {
@@ -41,25 +42,22 @@ struct NewChatView: View {
                     }
                 }
             }
-            .overlay {
-                if filteredUsers.isEmpty && !searchText.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
-                }
-            }
             .task {
-                if viewModel.users.isEmpty {
-                    await viewModel.fetchUsers(currentUserId: currentUserId)
-                }
+                await viewModel.fetchUsers(currentUserId: currentUserId)
             }
         }
     }
     
     private func startNewChat(with user: AppUser) {
         Task {
-            if let room = await viewModel.getOrCreateChatRoom(currentUserId: currentUserId, otherUserId: user.id) {
-                await viewModel.fetchChatRooms(userId: currentUserId)
-                dismiss()
-                onChatCreated(room)
+            if let room = await viewModel.getOrCreateChatRoom(
+                currentUserId: currentUserId,
+                otherUserId: user.id
+            ) {
+                print("✅ Room ready, navigating: \(room.id)")
+                await MainActor.run {
+                    onChatCreated(room)
+                }
             }
         }
     }
