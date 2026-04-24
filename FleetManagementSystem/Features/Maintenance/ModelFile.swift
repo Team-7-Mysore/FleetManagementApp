@@ -116,10 +116,12 @@ struct InventoryItem: Identifiable, Codable {
 // MARK: - 2. Work Order Model
 struct WorkOrder: Identifiable, Codable {
     let workOrderId: UUID
+
     var vehicleId: UUID
     var maintenancePersonnelId: UUID?
     var vehicle: WorkOrderVehicle?
     
+
     var priority: WorkOrderPriority
     var status: WorkOrderStatus
     var isApproved: Bool

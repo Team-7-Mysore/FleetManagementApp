@@ -202,6 +202,7 @@ struct WorkOrderCompletionReportView: View {
             await MainActor.run { self.isLoading = false }
         }
     }
+
     
     // MARK: - PDF RENDERER
     @MainActor
@@ -241,6 +242,7 @@ struct WorkOrderCompletionReportView: View {
                 window.isHidden = true
             } catch {
                 isUploading = false
+
             }
         }
     }

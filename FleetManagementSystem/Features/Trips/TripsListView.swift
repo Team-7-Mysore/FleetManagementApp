@@ -65,7 +65,7 @@ struct TripsListView: View {
                 }
                 .sheet(isPresented: $showingProfile) {
                     FleetManagerProfileView(profile: profile, onSignOut: onSignOut)
-                        .presentationDetents([.medium])
+                        .presentationDetents([.large])
                         .presentationDragIndicator(.visible)
                 }
                 // FIXED: Opens Notifications as a pushed navigation view
