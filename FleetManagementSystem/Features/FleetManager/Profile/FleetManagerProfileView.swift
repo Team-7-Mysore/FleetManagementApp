@@ -78,9 +78,15 @@ struct FleetManagerProfileView: View {
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .tint(brandRed)
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "xmark")
+                            .font(.body.weight(.semibold))
+                            .foregroundColor(.primary)
+                            .padding(8)
+                            .background(Color(.secondarySystemGroupedBackground))
+                            .clipShape(Circle())
+                    }
                 }
             }
         }

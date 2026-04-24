@@ -4,15 +4,15 @@ import Supabase
 struct MaintenanceNotificationsView: View {
     @State private var notifications: [AppNotification] = []
     @State private var isLoading = true
-    @State private var unreadCount: Int = 0
-    
+    @Binding var unreadCount: Int
+
     // MARK: - Routing State for Push Navigation
     @State private var routingData: NotificationRoutingData? = nil
-    
+
     var body: some View {
         ZStack {
             Color(.systemGroupedBackground).ignoresSafeArea()
-            
+
             if isLoading {
                 ProgressView("Loading Notifications...")
             } else if notifications.isEmpty {
@@ -20,7 +20,7 @@ struct MaintenanceNotificationsView: View {
                     Image(systemName: "bell.slash")
                         .font(.system(size: 60))
                         .foregroundColor(.secondary)
-                    
+
                     Text("No notifications")
                         .font(.title3)
                         .fontWeight(.semibold)
@@ -29,42 +29,42 @@ struct MaintenanceNotificationsView: View {
                 List {
                     ForEach($notifications) { $notification in
                         Button(action: {
-                            if !notification.isRead {
-                                notification.isRead = true
+                            if !$notification.wrappedValue.isRead {
+                                $notification.wrappedValue.isRead = true
                                 unreadCount = max(0, unreadCount - 1)
-                                
+
                                 Task {
-                                    await markNotificationAsReadInDB(notificationId: notification.id)
+                                    await markNotificationAsReadInDB(notificationId: $notification.wrappedValue.id)
                                 }
                             }
-                            
+
                             Task {
-                                await fetchIssueAndRoute(notification)
+                                await fetchIssueAndRoute($notification.wrappedValue)
                             }
                         }) {
                             HStack(alignment: .top, spacing: 12) {
                                 Circle()
-                                    .fill(notification.isRead ? Color.clear : Color.blue)
+                                    .fill($notification.wrappedValue.isRead ? Color.clear : Color.blue)
                                     .frame(width: 10, height: 10)
                                     .padding(.top, 5)
-                                
+
                                 VStack(alignment: .leading, spacing: 6) {
                                     HStack {
-                                        Image(systemName: notification.type.systemImage)
-                                            .foregroundColor(notification.isRead ? .gray : .blue)
-                                        
-                                        Text(notification.title)
+                                        Image(systemName: $notification.wrappedValue.type.systemImage)
+                                            .foregroundColor($notification.wrappedValue.isRead ? .gray : .blue)
+
+                                        Text($notification.wrappedValue.title)
                                             .font(.headline)
-                                            .fontWeight(notification.isRead ? .regular : .bold)
+                                            .fontWeight($notification.wrappedValue.isRead ? .regular : .bold)
                                             .foregroundColor(.primary)
                                     }
-                                    
-                                    Text(notification.message)
+
+                                    Text($notification.wrappedValue.message)
                                         .font(.subheadline)
                                         .foregroundColor(.secondary)
                                         .lineLimit(2)
-                                    
-                                    Text(notification.createdAt, style: .time)
+
+                                    Text($notification.wrappedValue.createdAt, style: .time)
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                         .padding(.top, 2)
@@ -96,14 +96,14 @@ struct MaintenanceNotificationsView: View {
             )
         }
     }
-    
+
     // MARK: - Fetch Notifications (FILTERED BY LOGGED IN USER)
     private func fetchNotifications() async {
         do {
             // ✨ INTERNAL MAGIC: Get the logged-in user's ID
             let session = try await SupabaseManager.shared.client.auth.session
             let currentUserId = session.user.id
-            
+
             let fetched: [AppNotification] = try await SupabaseManager.shared.client
                 .from("notifications")
                 .select()
@@ -111,10 +111,24 @@ struct MaintenanceNotificationsView: View {
                 .order("created_at", ascending: false)
                 .execute()
                 .value
-            
+
+            let unreadIds = fetched.filter { !$0.isRead }
+            if !unreadIds.isEmpty {
+                // Save locally to prevent them from ever popping back up in the badge
+                var localRead = UserDefaults.standard.stringArray(forKey: "LocalReadNotifications") ?? []
+                let newReadIds = unreadIds.map { $0.id.uuidString }
+                localRead.append(contentsOf: newReadIds)
+                UserDefaults.standard.set(localRead, forKey: "LocalReadNotifications")
+                
+                Task {
+                    await markAllAsReadInDB(userId: currentUserId)
+                }
+            }
+
             await MainActor.run {
-                self.notifications = fetched
-                self.unreadCount = fetched.filter { !$0.isRead }.count
+                // Automatically mark as read locally so badge clears
+                self.notifications = fetched.map { var noti = $0; noti.isRead = true; return noti }
+                self.unreadCount = 0
                 self.isLoading = false
             }
         } catch {
@@ -122,7 +136,7 @@ struct MaintenanceNotificationsView: View {
             await MainActor.run { self.isLoading = false }
         }
     }
-    
+
     private func markNotificationAsReadInDB(notificationId: UUID) async {
         do {
             struct UpdateRead: Encodable { let is_read: Bool }
@@ -135,17 +149,31 @@ struct MaintenanceNotificationsView: View {
             print("🚨 Failed to mark as read in DB: \(error)")
         }
     }
-    
+
+    private func markAllAsReadInDB(userId: UUID) async {
+        do {
+            struct UpdateRead: Encodable { let is_read: Bool }
+            try await SupabaseManager.shared.client
+                .from("notifications")
+                .update(UpdateRead(is_read: true))
+                .eq("recipient_id", value: userId.uuidString)
+                .eq("is_read", value: false)
+                .execute()
+        } catch {
+            print("🚨 Failed to mark all as read in DB: \(error)")
+        }
+    }
+
     private func fetchIssueAndRoute(_ notification: AppNotification) async {
         guard notification.type == .maintenance, let issueId = notification.relatedEntityId else { return }
-        
+
         do {
             struct IssueDetails: Decodable {
                 let vehicle_id: UUID
                 let issue_summary: String?
                 let description: String?
             }
-            
+
             let issueData: IssueDetails = try await SupabaseManager.shared.client
                 .from("maintenance_issues")
                 .select("vehicle_id, issue_summary, description")
@@ -153,7 +181,7 @@ struct MaintenanceNotificationsView: View {
                 .single()
                 .execute()
                 .value
-            
+
             await MainActor.run {
                 self.routingData = NotificationRoutingData(
                     issueId: issueId,
@@ -163,7 +191,7 @@ struct MaintenanceNotificationsView: View {
                     senderId: notification.senderId
                 )
             }
-            
+
         } catch {
             print("🚨 Failed to fetch issue details for routing: \(error)")
         }

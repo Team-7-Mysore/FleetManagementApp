@@ -7,6 +7,7 @@
 
 import Foundation
 import Supabase
+import CoreLocation
 
 final class GeofenceService {
     private let client: SupabaseClient
@@ -218,6 +219,32 @@ final class GeofenceService {
         }
         
         return statuses
+    }
+    
+    struct VehicleLocationRow: Decodable {
+        let vehicle_id: UUID
+        let latitude: Double
+        let longitude: Double
+    }
+    
+    /// Fetch the latest location for all vehicles
+    func fetchAllLatestVehicleLocations() async throws -> [UUID: CLLocationCoordinate2D] {
+        let locations: [VehicleLocationRow] = try await client
+            .from("vehicle_locations")
+            .select("vehicle_id, latitude, longitude")
+            .order("timestamp", ascending: false)
+            .limit(500)
+            .execute()
+            .value
+            
+        var latestMap: [UUID: CLLocationCoordinate2D] = [:]
+        // Since they are ordered by timestamp descending, the first one we encounter is the latest.
+        for loc in locations {
+            if latestMap[loc.vehicle_id] == nil {
+                latestMap[loc.vehicle_id] = CLLocationCoordinate2D(latitude: loc.latitude, longitude: loc.longitude)
+            }
+        }
+        return latestMap
     }
     
     // MARK: - Overlap Detection

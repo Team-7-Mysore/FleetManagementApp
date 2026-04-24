@@ -357,18 +357,6 @@ final class TripViewModel: ObservableObject {
         let pickupISODate = formatter.string(from: pickupDate)
         let endISODate = formatter.string(from: expectedEndDate)
 
-        print("📍 Creating trip with locations:")
-        print("   Origin: \(origin)")
-        print("   Origin Coordinates: \(originCoordinates.map { "\($0.latitude), \($0.longitude)" } ?? "N/A")")
-        print("   Destination: \(destination)")
-        print("   Destination Coordinates: \(destinationCoordinates.map { "\($0.latitude), \($0.longitude)" } ?? "N/A")")
-        print("   Via Points: \(viaPoints)")
-        print("   Distance: \(distance.map { String(format: "%.2f km", $0) } ?? "N/A")")
-        print("   ETA: \(calculatedETA.map { String(format: "%.0f minutes", $0 / 60.0) } ?? "N/A")")
-        print("   Fleet Manager ID: \(fleetManagerId?.uuidString ?? "N/A")")
-        print("   Pickup Time (UTC): \(pickupISODate)")
-        print("   End Time (UTC): \(endISODate)")
-
         do {
             // Build the insert data
             struct TripInsertWithDistance: Encodable {
@@ -462,8 +450,14 @@ final class TripViewModel: ObservableObject {
         requestedEnd: Date
     ) -> Bool {
         guard let existingStart else { return false }
-        let computedExistingEnd = existingEnd ?? Calendar.current.date(byAdding: .hour, value: 4, to: existingStart) ?? existingStart
-        return existingStart < requestedEnd && computedExistingEnd > requestedStart
+        
+        // Use +4h if no end time, otherwise use actual end time.
+        // Add a 30 minute (1800s) buffer for turnover/rest/cleaning.
+        let baseEnd = existingEnd ?? Calendar.current.date(byAdding: .hour, value: 4, to: existingStart) ?? existingStart
+        let bufferedExistingEnd = baseEnd.addingTimeInterval(1800) 
+        
+        // Standard overlap: (StartA < EndB) AND (EndA > StartB)
+        return existingStart < requestedEnd && bufferedExistingEnd > requestedStart
     }
 
     private func tripStartDate(from trip: AssignmentTripRecord) -> Date? {

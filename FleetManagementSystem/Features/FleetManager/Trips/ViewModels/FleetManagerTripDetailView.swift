@@ -18,52 +18,126 @@ struct FleetManagerTripDetailView: View {
         List {
             // MARK: - Map Section
             Section {
-                ZStack(alignment: .bottomTrailing) {
-                    Map(position: $cameraPosition) {
-                        if let originLat = trip.origin_latitude, let originLng = trip.origin_longitude {
-                            Marker("Origin", coordinate: CLLocationCoordinate2D(latitude: originLat, longitude: originLng))
-                                .tint(.green)
-                        }
-                        
-                        if let destLat = trip.destination_latitude, let destLng = trip.destination_longitude {
-                            Marker("Destination", coordinate: CLLocationCoordinate2D(latitude: destLat, longitude: destLng))
-                                .tint(.red)
-                        }
-                        
-                        if let driverLoc = vm.driverLocation {
-                            Annotation("Driver", coordinate: driverLoc) {
-                                Image(systemName: "car.circle.fill")
-                                    .font(.title)
-                                    .foregroundStyle(.blue)
-                                    .background(Circle().fill(.white))
+                VStack {
+                    ZStack(alignment: .bottomTrailing) {
+                        Map(position: $cameraPosition) {
+                            if let originLat = trip.origin_latitude, let originLng = trip.origin_longitude {
+                                Marker("Origin", coordinate: CLLocationCoordinate2D(latitude: originLat, longitude: originLng))
+                                    .tint(.green)
+                            }
+                            
+                            if let destLat = trip.destination_latitude, let destLng = trip.destination_longitude {
+                                Marker("Destination", coordinate: CLLocationCoordinate2D(latitude: destLat, longitude: destLng))
+                                    .tint(.red)
+                            }
+                            
+                            if let driverLoc = vm.driverLocation {
+                                Annotation("Driver", coordinate: driverLoc) {
+                                    ZStack {
+                                        Circle()
+                                            .fill(.white)
+                                            .frame(width: 38, height: 38)
+                                            .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+                                        
+                                        Image(systemName: "car.circle.fill")
+                                            .font(.system(size: 34))
+                                            .foregroundStyle(.blue.gradient)
+                                    }
+                                }
                             }
                         }
-                    }
-                    .frame(height: 220)
-                    .mapControls {
-                        MapUserLocationButton()
-                        MapCompass()
-                    }
-                    
-                    if vm.driverLocation != nil {
-                        HStack(spacing: 4) {
-                            Circle()
-                                .fill(.green)
-                                .frame(width: 8, height: 8)
-                            Text("LIVE")
-                                .font(.caption2.weight(.bold))
+                        .frame(height: 320)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .mapControls {
+                            MapUserLocationButton()
+                            MapCompass()
                         }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.blue)
-                        .clipShape(Capsule())
-                        .padding(12)
+                        
+                        if vm.driverLocation != nil {
+                            HStack(spacing: 8) {
+                                if vm.isRouteDeviated {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                        Text("ROUTE DEVIATION")
+                                    }
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(.red.gradient)
+                                    .clipShape(Capsule())
+                                    .shadow(color: .red.opacity(0.3), radius: 8, x: 0, y: 4)
+                                } else {
+                                    HStack(spacing: 6) {
+                                        Circle()
+                                            .fill(.white)
+                                            .frame(width: 6, height: 6)
+                                            .opacity(0.8)
+                                        Text("LIVE")
+                                            .font(.caption.weight(.bold))
+                                            .tracking(1)
+                                    }
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(.blue.gradient)
+                                    .clipShape(Capsule())
+                                    .shadow(color: .blue.opacity(0.3), radius: 8, x: 0, y: 4)
+                                }
+                            }
+                            .padding(16)
+                        }
                     }
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color(.systemBackground))
+                            .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
+                    )
                 }
+                .padding(.vertical, 8)
                 .listRowInsets(EdgeInsets())
             }
             .listRowBackground(Color.clear)
+            
+            // MARK: - Route Monitoring Controls
+            if vm.trip.normalisedStatus == .inTransit || vm.trip.normalisedStatus == .inProgress {
+                Section("Route Monitoring") {
+                    VStack(spacing: 12) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Deviation Limit")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                                Text("\(Int(vm.deviationRadius)) meters")
+                                    .font(.subheadline.weight(.semibold))
+                            }
+                            
+                            Spacer()
+                            
+                            Slider(value: $vm.deviationRadius, in: 100...2000, step: 100)
+                                .frame(width: 150)
+                                .tint(.TechBlue)
+                        }
+                        
+                        if vm.isRouteDeviated {
+                            Button(action: { vm.approveCurrentDeviation() }) {
+                                HStack {
+                                    Image(systemName: "checkmark.circle.fill")
+                                    Text("Approve Current Shortcut/Path")
+                                }
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(.green.gradient)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
             
             // MARK: - Status & Key Info
             Section {
@@ -205,9 +279,24 @@ struct FleetManagerTripDetailView: View {
         .task {
             await vm.loadTripDetails()
             updateCameraPosition()
+            vm.startLocationPolling()
+        }
+        .onDisappear {
+            vm.stopLocationPolling()
+        }
+        .onChange(of: vm.driverLocation?.latitude) { _ in
+            if let loc = vm.driverLocation {
+                withAnimation(.easeInOut(duration: 0.5)) {
+                    cameraPosition = .region(MKCoordinateRegion(
+                        center: loc,
+                        span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
+                    ))
+                }
+            }
         }
         .refreshable {
             await vm.loadTripDetails()
+            await vm.refreshVehicleLocation()
         }
     }
     

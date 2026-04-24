@@ -63,10 +63,8 @@ struct TripsListView: View {
                .refreshable {
                    await vm.fetchTrips()
                }
-               .sheet(isPresented: $showingProfile) {
+               .fullScreenCover(isPresented: $showingProfile) {
                    FleetManagerProfileView(profile: profile, onSignOut: onSignOut)
-                       .presentationDetents([.medium])
-                       .presentationDragIndicator(.visible)
                }
 
 
@@ -170,9 +168,10 @@ struct TripsListView: View {
            }
 
 
-           ForEach(Array(vm.vehiclesInMaintenance.prefix(3))) { workOrder in
-               MaintenanceVehicleCard(workOrder: workOrder)
-           }
+               ForEach(Array(vm.vehiclesInMaintenance.prefix(3))) { workOrder in
+                       MaintenanceVehicleCard(workOrder: workOrder)
+                   }
+
        }
    }
 

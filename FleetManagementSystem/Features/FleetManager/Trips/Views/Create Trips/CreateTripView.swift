@@ -28,6 +28,10 @@ struct CreateTripView: View {
     // Delivery zone (geofence) — optional, never touches trips table
     @State private var enableDeliveryZone = false
     @State private var deliveryZoneRadius: Double = 300
+    
+    // Route Monitoring (deviation) - local session control
+    @State private var enableRouteMonitoring = true
+    @State private var routeMonitoringRadius: Double = 500
 
     // UI state
     @State private var activeLocationField: LocationField?
@@ -107,20 +111,17 @@ struct CreateTripView: View {
             }
             .onChange(of: origin)      { _, _ in clearAssignments(); triggerRoute() }
             .onChange(of: destination) { _, _ in clearAssignments(); triggerRoute() }
-            .onChange(of: pickupDate) { _, newValue in
-                if let eta = vm.calculatedETA {
-                    expectedEndDate = newValue.addingTimeInterval(eta)
-                } else if expectedEndDate <= newValue {
-                    expectedEndDate = Calendar.current.date(byAdding: .hour, value: 4, to: newValue) ?? newValue
-                }
-                clearAssignments()
+            .onChange(of: pickupDate) { _, newPickup in
+                updateProjectedEndTime(newPickup: newPickup)
+                autoRefreshAssignments()
             }
-            .onChange(of: vm.calculatedETA) { _, newETA in
-                if let eta = newETA {
-                    expectedEndDate = pickupDate.addingTimeInterval(eta)
-                }
+            .onChange(of: vm.calculatedETA) { _, _ in
+                updateProjectedEndTime()
+                autoRefreshAssignments()
             }
-            .onChange(of: expectedEndDate) { _, _ in clearAssignments() }
+            .onChange(of: expectedEndDate) { _, _ in 
+                autoRefreshAssignments()
+            }
             .onChange(of: vm.isCalculatingRoute) { _, isCalculating in
                 if !isCalculating,
                    let o = vm.originCoordinates,
@@ -251,6 +252,7 @@ struct CreateTripView: View {
             scheduleSection
             assignmentSection
             deliveryZoneSection
+            routeMonitoringSection
 
             if let error = vm.errorMessage ?? geofenceVM.errorMessage {
                 Text(error)
@@ -484,7 +486,7 @@ struct CreateTripView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) {
                             ForEach(vm.availableDrivers) { d in
-                                assignmentCard(title: d.name, subtitle: d.subtitle, icon: "person.fill",
+                                assignmentCard(title: d.name, subtitle: "", icon: "",
                                                isSelected: selectedDriverID == d.id) { selectedDriverID = d.id }
                             }
                         }
@@ -505,8 +507,10 @@ struct CreateTripView: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
-                    Image(systemName: icon).font(.caption.weight(.semibold))
-                        .foregroundColor(isSelected ? .white : .TechBlue)
+                    if !icon.isEmpty {
+                        Image(systemName: icon).font(.caption.weight(.semibold))
+                            .foregroundColor(isSelected ? .white : .TechBlue)
+                    }
                     Text(title).font(.subheadline.weight(.semibold))
                         .foregroundColor(isSelected ? .white : .primary).lineLimit(1)
                 }
@@ -580,6 +584,53 @@ struct CreateTripView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 4)
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    // MARK: - Route Monitoring Section
+
+    private var routeMonitoringSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Route Monitoring", systemImage: "point.topleft.down.curvedto.point.bottomright.up.curved.fill")
+                    .font(.headline).foregroundColor(.primary)
+                Spacer()
+                Toggle("", isOn: $enableRouteMonitoring)
+                    .labelsHidden()
+                    .tint(.TechBlue)
+            }
+
+            if enableRouteMonitoring {
+                VStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "road.lanes").font(.body).foregroundColor(.TechBlue).frame(width: 28)
+                            Text("Drift Radius").font(.subheadline)
+                            Spacer()
+                            Text("\(Int(routeMonitoringRadius)) meters")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(.TechBlue)
+                        }
+                        Slider(value: $routeMonitoringRadius, in: 100...5000, step: 100)
+                            .tint(.TechBlue)
+                            .padding(.leading, 40)
+                        HStack {
+                            Spacer().frame(width: 40)
+                            Text("100 m").font(.caption2).foregroundStyle(.secondary)
+                            Spacer()
+                            Text("5 km").font(.caption2).foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 12)
+                }
+                .background(Color(.secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+
+                Text("Alerts you if the vehicle drifts more than \(Int(routeMonitoringRadius))m from the intended route.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
             }
         }
         .padding(.horizontal)
@@ -740,6 +791,44 @@ struct CreateTripView: View {
         let h = Int(seconds) / 3600
         let m = (Int(seconds) % 3600) / 60
         return h > 0 ? "\(h)h \(m)m" : "\(m)m"
+    }
+
+    private func updateProjectedEndTime(newPickup: Date? = nil) {
+        let referencePickup = newPickup ?? pickupDate
+        
+        if let etaSeconds = vm.calculatedETA {
+            // Buffer of 15 minutes for loading/unloading/parking
+            let buffer: TimeInterval = 15 * 60 
+            let totalInterval = etaSeconds + buffer
+            
+            withAnimation(.easeInOut) {
+                expectedEndDate = referencePickup.addingTimeInterval(totalInterval)
+            }
+        } else {
+            // If no ETA yet, just ensure End Time is at least 1 hour after Pickup
+            if expectedEndDate <= referencePickup {
+                withAnimation {
+                    expectedEndDate = Calendar.current.date(byAdding: .hour, value: 1, to: referencePickup) ?? referencePickup
+                }
+            }
+        }
+    }
+
+    private func autoRefreshAssignments() {
+        // Deselect previous picks but keep the list visible if possible
+        selectedVehicleID = nil
+        selectedDriverID = nil
+        
+        // Only auto-refresh if we actually have a pickup location
+        guard !origin.isEmpty else { return }
+        
+        Task {
+            await vm.loadAssignmentOptions(
+                pickupLocation: origin,
+                pickupDate: pickupDate,
+                expectedEndDate: expectedEndDate
+            )
+        }
     }
 }
 

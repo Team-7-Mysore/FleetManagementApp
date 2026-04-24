@@ -54,13 +54,10 @@ struct Vehicle: Identifiable, Codable {
         rcExpiryDate = try container.decodeIfPresent(String.self, forKey: .rcExpiryDate) ?? ""
         pucExpiryDate = try container.decodeIfPresent(String.self, forKey: .pucExpiryDate) ?? ""
         
-        if let stringYear = try container.decodeIfPresent(String.self, forKey: .modelYear) {
+        if let stringYear = try? container.decodeIfPresent(String.self, forKey: .modelYear) {
             modelYear = stringYear
-        } else if let intYear = try container.decodeIfPresent(Int.self, forKey: .modelYear) {
-
+        } else if let intYear = try? container.decodeIfPresent(Int.self, forKey: .modelYear) {
             modelYear = String(intYear)
-        } else if let stringYear = try? container.decodeIfPresent(String.self, forKey: .modelYear) {
-            modelYear = stringYear
         } else {
             modelYear = nil
         }

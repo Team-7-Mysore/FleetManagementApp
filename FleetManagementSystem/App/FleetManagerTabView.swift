@@ -36,11 +36,6 @@ struct FleetManagerTabView: View {
                     Text("Chat")
                 }
 
-            GeofenceListView(profile: profile)
-                .tabItem {
-                    Image(systemName: "mappin.and.ellipse")
-                    Text("Geofences")
-                }
         }
         .accentColor(.TechBlue)
         .tint(.TechBlue)

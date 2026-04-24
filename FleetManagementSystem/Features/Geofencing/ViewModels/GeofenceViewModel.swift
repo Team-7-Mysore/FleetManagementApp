@@ -8,6 +8,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import CoreLocation
 
 @MainActor
 final class GeofenceViewModel: ObservableObject {
@@ -236,6 +237,8 @@ final class GeofenceViewModel: ObservableObject {
         }
     }
     
+    @Published private(set) var vehicleLocations: [UUID: CLLocationCoordinate2D] = [:]
+
     /// Load vehicle status for a specific vehicle
     func loadVehicleStatus(for vehicleId: UUID) async {
         isLoading = true
@@ -249,6 +252,16 @@ final class GeofenceViewModel: ObservableObject {
             isLoading = false
             errorMessage = "Failed to load vehicle status. Please try again."
             print("❌ Error loading vehicle status: \(error)")
+        }
+    }
+    
+    /// Load latest vehicle locations for the map
+    func loadVehicleLocations() async {
+        do {
+            let locations = try await service.fetchAllLatestVehicleLocations()
+            self.vehicleLocations = locations
+        } catch {
+            print("❌ Error loading vehicle locations: \(error)")
         }
     }
     
@@ -416,3 +429,4 @@ enum DateRange: Equatable {
         }
     }
 }
+

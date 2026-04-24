@@ -25,14 +25,22 @@ final class TripListViewModel: ObservableObject {
 
    var activeTripCount: Int { activeTrips.count }
 
-   /// Vehicles currently assigned to truly active trips (In Transit/In Progress)
+   /// Vehicles currently assigned to any upcoming or active trip
    private var busyVehicleIDs: Set<UUID> {
-       Set(activeTrips.compactMap { $0.vehicle_id })
+       let occupied = trips.filter { 
+           let s = $0.normalisedStatus
+           return s == .inTransit || s == .inProgress || s == .scheduled
+       }
+       return Set(occupied.compactMap { $0.vehicle_id })
    }
 
-   /// Drivers currently assigned to truly active trips (In Transit/In Progress)
+   /// Drivers currently assigned to any upcoming or active trip
    private var busyDriverIDs: Set<UUID> {
-       Set(activeTrips.compactMap { $0.driver_id })
+       let occupied = trips.filter { 
+           let s = $0.normalisedStatus
+           return s == .inTransit || s == .inProgress || s == .scheduled
+       }
+       return Set(occupied.compactMap { $0.driver_id })
    }
 
    /// Available vehicles (not in maintenance, not inactive, and not currently on a trip)

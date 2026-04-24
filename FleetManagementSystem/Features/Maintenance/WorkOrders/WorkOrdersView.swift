@@ -4,22 +4,22 @@ import Supabase
 struct WorkOrdersView: View {
     let profile: UserProfile?
     let onSignOut: () async -> Void
-    
+
     @StateObject private var viewModel = WorkOrderViewModel()
     @State private var unreadNotificationCount = 0
-    
+
     @State private var selectedDetailOrder: WorkOrder?
     @State private var selectedReportOrder: WorkOrder?
     @State private var showingProfile = false
-    
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    
+
                     // MARK: Top Cards
                     HStack(spacing: 12) {
-                        
+
                         NavigationLink(
                             destination: FilteredWorkOrdersView(
                                 title: "Pending Orders",
@@ -43,7 +43,7 @@ struct WorkOrdersView: View {
                             )
                         }
                         .buttonStyle(.plain)
-                        
+
                         NavigationLink(
                             destination: FilteredWorkOrdersView(
                                 title: "Completed Orders",
@@ -68,39 +68,39 @@ struct WorkOrdersView: View {
                     }
                     .padding(.top,10)
                     .fixedSize(horizontal: false, vertical: true)
-                    
-                    
+
+
                     // MARK: In Progress
                     VStack(alignment: .leading, spacing: 16) {
-                        
+
                         Text("IN PROGRESS TASKS")
                             .font(.caption)
                             .fontWeight(.bold)
                             .foregroundColor(.secondary)
                             .tracking(1)
                             .padding(.top,8)
-                        
+
                         if viewModel.isLoading &&
                             viewModel.inProgressOrders.isEmpty {
-                            
+
                             ProgressView("Fetching Orders...")
                                 .frame(maxWidth: .infinity)
                                 .padding()
-                            
+
                         } else if viewModel.inProgressOrders.isEmpty {
-                            
+
                             Text("No tasks currently in progress.")
                                 .foregroundColor(.secondary)
                                 .padding()
-                            
+
                         } else {
-                            
+
                             VStack(spacing:12) {
                                 ForEach(
                                     viewModel.inProgressOrders,
                                     id: \.workOrderId
                                 ) { order in
-                                    
+
                                     Button {
                                         selectedDetailOrder = order
                                     } label: {
@@ -121,23 +121,27 @@ struct WorkOrdersView: View {
                 }
                 .padding(.horizontal,16)
             }
-            
+
             .navigationTitle("Work Orders")
             .background(Color(uiColor: .systemGroupedBackground))
-            
+
             .toolbar {
-                
+
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    NavigationLink(destination: MaintenanceNotificationsView()) {
-                        
+                    NavigationLink(
+                        destination: MaintenanceNotificationsView(
+                            unreadCount: $unreadNotificationCount
+                        )
+                    ) {
+
                         ZStack(alignment: .topTrailing) {
-                            
+
                             Image(systemName: "bell")
                                 .font(.headline)
                                 .foregroundColor(Color(hex:"#A3352A"))
-                            
+
                             if unreadNotificationCount > 0 {
-                                
+
                                 Text("\(unreadNotificationCount)")
                                     .font(.system(size:10, weight:.bold))
                                     .foregroundColor(.white)
@@ -149,7 +153,7 @@ struct WorkOrdersView: View {
                         }
                     }
                 }
-                
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         showingProfile = true
@@ -160,7 +164,7 @@ struct WorkOrdersView: View {
                     }
                 }
             }
-            
+
             .task {
                 if viewModel.workOrders.isEmpty {
                     await viewModel.fetchWorkOrders(profile: profile)
@@ -168,15 +172,15 @@ struct WorkOrdersView: View {
                 
                 await fetchUnreadCount()
             }
-            
+
             .refreshable {
                 await viewModel.fetchWorkOrders(profile: profile)
                 await fetchUnreadCount()
             }
-            
+
             // MARK: Floating Add Button
             .overlay(alignment: .bottomTrailing) {
-                
+
                 NavigationLink(destination: AddEditWorkOrderView()) {
                     Image(systemName:"plus")
                         .font(.title2)
@@ -195,7 +199,7 @@ struct WorkOrdersView: View {
                 .padding(.trailing,24)
                 .padding(.bottom,24)
             }
-            
+
             .sheet(
                 item: $selectedDetailOrder,
                 onDismiss: {
@@ -211,7 +215,7 @@ struct WorkOrdersView: View {
                     WorkOrderDetailView(workOrder: order)
                 }
             }
-            
+
             .sheet(
                 item: $selectedReportOrder,
                 onDismiss: {
@@ -225,7 +229,7 @@ struct WorkOrdersView: View {
             ) { order in
                 WorkOrderCompletionReportView(workOrder: order)
             }
-            
+
             .sheet(isPresented: $showingProfile) {
                 MaintenanceProfileView(
                     profile: profile,
@@ -236,23 +240,40 @@ struct WorkOrdersView: View {
             }
         }
     }
-    
-    
+
+
     // MARK: Functions belong inside the View
+    struct NotificationIDOnly: Decodable {
+        let id: UUID
+    }
+
     private func fetchUnreadCount() async {
         do {
-            let response = try await SupabaseManager.shared.client
+            // Delay slightly to allow any pending DB 'mark as read' updates from other screens to commit
+            try? await Task.sleep(nanoseconds: 800_000_000)
+
+            let session = try await SupabaseManager.shared.client.auth.session
+            let currentUserId = session.user.id
+
+            let fetchedUnread: [NotificationIDOnly] = try await SupabaseManager.shared.client
                 .from("notifications")
-                .select("id", head: true, count: .exact)
+                .select("id")
+                .eq("recipient_id", value: currentUserId.uuidString)
                 .eq("is_read", value: false)
                 .execute()
+                .value
+
+            let locallyRead = UserDefaults.standard.stringArray(forKey: "LocalReadNotifications") ?? []
             
+            // Filter out notifications we've already seen locally (in case DB hasn't caught up or updated properly)
+            let trulyUnread = fetchedUnread.filter { !locallyRead.contains($0.id.uuidString) }
+
             await MainActor.run {
-                unreadNotificationCount = response.count ?? 0
+                unreadNotificationCount = trulyUnread.count
             }
-            
+
         } catch {
-            print("🚨 Error fetching unread count: \(error)")
+            print("Error fetching unread count: \(error)")
         }
     }
 }
@@ -262,17 +283,17 @@ struct FilteredWorkOrdersView: View {
     let sections: [(header: String, orders: [WorkOrder])]
     var onRefresh: (() async -> Void)? = nil
     let profile: UserProfile? // Added so we can pass it down to WorkOrderDetailView
-    
+
     @State private var selectedDetailOrder: WorkOrder?
     @State private var selectedReportOrder: WorkOrder?
-    
+
     // Controls the segmented picker
     @State private var selectedTabIndex: Int = 0
-    
+
     var isEmpty: Bool {
         sections.allSatisfy { $0.orders.isEmpty }
     }
-    
+
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -288,7 +309,7 @@ struct FilteredWorkOrdersView: View {
                     .padding(.top, 8)
                     .padding(.bottom, 16)
                 }
-                
+
                 // MARK: - List Content
                 VStack(alignment: .leading, spacing: 16) {
                     if isEmpty {
@@ -299,7 +320,7 @@ struct FilteredWorkOrdersView: View {
                     } else {
                         // Extract the currently active section
                         let currentSection = sections[sections.count > 1 ? selectedTabIndex : 0]
-                        
+
                         if currentSection.orders.isEmpty {
                             Text("No orders in \(currentSection.header.lowercased()).")
                                 .foregroundColor(.secondary)
@@ -361,24 +382,24 @@ struct SummaryCardView: View {
     let count: Int
     let tintColor: Color
     let backgroundColor: Color
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 4) {
                 Image(systemName: icon)
                     .font(.system(size: 14, weight: .bold))
-                
+
                 Text(title)
                     .font(.system(size: 14, weight: .bold))
-                
+
                 Spacer(minLength: 0)
-                
+
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundColor(tintColor.opacity(0.5))
             }
             .foregroundColor(tintColor)
-            
+
             Text("\(count)")
                 .font(.system(size: 28, weight: .bold))
                 .foregroundColor(.primary)
@@ -398,37 +419,37 @@ struct WorkOrderRowView: View {
     var showStatus: Bool
     var isLargeTitle: Bool
     var onViewReport: (() -> Void)? = nil
-    
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 16) {
-                
+
                 // Vehicle Icon
                 ZStack {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(iconBackgroundColor)
                         .frame(width: 50, height: 50)
-                    
+
                     // UPDATED: Safely unwrap the joined vehicleType or fallback to a car
                     Image(systemName: workOrder.vehicle?.vehicleType?.sfSymbol ?? "car.fill")
                         .foregroundColor(iconColor)
                         .font(.title2)
                 }
-                
+
                 // Text Content
                 if workOrder.status == .completed {
                     RowTextLinesCompleted(workOrder: workOrder) // Note: Make sure to update the inside of this view too!
                 } else {
                     RowTextLinesDefault(workOrder: workOrder, showStatus: showStatus, isLargeTitle: isLargeTitle) // Note: Update this too!
                 }
-                
+
                 // Chevron
                 Image(systemName: "chevron.right")
                     .font(.body)
                     .foregroundColor(Color.gray.opacity(0.4))
             }
             .padding()
-            
+
             if workOrder.status == .completed {
                 ViewReportButtonView(action: {
                     onViewReport?()
@@ -441,7 +462,7 @@ struct WorkOrderRowView: View {
         .cornerRadius(16)
         .shadow(color: Color.black.opacity(0.05), radius: 5, x: 0, y: 2)
     }
-    
+
     // UPDATED: Safe fallbacks
     private var iconColor: Color { workOrder.vehicle?.vehicleType?.color ?? .blue }
     private var iconBackgroundColor: Color { iconColor.opacity(0.1) }
@@ -452,7 +473,7 @@ struct RowTextLinesDefault: View {
     let workOrder: WorkOrder
     var showStatus: Bool
     var isLargeTitle: Bool
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -461,23 +482,23 @@ struct RowTextLinesDefault: View {
                     .fontWeight(.semibold)
                     .foregroundColor(.primary)
                     .lineLimit(1)
-                
+
                 Spacer()
                 PriorityTagView(priority: workOrder.priority)
             }
-            
+
             // UPDATED: Pulling plate and vehicle name safely from the joined vehicle object
             Text("\(workOrder.vehicle?.numberPlate ?? "N/A") • \(workOrder.vehicle?.vehicleName ?? "Fleet Vehicle")")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .lineLimit(1)
-            
+
             if showStatus {
                 HStack(spacing: 6) {
                     Circle()
                         .fill(statusColor)
                         .frame(width: 8, height: 8)
-                    
+
                     Text(workOrder.status.rawValue.uppercased())
                         .font(.caption)
                         .fontWeight(.bold)
@@ -486,7 +507,7 @@ struct RowTextLinesDefault: View {
             }
         }
     }
-    
+
     private var statusColor: Color {
         switch workOrder.status {
         case .pending: return .orange
@@ -500,7 +521,7 @@ struct RowTextLinesDefault: View {
 // MARK: - COMPLETED Row Content
 struct RowTextLinesCompleted: View {
     let workOrder: WorkOrder
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
@@ -509,9 +530,9 @@ struct RowTextLinesCompleted: View {
                     .fontWeight(.semibold)
                     .foregroundColor(.secondary)
                     .lineLimit(1)
-                
+
                 Spacer()
-                
+
                 Text("DONE")
                     .font(.caption)
                     .fontWeight(.bold)
@@ -521,14 +542,14 @@ struct RowTextLinesCompleted: View {
                     .background(Color(uiColor: .systemGray5))
                     .clipShape(Capsule())
             }
-            
+
             // UPDATED: Pulling vehicle name safely from the joined vehicle object
             Text(workOrder.vehicle?.vehicleName ?? "Fleet Vehicle")
                 .font(.headline)
                 .fontWeight(.semibold)
                 .foregroundColor(.primary)
                 .lineLimit(1)
-            
+
             Text(workOrder.issueTitle)
                 .font(.subheadline)
                 .foregroundColor(.secondary)
@@ -540,14 +561,14 @@ struct RowTextLinesCompleted: View {
 // MARK: - View Report Button
 struct ViewReportButtonView: View {
     var action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
             HStack(alignment: .center) {
                 Spacer()
                 Image(systemName: "doc.text.fill")
                     .font(.subheadline.bold())
-                
+
                 Text("View Report")
                     .font(.subheadline.bold())
                 Spacer()
@@ -564,7 +585,7 @@ struct ViewReportButtonView: View {
 // MARK: - Priority Tag Component
 struct PriorityTagView: View {
     let priority: WorkOrderPriority
-    
+
     var body: some View {
         Text(priority.rawValue.uppercased())
             .font(.caption2)
@@ -575,7 +596,7 @@ struct PriorityTagView: View {
             .foregroundColor(priorityTextColor)
             .clipShape(Capsule())
     }
-    
+
     private var priorityBackgroundColor: Color {
         switch priority {
         case .low: return Color.green.opacity(0.1)
@@ -583,7 +604,7 @@ struct PriorityTagView: View {
         case .high, .urgent: return Color.red.opacity(0.1)
         }
     }
-    
+
     private var priorityTextColor: Color {
         switch priority {
         case .low: return .green
