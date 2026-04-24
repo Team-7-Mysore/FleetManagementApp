@@ -9,6 +9,8 @@ import Foundation
 
 struct Trip: Codable, Identifiable {
     let id: UUID
+    let vehicle_id: UUID?
+    let driver_id: UUID?
     let trip_name: String?
     let origin: String?
     let destination: String?
@@ -22,9 +24,12 @@ struct Trip: Codable, Identifiable {
     let destination_latitude: Double?
     let destination_longitude: Double?
     let eta: Double?
+    let created_at: String?
 
     enum CodingKeys: String, CodingKey {
         case id = "trip_id"
+        case vehicle_id
+        case driver_id
         case trip_name
         case origin
         case destination
@@ -38,9 +43,8 @@ struct Trip: Codable, Identifiable {
         case destination_latitude
         case destination_longitude
         case eta
+        case created_at
     }
-
-    /// Returns a displayable trip ID like "#TR-5012"
     var displayTripID: String {
         if let num = trip_number {
             return "#\(num)"

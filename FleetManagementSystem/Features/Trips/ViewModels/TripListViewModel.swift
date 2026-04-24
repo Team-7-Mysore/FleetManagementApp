@@ -15,21 +15,49 @@ final class TripListViewModel: ObservableObject {
    @Published var searchText = ""
 
 
-   /// Trips that are currently active (in transit or in progress)
+   /// Trips that are currently ongoing (in transit or in progress)
    var activeTrips: [Trip] {
        trips.filter {
            let s = $0.normalisedStatus
-           return s == .inTransit || s == .inProgress || s == .scheduled
+           return s == .inTransit || s == .inProgress
        }
    }
 
-
    var activeTripCount: Int { activeTrips.count }
 
-   /// Available vehicles (not in maintenance)
+   /// Vehicles currently assigned to truly active trips (In Transit/In Progress)
+   private var busyVehicleIDs: Set<UUID> {
+       Set(activeTrips.compactMap { $0.vehicle_id })
+   }
+
+   /// Drivers currently assigned to truly active trips (In Transit/In Progress)
+   private var busyDriverIDs: Set<UUID> {
+       Set(activeTrips.compactMap { $0.driver_id })
+   }
+
+   /// Available vehicles (not in maintenance, not inactive, and not currently on a trip)
    var availableVehicles: [Vehicle] {
-       let maintenanceVINs = Set(workOrders.filter { $0.status == .pending || $0.status == .inProgress }.map { $0.vehicleVin })
-       return vehicles.filter { !maintenanceVINs.contains($0.registrationNumber) }
+       let maintenanceVehicleIDs = Set(workOrders.filter { $0.status == .pending || $0.status == .inProgress }.map { $0.vehicleId })
+       
+       return vehicles.filter { vehicle in
+           // 1. Not in maintenance status or inactive
+           let s = vehicle.status?.lowercased() ?? ""
+           if s == "maintenance" || s == "inactive" || s == "out_of_service" {
+               return false
+           }
+           
+           // 2. Not in active maintenance work orders
+           if maintenanceVehicleIDs.contains(vehicle.id) {
+               return false
+           }
+           
+           // 3. Not currently busy on a trip
+           if busyVehicleIDs.contains(vehicle.id) {
+               return false
+           }
+           
+           return true
+       }
    }
 
    var availableVehicleCount: Int { availableVehicles.count }
@@ -41,17 +69,34 @@ final class TripListViewModel: ObservableObject {
 
    var maintenanceVehicleCount: Int { vehiclesInMaintenance.count }
 
-   /// Available drivers (not currently assigned to active trips)
+   /// Available drivers (not currently busy on a trip and license not expired)
    var availableDrivers: [Driver] {
-       let assignedDriverIDs = Set(activeTrips.compactMap { trip -> UUID? in
-           // Need to get driver_id from trip
-           // For now, return all drivers
-           return nil
-       })
-       return drivers
+       let now = Calendar.current.startOfDay(for: Date())
+       
+       return drivers.filter { driver in
+           // 1. License must not be expired
+           if let expiry = parseDatabaseDate(driver.licenseExpiry), expiry < now {
+               return false
+           }
+           
+           // 2. Not currently busy on a trip
+           if busyDriverIDs.contains(driver.id) {
+               return false
+           }
+           
+           return true
+       }
    }
 
-   var availableDriverCount: Int { drivers.count }
+   var availableDriverCount: Int { availableDrivers.count }
+
+   private func parseDatabaseDate(_ value: String?) -> Date? {
+       guard let value = value else { return nil }
+       let formatter = DateFormatter()
+       formatter.locale = Locale(identifier: "en_US_POSIX")
+       formatter.dateFormat = "yyyy-MM-dd"
+       return formatter.date(from: value)
+   }
 
 
    /// Capacity percentage (ratio of active trips to total)

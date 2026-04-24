@@ -578,6 +578,8 @@ private enum EditLocationField: String, Identifiable {
     NavigationStack {
         FleetManagerTripDetailView(trip: Trip(
             id: UUID(),
+            vehicle_id: UUID(),
+            driver_id: UUID(),
             trip_name: "Mumbai to Pune",
             origin: "Mumbai, Maharashtra",
             destination: "Pune, Maharashtra",
@@ -590,7 +592,8 @@ private enum EditLocationField: String, Identifiable {
             origin_longitude: 72.8777,
             destination_latitude: 18.5204,
             destination_longitude: 73.8567,
-            eta: 180.0
+            eta: 180.0,
+            created_at: "2026-04-22T10:00:00Z"
         ))
     }
 }

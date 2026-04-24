@@ -28,8 +28,6 @@
 				Features/Driver/Dashboard/Views/.gitkeep,
 				Features/Driver/Trips/ViewModels/.gitkeep,
 				Features/Driver/Trips/Views/.gitkeep,
-				Features/FleetManager/Maintenance/ViewModels/.gitkeep,
-				Features/FleetManager/Maintenance/Views/.gitkeep,
 				Features/FleetManager/Trips/ViewModels/.gitkeep,
 				Features/FleetManager/Trips/Views/.gitkeep,
 				Info.plist,

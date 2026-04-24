@@ -117,7 +117,7 @@ struct TripsListView: View {
            Text(value)
                .font(.system(size: 28, weight: .bold, design: .rounded))
                .foregroundColor(.primary)
-               .frame(maxWidth: .infinity, alignment: .center)
+               .frame(maxWidth: .infinity, alignment: .leading)
        }
        .frame(maxWidth: .infinity)
        .padding(.vertical, 12)
@@ -321,12 +321,12 @@ struct MaintenanceVehicleCard: View {
                Text(workOrder.vehicle?.vehicleName ?? workOrder.vehicle?.numberPlate ?? "Fleet Vehicle")
                    .font(.headline.weight(.bold))
                    .foregroundColor(.primary)
-               
+
                Spacer()
-               
+
                statusBadge
            }
-           
+
            // Bottom row - Issue title
            Text(workOrder.issueTitle)
                .font(.subheadline)
@@ -334,7 +334,7 @@ struct MaintenanceVehicleCard: View {
                .lineLimit(2)
                .multilineTextAlignment(.leading)
        }
-       .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
+       .frame(maxWidth: .infinity, minHeight: 80, alignment: .leading)
        .padding(14)
        .background(Color(.secondarySystemGroupedBackground))
        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
