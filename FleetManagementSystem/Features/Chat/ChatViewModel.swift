@@ -20,6 +20,8 @@ class ChatViewModel: ObservableObject {
     @Published var searchText: String = "" {
         didSet { applyFilter() }
     }
+    // Note: this patch introduces chat filtering logic (Part 1) and extends
+    // existing user filtering behavior (Part 2 will use similar patterns).
     @Published var selectedRoleFilter: String = "All" {
         didSet { applyFilter() }
     }
@@ -131,15 +133,33 @@ class ChatViewModel: ObservableObject {
         // Role filter
         if selectedRoleFilter != "All" {
             let roleValue = selectedRoleFilter.lowercased().replacingOccurrences(of: " ", with: "_")
-            result = result.filter { $0.role == roleValue }
+            result = result.filter { $0.role.lowercased() == roleValue }
         }
         
         // Search filter
         if !searchText.isEmpty {
-            result = result.filter { $0.name.lowercased().contains(searchText.lowercased()) }
+            let lower = searchText.lowercased()
+            result = result.filter { $0.name.lowercased().contains(lower) || $0.email.lowercased().contains(lower) }
         }
         
         self.filteredUsers = result
+    }
+
+    // MARK: - Part 1: Filter Chats
+    func filteredChats(for currentUserId: UUID) -> [ChatRoom] {
+        var result = chats
+
+        // Search by chat name OR last message
+        if !searchText.isEmpty {
+            let lower = searchText.lowercased()
+            result = result.filter { room in
+                let nameMatch = (room.name ?? "").lowercased().contains(lower)
+                let messageMatch = (room.lastMessage ?? "").lowercased().contains(lower)
+                return nameMatch || messageMatch
+            }
+        }
+
+        return result
     }
     
     // MARK: - Fetch Messages (with 48h limit)

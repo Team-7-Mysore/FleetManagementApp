@@ -22,7 +22,7 @@ struct ChatListView: View {
                             .listRowSeparator(.hidden)
                         } else {
                             Section {
-                                ForEach(viewModel.chats) { chat in
+                                ForEach(filteredChats) { chat in
                                     NavigationLink(value: chat) {
                                         let otherUserName = getOtherUserName(for: chat)
                                         ChatInboxRow(chat: chat, accent: accent, otherUserName: otherUserName)
@@ -79,6 +79,23 @@ struct ChatListView: View {
                 await viewModel.fetchUsers(currentUserId: currentUserId)
                 await viewModel.fetchChatRooms(userId: currentUserId)
             }
+        }
+    }
+
+    // MARK: - Filtered Chats (UI-level, reliable)
+    private var filteredChats: [ChatRoom] {
+        let query = viewModel.searchText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        
+        // No search → show all
+        guard !query.isEmpty else { return viewModel.chats }
+        
+        return viewModel.chats.filter { chat in
+            let name = (getOtherUserName(for: chat) ?? "").lowercased()
+            let message = (chat.lastMessage ?? "").lowercased()
+            
+            return name.contains(query) || message.contains(query)
         }
     }
 
