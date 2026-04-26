@@ -123,22 +123,22 @@ struct FleetManagementSystemApp: App {
 
                 
                 let session = try await SupabaseManager.shared.client.auth.session
-                
-                if !session.isExpired {
-                    print("✅ Valid session found")
-                    await fetchUserProfile()
-                } else {
+                guard !session.isExpired else {
                     print("❌ Session expired")
+                    return
                 }
-                if !session.isExpired {
-                    let isInvite = params["type"] == "invite"
-                    
+
+                print("✅ Valid session found")
+
+                let isInvite = params["type"] == "invite"
+                if isInvite {
                     await MainActor.run {
-                        showSetPassword = isInvite
+                        showSetPassword = true
                     }
-                    
-                    await fetchUserProfile()
+                    return
                 }
+
+                await fetchUserProfile()
 
             } catch {
                 print("❌ Deep link error:", error)
