@@ -266,19 +266,17 @@ struct VehicleInspectionView: View {
                     Text(item.status.rawValue)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(itemColor(item.status))
-                    if item.status == .pass {
-                        Button {
-                            vm.updateItem(itemId: item.id, status: .pending)
-                        } label: {
-                            Image(systemName: "pencil")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .frame(width: 26, height: 26)
-                                .background(Color(.systemGray5))
-                                .clipShape(Circle())
-                        }
-                        .buttonStyle(.plain)
+                    Button {
+                        vm.updateItem(itemId: item.id, status: .pending)
+                    } label: {
+                        Image(systemName: "pencil")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 26, height: 26)
+                            .background(Color(.systemGray5))
+                            .clipShape(Circle())
                     }
+                    .buttonStyle(.plain)
                 }
             }
         }

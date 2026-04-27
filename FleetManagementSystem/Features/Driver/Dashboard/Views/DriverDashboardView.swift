@@ -65,7 +65,7 @@ struct DriverDashboardView: View {
                 HStack(spacing: 16) {
                     Button { showNotifications = true } label: {
                         ZStack(alignment: .topTrailing) {
-                            Image(systemName: "bell.fill")
+                            Image(systemName: "bell")
                                 .font(.body)
                                 .foregroundStyle(.primary)
                             if vm.unreadNotificationCount > 0 {
@@ -193,10 +193,6 @@ struct DriverDashboardView: View {
                             Text("mi").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
                         }
                     }
-                    VStack(alignment: .trailing, spacing: 1) {
-                        Text("ETA").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
-                        Text(trip.formattedETA).font(.subheadline.weight(.semibold))
-                    }
                 }
             }
 
@@ -263,10 +259,6 @@ struct DriverDashboardView: View {
                             Text("\(Int(trip.distance))").font(.title3.weight(.bold))
                             Text("mi").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
                         }
-                    }
-                    VStack(alignment: .trailing, spacing: 1) {
-                        Text("ETA").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
-                        Text(trip.formattedETA).font(.subheadline.weight(.semibold))
                     }
                 }
             }
@@ -468,7 +460,6 @@ struct DriverDashboardView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(trip.endLocation).font(.subheadline.weight(.medium)).foregroundStyle(.primary)
                 HStack(spacing: 4) {
-                    Text("ETA").font(.caption).foregroundStyle(.secondary)
                     Text(trip.scheduledStartTime, style: .time).font(.caption).foregroundStyle(.secondary)
                     Text("•").foregroundStyle(.secondary)
                     Text(trip.formattedDistance).font(.caption).foregroundStyle(.secondary)

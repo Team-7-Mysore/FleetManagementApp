@@ -5,30 +5,30 @@ struct FleetManagerNotificationsView: View {
     @State private var notifications: [AppNotification] = []
     @State private var isLoading = true
     @State private var unreadCount: Int = 0
-    
+
     // MARK: - Routing State for Modal
     @State private var routingWorkOrder: WorkOrder? = nil
     @State private var routingDriverReport: DriverReport? = nil
     @State private var fetchError: String? = nil
     @State private var isRoutingActive = false
-    
+
     var onUnreadCountChanged: ((Int) -> Void)? = nil
-    
+
     // User Context
     let userId: UUID?
-    
+
     // Real-time channel
     @State private var realtimeChannel: RealtimeChannelV2?
-    
+
     init(userId: UUID? = nil, onUnreadCountChanged: ((Int) -> Void)? = nil) {
         self.userId = userId
         self.onUnreadCountChanged = onUnreadCountChanged
     }
-    
+
     var body: some View {
         ZStack {
             Color(.systemGroupedBackground).ignoresSafeArea()
-            
+
             if isLoading {
                 ProgressView("Loading Notifications...")
             } else if notifications.isEmpty {
@@ -36,7 +36,7 @@ struct FleetManagerNotificationsView: View {
                     Image(systemName: "bell.slash")
                         .font(.system(size: 60))
                         .foregroundColor(.secondary)
-                    
+
                     Text("No notifications")
                         .font(.title3)
                         .fontWeight(.semibold)
@@ -50,21 +50,21 @@ struct FleetManagerNotificationsView: View {
                                 notifications[index].isRead = true
                                 unreadCount = max(0, unreadCount - 1)
                                 onUnreadCountChanged?(unreadCount)
-                                
+
                                 let notifId = notifications[index].id
                                 Task {
                                     await markNotificationAsReadInDB(notificationId: notifId)
                                 }
                             }
-                            
+
                             let currentNotif = notifications[index]
-                            
+
                             // 2. Clear old data and show modal IMMEDIATELY
                             routingWorkOrder = nil
                             routingDriverReport = nil
                             fetchError = nil
                             isRoutingActive = true
-                            
+
                             // 3. Fetch the actual data in the background
                             Task {
                                 await fetchDataAndRoute(currentNotif)
@@ -75,23 +75,23 @@ struct FleetManagerNotificationsView: View {
                                     .fill(notifications[index].isRead ? Color.clear : Color.blue)
                                     .frame(width: 10, height: 10)
                                     .padding(.top, 5)
-                                
+
                                 VStack(alignment: .leading, spacing: 6) {
                                     HStack {
                                         Image(systemName: notifications[index].type.systemImage)
                                             .foregroundColor(notifications[index].isRead ? .gray : .blue)
-                                        
+
                                         Text(notifications[index].title)
                                             .font(.headline)
                                             .fontWeight(notifications[index].isRead ? .regular : .bold)
                                             .foregroundColor(.primary)
                                     }
-                                    
+
                                     Text(notifications[index].message)
                                         .font(.subheadline)
                                         .foregroundColor(.secondary)
                                         .lineLimit(2)
-                                    
+
                                     Text(notifications[index].createdAt, style: .time)
                                         .font(.caption)
                                         .foregroundColor(.secondary)
@@ -121,7 +121,6 @@ struct FleetManagerNotificationsView: View {
                 Task { await SupabaseManager.shared.client.realtimeV2.removeChannel(channel) }
             }
         }
-        // FIXED: Using an extracted View with Bindings completely bypasses the SwiftUI state freeze bug
         .sheet(isPresented: $isRoutingActive) {
             NotificationModalContainer(
                 workOrder: $routingWorkOrder,
@@ -131,8 +130,8 @@ struct FleetManagerNotificationsView: View {
             .presentationDragIndicator(.visible)
         }
     }
-    
-    // MARK: - Fetch Notifications
+
+    // MARK: - Database Actions
     private func fetchNotifications() async {
         do {
             let currentUserId: UUID
@@ -142,7 +141,7 @@ struct FleetManagerNotificationsView: View {
                 let session = try await SupabaseManager.shared.client.auth.session
                 currentUserId = session.user.id
             }
-            
+
             let fetched: [AppNotification] = try await SupabaseManager.shared.client
                 .from("notifications")
                 .select()
@@ -150,7 +149,7 @@ struct FleetManagerNotificationsView: View {
                 .order("created_at", ascending: false)
                 .execute()
                 .value
-            
+
             await MainActor.run {
                 self.notifications = fetched
                 self.unreadCount = fetched.filter { !$0.isRead }.count
@@ -162,43 +161,29 @@ struct FleetManagerNotificationsView: View {
             await MainActor.run { self.isLoading = false }
         }
     }
-    
+
     private func setupRealtimeNotifications() async {
         guard realtimeChannel == nil else { return }
-        
         do {
             let currentUserId: UUID
-            if let id = userId {
-                currentUserId = id
-            } else {
-                let session = try await SupabaseManager.shared.client.auth.session
-                currentUserId = session.user.id
-            }
-            
+            if let id = userId { currentUserId = id }
+            else { currentUserId = try await SupabaseManager.shared.client.auth.session.user.id }
+
             let channel = SupabaseManager.shared.client.realtimeV2.channel("notifications-changes")
             self.realtimeChannel = channel
-            
-            let insertions = channel.postgresChange(
-                AnyAction.self,
-                schema: "public",
-                table: "notifications"
-            )
-            
+
+            let insertions = channel.postgresChange(AnyAction.self, schema: "public", table: "notifications")
             try await channel.subscribeWithError()
-            
+
             Task {
                 let decoder = JSONDecoder()
                 decoder.dateDecodingStrategy = .iso8601
-                
                 for await action in insertions {
                     await MainActor.run {
                         switch action {
                         case .insert(let action):
-                            // Manually filter for recipient_id to avoid deprecated filter syntax
                             guard action.record["recipient_id"]?.stringValue == currentUserId.uuidString else { return }
-                            
                             if let newNotif = try? action.decodeRecord(as: AppNotification.self, decoder: decoder) {
-                                // Add to top if not already present
                                 if !notifications.contains(where: { $0.id == newNotif.id }) {
                                     notifications.insert(newNotif, at: 0)
                                     unreadCount = notifications.filter { !$0.isRead }.count
@@ -207,7 +192,6 @@ struct FleetManagerNotificationsView: View {
                             }
                         case .update(let action):
                             guard action.record["recipient_id"]?.stringValue == currentUserId.uuidString else { return }
-                            
                             if let updatedNotif = try? action.decodeRecord(as: AppNotification.self, decoder: decoder) {
                                 if let index = notifications.firstIndex(where: { $0.id == updatedNotif.id }) {
                                     notifications[index] = updatedNotif
@@ -215,52 +199,38 @@ struct FleetManagerNotificationsView: View {
                                     onUnreadCountChanged?(unreadCount)
                                 }
                             }
-                        default:
-                            break
+                        default: break
                         }
                     }
                 }
             }
-        } catch {
-            print("🚨 Failed to setup Realtime notifications: \(error)")
-        }
+        } catch { print("🚨 Realtime setup failed: \(error)") }
     }
-    
+
     private func markNotificationAsReadInDB(notificationId: UUID) async {
         do {
-            // Using a dictionary for partial update is often more reliable with Supabase Swift SDK
-            let updateData: [String: Bool] = ["is_read": true]
-            
             try await SupabaseManager.shared.client
                 .from("notifications")
-                .update(updateData)
+                .update(["is_read": true])
                 .eq("id", value: notificationId)
                 .execute()
-                
-            print("✅ Successfully marked notification \(notificationId) as read in DB")
-        } catch {
-            print("🚨 Failed to mark as read in DB: \(error)")
-        }
+        } catch { print("🚨 Mark as read failed: \(error)") }
     }
-    
-    // MARK: - Route to Data
+
+    // MARK: - Routing Logic
     private func fetchDataAndRoute(_ notification: AppNotification) async {
         guard let entityId = notification.relatedEntityId else {
-            await MainActor.run { self.fetchError = "No related entity ID attached to this notification." }
+            await MainActor.run { self.fetchError = "No related entity ID." }
             return
         }
-        
+
         do {
             switch notificationDestination(for: notification) {
             case .driverReport:
                 if let report = try await fetchDriverReport(for: notification, entityId: entityId) {
-                    await MainActor.run {
-                        self.routingDriverReport = report
-                    }
+                    await MainActor.run { self.routingDriverReport = report }
                 } else {
-                    await MainActor.run {
-                        self.fetchError = "Driver report could not be found for this notification."
-                    }
+                    await MainActor.run { self.fetchError = "Driver report not found." }
                 }
             case .workOrder:
                 let fetchedOrders: [WorkOrder] = try await SupabaseManager.shared.client
@@ -269,158 +239,86 @@ struct FleetManagerNotificationsView: View {
                     .eq("work_order_id", value: entityId.uuidString)
                     .execute()
                     .value
-                
+
                 await MainActor.run {
                     if let targetOrder = fetchedOrders.first {
                         self.routingWorkOrder = targetOrder
                     } else {
-                        self.fetchError = "Work order no longer exists or couldn't be found."
+                        self.fetchError = "Work order not found."
                     }
                 }
             case .unsupported(let message):
-                await MainActor.run {
-                    self.fetchError = message
-                }
+                await MainActor.run { self.fetchError = message }
             }
         } catch {
-            print("🚨 Failed to fetch entity: \(error)")
-            await MainActor.run {
-                self.fetchError = "Network error: Failed to pull data from database."
-            }
+            await MainActor.run { self.fetchError = error.localizedDescription }
         }
     }
 
     private func notificationDestination(for notification: AppNotification) -> NotificationDestination {
         let normalizedTitle = notification.title.lowercased()
         let normalizedMessage = notification.message.lowercased()
-
-        if notification.type == .maintenance {
-            return .workOrder
-        }
-
-        if notification.type == .driverReport {
-            return .driverReport
-        }
-
-        if normalizedTitle.contains("issue reported")
-            || normalizedTitle.contains("driver report")
-            || normalizedMessage.contains("issue reported") {
-            return .driverReport
-        }
-
-        if normalizedTitle.contains("route deviation")
-            || normalizedMessage.contains("deviated") {
-            return .unsupported("This alert does not open a work order or driver report.")
-        }
-
-        return .unsupported("This notification type does not have a detail screen yet.")
+        if notification.type == .maintenance { return .workOrder }
+        if notification.type == .driverReport { return .driverReport }
+        if normalizedTitle.contains("issue reported") || normalizedTitle.contains("driver report") { return .driverReport }
+        if normalizedTitle.contains("route deviation") { return .unsupported("This alert does not open a detail screen.") }
+        return .unsupported("Notification type not supported yet.")
     }
 
-    private func fetchDriverReport(
-        for notification: AppNotification,
-        entityId: UUID
-    ) async throws -> DriverReport? {
+    private func fetchDriverReport(for notification: AppNotification, entityId: UUID) async throws -> DriverReport? {
         if let byId = try await fetchDriverReportByReportId(entityId) {
             return byId
         }
-
         let vehicleMatches = try await fetchDriverReportsByVehicleId(entityId)
-        guard !vehicleMatches.isEmpty else { return nil }
-
-        if let matchedByCategory = matchDriverReport(vehicleMatches, to: notification) {
-            return matchedByCategory
+        guard !vehicleMatches.isEmpty else {
+            return try await buildNotificationBackedDriverReport(notification: notification, vehicleId: entityId)
         }
-
-        if let firstVehicleMatch = vehicleMatches.first {
-            return firstVehicleMatch
-        }
-
-        return try await buildNotificationBackedDriverReport(notification: notification, vehicleId: entityId)
+        if let matchedByCategory = matchDriverReport(vehicleMatches, to: notification) { return matchedByCategory }
+        return vehicleMatches.first
     }
 
     private func fetchDriverReportByReportId(_ reportId: UUID) async throws -> DriverReport? {
         do {
             let targetReport: DriverReport = try await SupabaseManager.shared.client
                 .from("driver_reports")
-                .select("*, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type)")
+                .select("*, vehicle:vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type)")
                 .eq("id", value: reportId.uuidString)
                 .single()
                 .execute()
                 .value
             return targetReport
-        } catch {
-            print("⚠️ Driver report lookup by report id \(reportId.uuidString) failed: \(error)")
-        }
-
-        do {
-            let fallbackReport: DriverReport = try await SupabaseManager.shared.client
-                .from("driver_reports")
-                .select()
-                .eq("id", value: reportId.uuidString)
-                .single()
-                .execute()
-                .value
-            return fallbackReport
-        } catch {
-            print("⚠️ Plain driver report lookup by report id \(reportId.uuidString) failed: \(error)")
+        } catch let error as PostgrestError {
+            print("⚠️ PGRST116: Not a direct report ID, checking vehicle ID...")
             return nil
-        }
+        } catch { throw error }
     }
 
     private func fetchDriverReportsByVehicleId(_ vehicleId: UUID) async throws -> [DriverReport] {
-        do {
-            let reports: [DriverReport] = try await SupabaseManager.shared.client
-                .from("driver_reports")
-                .select("*, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type)")
-                .eq("vehicle_id", value: vehicleId.uuidString)
-                .order("created_at", ascending: false)
-                .limit(20)
-                .execute()
-                .value
-            if !reports.isEmpty { return reports }
-        } catch {
-            print("⚠️ Joined driver report lookup by vehicle id \(vehicleId.uuidString) failed: \(error)")
-        }
-
-        let fallbackReports: [DriverReport] = try await SupabaseManager.shared.client
+        return try await SupabaseManager.shared.client
             .from("driver_reports")
-            .select()
+            .select("*, vehicle:vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type)")
             .eq("vehicle_id", value: vehicleId.uuidString)
             .order("created_at", ascending: false)
             .limit(20)
             .execute()
             .value
-        return fallbackReports
     }
 
-    private func matchDriverReport(
-        _ reports: [DriverReport],
-        to notification: AppNotification
-    ) -> DriverReport? {
+    // MARK: - Matching & Parsing Helpers
+    private func matchDriverReport(_ reports: [DriverReport], to notification: AppNotification) -> DriverReport? {
         let categoryHint = extractCategoryHint(from: notification.message)
-
         if let categoryHint {
-            let categoryMatch = reports.first { report in
-                report.category.rawValue.caseInsensitiveCompare(categoryHint) == .orderedSame
-            }
-            if let categoryMatch {
-                return categoryMatch
+            if let match = reports.first(where: { $0.category.rawValue.caseInsensitiveCompare(categoryHint) == .orderedSame }) {
+                return match
             }
         }
-
         return reports.min { lhs, rhs in
-            let lhsDelta = abs((lhs.createdAt ?? .distantPast).timeIntervalSince(notification.createdAt))
-            let rhsDelta = abs((rhs.createdAt ?? .distantPast).timeIntervalSince(notification.createdAt))
-            return lhsDelta < rhsDelta
+            abs((lhs.createdAt ?? .distantPast).timeIntervalSince(notification.createdAt)) < abs((rhs.createdAt ?? .distantPast).timeIntervalSince(notification.createdAt))
         }
     }
 
-    private func buildNotificationBackedDriverReport(
-        notification: AppNotification,
-        vehicleId: UUID
-    ) async throws -> DriverReport? {
-        let vehicle: WorkOrderVehicle?
-
+    private func buildNotificationBackedDriverReport(notification: AppNotification, vehicleId: UUID) async throws -> DriverReport? {
+        var vehicle: WorkOrderVehicle? = nil
         do {
             vehicle = try await SupabaseManager.shared.client
                 .from("vehicles")
@@ -429,21 +327,15 @@ struct FleetManagerNotificationsView: View {
                 .single()
                 .execute()
                 .value
-        } catch {
-            print("⚠️ Failed to fetch vehicle \(vehicleId.uuidString) for notification-backed driver report: \(error)")
-            vehicle = nil
-        }
-
-        let category = extractCategory(from: notification.message) ?? .other
-        let severity = extractSeverity(from: notification.message) ?? .medium
+        } catch { print("⚠️ Vehicle fetch failed for backfill") }
 
         return DriverReport(
             id: notification.id,
             driverId: nil,
             vehicleId: vehicleId,
             tripId: nil,
-            category: category,
-            severity: severity,
+            category: extractCategory(from: notification.message) ?? .other,
+            severity: extractSeverity(from: notification.message) ?? .medium,
             description: notification.message,
             status: .reported,
             createdAt: notification.createdAt,
@@ -453,58 +345,32 @@ struct FleetManagerNotificationsView: View {
 
     private func extractCategoryHint(from message: String) -> String? {
         guard let separatorIndex = message.lastIndex(of: ":") else { return nil }
-        let rawSuffix = message[message.index(after: separatorIndex)...]
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: ".", with: "")
-            .lowercased()
-
-        switch rawSuffix {
-        case "mechanical":
-            return "mechanical"
-        case "electrical":
-            return "electrical"
-        case "tyre/wheel", "tyre wheel":
-            return "tyre/wheel"
-        case "fluid leak":
-            return "fluid leak"
-        case "bodywork", "body damage":
-            return "body damage"
-        case "safety":
-            return "safety"
-        case "other":
-            return "other"
-        default:
-            return nil
-        }
+        let rawSuffix = message[message.index(after: separatorIndex)...].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if rawSuffix.contains("mechanical") { return "mechanical" }
+        if rawSuffix.contains("electrical") { return "electrical" }
+        if rawSuffix.contains("tyre") { return "tyre/wheel" }
+        if rawSuffix.contains("fluid") { return "fluid leak" }
+        if rawSuffix.contains("body") { return "body damage" }
+        if rawSuffix.contains("safety") { return "safety" }
+        return nil
     }
 
     private func extractCategory(from message: String) -> DriverReportCategory? {
-        switch extractCategoryHint(from: message) {
-        case "mechanical":
-            return .mechanical
-        case "electrical":
-            return .electrical
-        case "tyre/wheel":
-            return .tyreWheel
-        case "fluid leak":
-            return .fluidLeak
-        case "body damage":
-            return .bodyDamage
-        case "safety":
-            return .safety
-        case "other":
-            return .other
-        default:
-            return nil
-        }
+        let hint = extractCategoryHint(from: message)
+        if hint == "mechanical" { return .mechanical }
+        if hint == "electrical" { return .electrical }
+        if hint == "tyre/wheel" { return .tyreWheel }
+        if hint == "fluid leak" { return .fluidLeak }
+        if hint == "body damage" { return .bodyDamage }
+        if hint == "safety" { return .safety }
+        return .other
     }
 
     private func extractSeverity(from message: String) -> DriverReportSeverity? {
         let normalized = message.lowercased()
         if normalized.contains("critical") { return .critical }
         if normalized.contains("low") { return .low }
-        if normalized.contains("medium") { return .medium }
-        return nil
+        return .medium
     }
 }
 
@@ -514,50 +380,38 @@ private enum NotificationDestination {
     case unsupported(String)
 }
 
-// MARK: - Extracted Modal Container
+// MARK: - Modal Container
 struct NotificationModalContainer: View {
     @Binding var workOrder: WorkOrder?
     @Binding var driverReport: DriverReport?
     @Binding var fetchError: String?
     @Environment(\.dismiss) private var dismiss
-    
+
     var body: some View {
         NavigationStack {
             if let workOrderToView = workOrder {
-                WorkOrderDetailView(
-                    workOrder: workOrderToView,
-                    isManagerApprovalMode: true
-                )
+                WorkOrderDetailView(workOrder: workOrderToView, isManagerApprovalMode: true)
             } else if let reportToView = driverReport {
-                DriverReportDetailView(report: reportToView)
+                if let reportVehicle = reportToView.vehicle {
+                    MaintenanceStaffPickerView(
+                        vehicle: Vehicle(workOrderVehicle: reportVehicle),
+                        driverReportId: reportToView.id,
+                        initialSummary: "\(reportToView.category.rawValue.capitalized) Issue: \(reportToView.severity.rawValue.capitalized)",
+                        initialDescription: reportToView.description
+                    )
+                } else {
+                    VStack {
+                        Image(systemName: "car.fill").font(.largeTitle).foregroundColor(.gray)
+                        Text("Vehicle details missing.")
+                    }.toolbar { Button("Close") { dismiss() } }
+                }
             } else if let errorMsg = fetchError {
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 50))
-                        .foregroundColor(.red)
-                    
-                    Text("Could not load Details")
-                        .font(.headline)
-                    
-                    Text(errorMsg)
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                }
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Close") { dismiss() }
-                    }
-                }
+                VStack {
+                    Text("Error").font(.headline)
+                    Text(errorMsg).foregroundColor(.secondary)
+                }.toolbar { Button("Close") { dismiss() } }
             } else {
-                VStack(spacing: 16) {
-                    ProgressView()
-                        .scaleEffect(1.5)
-                    Text("Fetching Details...")
-                        .font(.headline)
-                        .foregroundColor(.secondary)
-                }
+                ProgressView("Loading Details...")
             }
         }
     }

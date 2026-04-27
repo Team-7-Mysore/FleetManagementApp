@@ -24,7 +24,7 @@ enum NotificationType: String, Codable, CaseIterable {
         case .maintenance:  return "exclamationmark.transmission"
         case .message:      return "envelope.fill"
         case .alert:        return "exclamationmark.triangle.fill"
-        case .general:      return "bell.fill"
+        case .general:      return "bell"
         case .driverReport: return "person.text.rectangle.fill"
         case .unknown:      return "bell.circle"
         }

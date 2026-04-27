@@ -123,13 +123,6 @@ struct MaintenanceNotificationsView: View {
                     workOrder: workOrderToView,
                     isManagerApprovalMode: false // Mechanic sees "Start Work Order"
                 )
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button("Close") {
-                            workOrderForDetails = nil
-                        }
-                    }
-                }
             }
             .presentationDetents([.large])
         }
