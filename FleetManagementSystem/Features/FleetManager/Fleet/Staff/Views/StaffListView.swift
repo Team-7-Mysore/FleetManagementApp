@@ -69,6 +69,16 @@ struct StaffListView: View {
                 .toolbar {
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         Menu {
+                            // ── Sort ──
+                            Picker("Sort", selection: $vm.selectedSort) {
+                                ForEach(StaffSortOrder.allCases) { order in
+                                    Label(order.rawValue, systemImage: order.icon)
+                                        .tag(order)
+                                }
+                            }
+
+                            Divider()
+
                             // ── Status ──
                             Picker("Status", selection: $vm.selectedStatus) {
                                 Text("All Statuses").tag(Optional<AccountStatus>.none)
@@ -94,7 +104,7 @@ struct StaffListView: View {
                                 Button(role: .destructive) {
                                     vm.clearFilters()
                                 } label: {
-                                    Label("Clear Filters", systemImage: "xmark.circle")
+                                    Label("Clear All", systemImage: "xmark.circle")
                                 }
                             }
                         } label: {
@@ -175,6 +185,15 @@ private struct ActiveFilterChipsRow: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                if vm.selectedSort != .newest {
+                    FilterChip(
+                        icon: vm.selectedSort.icon,
+                        label: vm.selectedSort.rawValue,
+                        color: Color.TechBlue
+                    ) {
+                        withAnimation(.spring(response: 0.3)) { vm.selectedSort = .newest }
+                    }
+                }
                 if let status = vm.selectedStatus {
                     FilterChip(
                         icon: statusIcon(status),
@@ -425,6 +444,28 @@ struct StaffFilterSheet: View {
         NavigationStack {
             List {
 
+                // ── Sort ──
+                Section("Sort By") {
+                    ForEach(StaffSortOrder.allCases) { order in
+                        HStack(spacing: 10) {
+                            Image(systemName: order.icon)
+                                .font(.system(size: 14))
+                                .foregroundColor(.brown)
+                                .frame(width: 20)
+                            Text(order.rawValue)
+                                .font(.system(size: 15, design: .rounded))
+                            Spacer()
+                            if vm.selectedSort == order {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundColor(.brown)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture { vm.selectedSort = order }
+                    }
+                }
+
                 // ── Status ──
                 Section("Status") {
                     ForEach(Array(AccountStatus.allCases), id: \.self) { status in
@@ -509,4 +550,3 @@ private struct EmptyStaffView: View {
 #Preview {
     StaffListView()
 }
-
