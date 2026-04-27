@@ -7,7 +7,7 @@ class AddVehicleViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var isSuccess = false
-    
+
     // MARK: - Form Fields
     @Published var vehicleName = ""
     @Published var licensePlate = ""
@@ -19,25 +19,25 @@ class AddVehicleViewModel: ObservableObject {
     @Published var modelYear = ""
     @Published var vehicleType = "Truck"
     @Published var fuelType = "Diesel"
-    
+
     // MARK: - Dates
     @Published var registrationDate = Date()
     @Published var pucExpiry = Date()
     @Published var rcExpiry = Date()
-    
+
     // Asset URLs
     @Published var vehicleImageURL: String?
     @Published var rcURL: String?
     @Published var insuranceURL: String?
     @Published var pucURL: String?
-    
+
     @Published var localVehicleImage: UIImage?
     @Published var rcFileName: String?
     @Published var insuranceFileName: String?
     @Published var pucFileName: String?
 
     // MARK: - Validation Checkers
-    
+
     var isPlateValidCheck: Bool {
         isValidPlate(licensePlate)
     }
@@ -47,8 +47,8 @@ class AddVehicleViewModel: ObservableObject {
         let isVinValid = vin.count == 17
         let isPlateValid = isPlateValidCheck
         let isRCValid = !rcNumber.isEmpty
-        let documentsValid = rcURL != nil
-        
+        let documentsValid = rcURL != nil && insuranceURL != nil
+
         return isNameValid && isVinValid && isPlateValid && isRCValid && documentsValid && !isLoading
     }
 
@@ -57,7 +57,7 @@ class AddVehicleViewModel: ObservableObject {
     func formatPlate(_ input: String) -> String {
         let raw = input.uppercased().replacingOccurrences(of: "-", with: "").replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "[^A-Z0-9]", with: "", options: .regularExpression)
         let normalized = String(raw.prefix(10))
-        
+
         var result = ""
         for (index, char) in normalized.enumerated() {
             if index == 2 || index == 4 || index == 6 {
@@ -79,15 +79,15 @@ class AddVehicleViewModel: ObservableObject {
         let rcRegex = "^[A-Z0-9/]{8,20}$"
         return NSPredicate(format: "SELF MATCHES %@", rcRegex).evaluate(with: input.uppercased())
     }
-    
+
     // MARK: - Persistence (Save to Supabase)
-    
+
     func saveVehicle() async {
         await MainActor.run {
             self.isLoading = true
             self.errorMessage = nil
         }
-        
+
         let sqlDateFormatter = DateFormatter()
         sqlDateFormatter.dateFormat = "yyyy-MM-dd"
 
@@ -122,7 +122,7 @@ class AddVehicleViewModel: ObservableObject {
             request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
             let (_, response) = try await URLSession.shared.data(for: request)
-            
+
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 await MainActor.run { self.isSuccess = true }
             } else {
@@ -133,7 +133,7 @@ class AddVehicleViewModel: ObservableObject {
         }
         await MainActor.run { self.isLoading = false }
     }
-    
+
     // MARK: - Upload Methods
     func uploadImage(image: UIImage, type: String) async {
         guard let data = image.jpegData(compressionQuality: 0.7) else { return }

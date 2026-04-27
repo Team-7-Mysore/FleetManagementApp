@@ -19,7 +19,7 @@ struct MaintenanceAlert: Identifiable {
 enum MaintenanceAlertStatus: String {
     case overdue = "OVERDUE"
     case dueSoon = "DUE SOON"
-    
+
     var color: Color {
         self == .overdue ? Color(red: 0.9, green: 0.4, blue: 0.4) : Color(red: 0.9, green: 0.6, blue: 0.3)
     }
@@ -32,12 +32,12 @@ final class FleetListViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var searchText = ""
     @Published var errorMessage: String?
-    
+    @Published var monthlyReminders: [MaintenanceAlert] = []
     var totalVehiclesCount: Int {
         vehicles.count
     }
-    
- 
+
+
     func deleteVehicle(_ vehicle: Vehicle) async {
         do {
             // ✅ DELETE FROM SUPABASE
@@ -47,7 +47,7 @@ final class FleetListViewModel: ObservableObject {
                 .eq("vehicle_id", value: vehicle.id.uuidString)
                 .execute()
 
-          
+
             DispatchQueue.main.async {
                 self.vehicles.removeAll { $0.id == vehicle.id }
             }
@@ -76,17 +76,81 @@ final class FleetListViewModel: ObservableObject {
                     registration_no,
                     registration_date,
                     rc_expiry_date,
-                    puc_expiry_date
+                    puc_expiry_date,
+                     created_at
                 """)
-                .order("vehicle_name", ascending: true)
+                .order("created_at", ascending: false)
                 .execute()
 
-            // Parsing logic usually happens here via parseVehicles helper
-            self.vehicles = try Self.parseVehicles(from: response.data)
-            isLoading = false
+            let parsedVehicles = try Self.parseVehicles(from: response.data)
+
+                    // 1. Update the vehicle list
+                    self.vehicles = parsedVehicles
+
+                    // 2. TRIGGER THE CALCULATION (This was missing)
+                    self.calculateMonthlyReminders(from: parsedVehicles)
+
+                    isLoading = false
         } catch {
             print("❌ Supabase Fetch Error: \(error)")
             isLoading = false
+        }
+    }
+    func calculateMonthlyReminders(from vehicles: [Vehicle]) {
+        let calendar = Calendar.current
+        let today = Date()
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+
+        self.monthlyReminders = vehicles.compactMap { vehicle in
+            let dateString = vehicle.registrationDate
+
+            guard !dateString.isEmpty, let regDate = formatter.date(from: dateString) else {
+                return nil
+            }
+
+            let components = calendar.dateComponents([.month], from: regDate, to: today)
+            let monthsPassed = components.month ?? 0
+
+            // INTERVAL LOGIC: Show reminder every 6 months (6, 12, 18...)
+            // Use 'monthsPassed % 12 == 0' if you want annual service instead
+            if monthsPassed > 0 && monthsPassed % 6 == 0 {
+                return MaintenanceAlert(
+                    id: UUID(),
+                    unitNumber: vehicle.registrationNumber,
+                    serviceType: "\(monthsPassed)-Month Routine Service",
+                    icon: "calendar.badge.clock",
+                    iconBgColor: Color.purple.opacity(0.1),
+                    iconForegroundColor: .purple,
+                    status: .dueSoon,
+                    timeRemaining: "Routine"
+                )
+            }
+
+            return nil // Return nil if the vehicle is not at a 6-month milestone
+        }
+    }
+
+    func completeWorkOrder(workOrderId: UUID) async {
+        do {
+            // 1. Update the Work Order Status
+            // This triggers the SQL 'tr_on_work_order_completed' on the server
+            try await SupabaseManager.shared.client
+                .from("work_orders")
+                .update(["status": "Completed"]) // ✅ Ensure casing matches your SQL ('Completed')
+                .eq("work_order_id", value: workOrderId)
+                .execute()
+
+            // 2. Refresh Local UI
+            // Since the SQL Trigger modified the 'vehicles' and 'maintenance_issues' tables,
+            // we re-fetch everything to show the vehicle as 'Active' and remove the alert.
+            await fetchVehicles()
+            await fetchMaintenanceAlerts()
+
+            print("✅ Maintenance completion synced successfully.")
+        } catch {
+            print("❌ Update Error: \(error)")
+            self.errorMessage = "Could not complete work order: \(error.localizedDescription)"
         }
     }
 
@@ -96,41 +160,41 @@ final class FleetListViewModel: ObservableObject {
             let response = try await SupabaseManager.shared.client
                 .from("maintenance_issues")
                 .select("""
-                    *,
+                    issue_id,
+                    issue_summary,
+                    description,
+                    status,
                     vehicles (
-                        number_plate,
-                        vehicle_name
+                        number_plate
                     )
                 """)
-                .neq("status", value: "completed")
+                // CHANGE: Now we ONLY pull "pending" items.
+                // This ignores "in_progress" and "completed".
+                .eq("status", value: "pending")
                 .order("created_at", ascending: false)
                 .execute()
 
             let rows = try JSONSerialization.jsonObject(with: response.data) as? [[String: Any]] ?? []
-            
+
             self.maintenanceAlerts = rows.compactMap { row in
                 let vehicleData = row["vehicles"] as? [String: Any]
                 let plate = vehicleData?["number_plate"] as? String ?? "Unknown"
-                let desc = row["description"] as? String ?? "No Description"
-                let statusStr = row["status"] as? String ?? "pending"
-                
-                // Using the new unique UI status name
-                let uiStatus: MaintenanceAlertStatus = (statusStr == "pending") ? .overdue : .dueSoon
-                
+                let title = row["issue_summary"] as? String ?? (row["description"] as? String ?? "Scheduled Service")
+
                 return MaintenanceAlert(
-                    id: UUID(uuidString: row["id"] as? String ?? "") ?? UUID(),
+                    id: UUID(uuidString: row["issue_id"] as? String ?? "") ?? UUID(),
                     unitNumber: plate,
-                    serviceType: desc,
-                    icon: uiStatus == .overdue ? "wrench.and.screwdriver.fill" : "clock.badge.exclamationmark.fill",
-                    iconBgColor: uiStatus == .overdue ? Color(red: 0.98, green: 0.9, blue: 0.9) : Color(red: 0.98, green: 0.95, blue: 0.88),
-                    iconForegroundColor: uiStatus.color,
-                    status: uiStatus,
-                    timeRemaining: uiStatus == .overdue ? "Urgent" : "Active"
+                    serviceType: title,
+                    icon: "clock.badge.exclamationmark.fill",
+                    iconBgColor: Color.blue.opacity(0.1),
+                    iconForegroundColor: .blue,
+                    status: .dueSoon,
+                    timeRemaining: "Scheduled"
                 )
             }
             isLoading = false
         } catch {
-            print("❌ Alert Fetch Error: \(error)")
+            print("❌ Fetch Error: \(error)")
             isLoading = false
         }
     }
@@ -158,6 +222,7 @@ private extension FleetListViewModel {
                 fuelType: stringValue(row["fuel_type"]),
                 modelYear: stringValue(row["model_year"])
             )
+            vehicle.status = stringValue(row["status"])
             vehicle.vin = stringValue(row["vin"]) ?? ""
             vehicle.rcNumber = stringValue(row["registration_no"]) ?? ""
             vehicle.registrationDate = stringValue(row["registration_date"]) ?? ""

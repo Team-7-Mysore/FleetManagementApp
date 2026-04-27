@@ -5,6 +5,7 @@ struct Vehicle: Identifiable, Codable {
     var id: UUID
     var name: String
     var registrationNumber: String
+    var createdAt: Date?
     var brand: String?
     var model: String?
     var imageURL: String?
@@ -12,7 +13,7 @@ struct Vehicle: Identifiable, Codable {
     var fuelType: String?
     var modelYear: String?
     var status: String?
-    
+
     // Required fields
     var vin: String = ""
     var rcNumber: String = ""
@@ -26,6 +27,7 @@ struct Vehicle: Identifiable, Codable {
         case registrationNumber = "number_plate"
         case brand, model, status
         case imageURL = "image_url"
+        case createdAt = "created_at"
         case vehicleType = "vehicle_type"
         case fuelType = "fuel_type"
         case modelYear = "model_year"
@@ -47,13 +49,13 @@ struct Vehicle: Identifiable, Codable {
         imageURL = try container.decodeIfPresent(String.self, forKey: .imageURL)
         vehicleType = (try container.decodeIfPresent(String.self, forKey: .vehicleType)) ?? "Unknown"
         fuelType = try container.decodeIfPresent(String.self, forKey: .fuelType)
-
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
         vin = try container.decodeIfPresent(String.self, forKey: .vin) ?? ""
         rcNumber = try container.decodeIfPresent(String.self, forKey: .rcNumber) ?? ""
         registrationDate = try container.decodeIfPresent(String.self, forKey: .registrationDate) ?? ""
         rcExpiryDate = try container.decodeIfPresent(String.self, forKey: .rcExpiryDate) ?? ""
         pucExpiryDate = try container.decodeIfPresent(String.self, forKey: .pucExpiryDate) ?? ""
-        
+
         if let stringYear = try? container.decodeIfPresent(String.self, forKey: .modelYear) {
             modelYear = stringYear
         } else if let intYear = try? container.decodeIfPresent(Int.self, forKey: .modelYear) {
@@ -102,28 +104,39 @@ struct Vehicle: Identifiable, Codable {
     var year: Int { Int(modelYear ?? "") ?? 0 }
     var fuelPercentage: Int { 75 }
     var formattedMileage: String { "N/A" }
-    
+
+    // MARK: - In Vehicle.swift
+
     var statusColor: Color {
         switch status?.lowercased() {
-        case "active": return .green
-        case "maintenance": return .orange
-        case "inactive": return .gray
-        case "out_of_service": return .red
-        default: return .blue
+        case "active":
+            return .blue // Matches your screenshot
+        case "under_maintenance", "maintenance":
+            return .orange
+        case "inactive":
+            return .gray
+        case "out_of_service":
+            return .red
+        default:
+            return .blue // Fallback to blue/active if null
         }
     }
 
     var statusDisplayName: String {
-        guard let status = status else { return "UNKNOWN" }
+        guard let status = status else { return "Active" }
         switch status.lowercased() {
-        case "active": return "ACTIVE"
-        case "maintenance": return "MAINTENANCE"
-        case "inactive": return "INACTIVE"
-        case "out_of_service": return "OUT OF SERVICE"
-        default: return status.uppercased()
+        case "active":
+            return "Active"
+        case "under_maintenance", "maintenance":
+            return "Maintenance"
+        case "inactive":
+            return "Inactive"
+        default:
+            // Handles other statuses and turns "on_trip" into "On Trip"
+            return status.replacingOccurrences(of: "_", with: " ").capitalized
         }
     }
-    
+
     var imageSystemName: String {
         let type = vehicleType.lowercased()
         if type.contains("bike") || type.contains("motor") {
