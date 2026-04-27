@@ -46,11 +46,7 @@ class ReportIssueViewModel: ObservableObject {
             }
 
             let resolvedContext = try await resolveVehicleAndTripContext(driverId: driverId)
-            guard let vehicleId = resolvedContext.vehicleId else {
-                self.errorMessage = "Vehicle information not found."
-                isSubmitting = false
-                return
-            }
+            let vehicleId = resolvedContext.vehicleId
 
             if self.activeTripId == nil {
                 self.activeTripId = resolvedContext.tripId
@@ -156,7 +152,7 @@ class ReportIssueViewModel: ObservableObject {
             .from("trips")
             .select("trip_id, vehicle_id")
             .eq("driver_id", value: driverId.uuidString)
-            .in("status", values: ["in_progress", "active"])
+            .in("status", values: ["in_progress", "assigned"])
             .order("start_time", ascending: false)
             .limit(1)
             .execute()
