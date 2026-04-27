@@ -47,7 +47,7 @@ struct FleetListView: View {
                         maintenanceListSection(
                             title: "Upcoming Maintenance",
                             alerts: vm.maintenanceAlerts,
-                            emptyText: "All vehicles operational",
+                            emptyText: "No upcoming maintenance",
                             badgeColor: .blue
                         )
 
