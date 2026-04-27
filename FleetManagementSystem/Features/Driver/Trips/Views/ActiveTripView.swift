@@ -173,11 +173,11 @@ struct ActiveTripView: View {
         .navigationTitle("Active Trip")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
-        .confirmationDialog("End Trip", isPresented: $showEndTripConfirmation) {
+        .alert("End Trip", isPresented: $showEndTripConfirmation) {
+            Button("Cancel", role: .cancel) {}
             Button("End Trip", role: .destructive) {
                 router.path.append(AppRoute.vehicleInspection(trip, type: .postTrip))
             }
-            Button("Cancel", role: .cancel) {}
         } message: {
             Text("Are you sure you want to end this trip?")
         }
@@ -190,7 +190,13 @@ struct ActiveTripView: View {
             Text("This will immediately dial emergency contact. Only proceed in a genuine emergency.")
         }
         .sheet(isPresented: $showReportIssue) {
-            ReportIssueView(user: user, vehicle: nil)
+            ReportIssueView(
+                user: user,
+                vehicle: nil,
+                vehicleId: trip.vehicleId,
+                tripId: trip.id,
+                showsCloseButton: true
+            )
         }
         .onAppear {
             // Seed emergency contact (replace with user-configurable value later)

@@ -11,20 +11,19 @@ class ReportIssueViewModel: ObservableObject {
 
     let user: User
     let vehicle: Vehicle?
+    let explicitVehicleId: UUID?
     /// Set this if the driver has an active trip
     var activeTripId: UUID?
 
-    init(user: User, vehicle: Vehicle?) {
+    init(user: User, vehicle: Vehicle?, vehicleId: UUID? = nil, activeTripId: UUID? = nil) {
         self.user = user
         self.vehicle = vehicle
+        self.explicitVehicleId = vehicleId
+        self.activeTripId = activeTripId
     }
 
     // MARK: - Submit Multiple Reports
     func submitReports(issues: [IssueEntry]) async {
-        guard let vehicleId = vehicle?.id else {
-            self.errorMessage = "Missing vehicle information."
-            return
-        }
         guard !issues.isEmpty else { return }
 
         isSubmitting = true
@@ -44,6 +43,17 @@ class ReportIssueViewModel: ObservableObject {
             guard let driverId = UUID(uuidString: driverData.driver_id) else {
                 throw NSError(domain: "", code: -1,
                               userInfo: [NSLocalizedDescriptionKey: "Invalid Driver ID format."])
+            }
+
+            let resolvedContext = try await resolveVehicleAndTripContext(driverId: driverId)
+            guard let vehicleId = resolvedContext.vehicleId else {
+                self.errorMessage = "Vehicle information not found."
+                isSubmitting = false
+                return
+            }
+
+            if self.activeTripId == nil {
+                self.activeTripId = resolvedContext.tripId
             }
 
             // Build a DTO for each issue entry
@@ -86,6 +96,80 @@ class ReportIssueViewModel: ObservableObject {
 
     // MARK: - Helpers
     private func mapCategory(_ uiCategory: String) -> String {
-        return uiCategory.lowercased()
+        switch uiCategory.lowercased() {
+        case "mechanical":
+            return "mechanical"
+        case "electrical":
+            return "electrical"
+        case "tyre/wheel", "tyre wheel":
+            return "tyre/wheel"
+        case "fluid leak":
+            return "fluid leak"
+        case "bodywork", "body damage":
+            return "body damage"
+        case "safety":
+            return "safety"
+        default:
+            return "other"
+        }
+    }
+
+    private func resolveVehicleAndTripContext(driverId: UUID) async throws -> (vehicleId: UUID?, tripId: UUID?) {
+        let emptyVehicleId = "00000000-0000-0000-0000-000000000000"
+
+        if let explicitVehicleId, explicitVehicleId.uuidString != emptyVehicleId {
+            return (explicitVehicleId, activeTripId)
+        }
+
+        if let vehicleId = vehicle?.id, vehicleId.uuidString != emptyVehicleId {
+            return (vehicleId, activeTripId)
+        }
+
+        struct TripContextRow: Decodable {
+            let tripId: String
+            let vehicleId: String?
+
+            enum CodingKeys: String, CodingKey {
+                case tripId = "trip_id"
+                case vehicleId = "vehicle_id"
+            }
+        }
+
+        if let activeTripId {
+            let rows: [TripContextRow] = try await SupabaseManager.shared.client
+                .from("trips")
+                .select("trip_id, vehicle_id")
+                .eq("trip_id", value: activeTripId.uuidString)
+                .limit(1)
+                .execute()
+                .value
+
+            if let row = rows.first {
+                let vehicleId = row.vehicleId.flatMap(UUID.init(uuidString:))
+                if let vehicleId, vehicleId.uuidString != emptyVehicleId {
+                    return (vehicleId, UUID(uuidString: row.tripId))
+                }
+            }
+        }
+
+        let rows: [TripContextRow] = try await SupabaseManager.shared.client
+            .from("trips")
+            .select("trip_id, vehicle_id")
+            .eq("driver_id", value: driverId.uuidString)
+            .in("status", values: ["in_progress", "active"])
+            .order("start_time", ascending: false)
+            .limit(1)
+            .execute()
+            .value
+
+        if let row = rows.first {
+            let vehicleId = row.vehicleId.flatMap(UUID.init(uuidString:))
+            let tripId = UUID(uuidString: row.tripId)
+            if let vehicleId, vehicleId.uuidString != emptyVehicleId {
+                return (vehicleId, tripId)
+            }
+        }
+
+        return (nil, nil)
     }
 }
