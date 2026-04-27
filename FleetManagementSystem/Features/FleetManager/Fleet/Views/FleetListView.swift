@@ -321,6 +321,7 @@ struct VehicleCategoryDetailView: View {
         } message: { vehicle in
             Text("Are you sure you want to delete \(vehicle.registrationNumber)? This action cannot be undone.")
         }
+        
     }
 
     private var vehicleList: some View {

@@ -40,13 +40,30 @@ final class FleetListViewModel: ObservableObject {
 
     func deleteVehicle(_ vehicle: Vehicle) async {
         do {
-            // ✅ DELETE FROM SUPABASE
+            let response = try await SupabaseManager.shared.client
+                .from("trips")
+                .select("trip_id, status")
+                .eq("vehicle_id", value: vehicle.id.uuidString)
+                .in("status", values: ["assigned", "in_progress"]) // only active trips
+                .limit(1)
+                .execute()
+
+            let data = try JSONSerialization.jsonObject(with: response.data) as? [[String: Any]]
+
+            // 🚫 STEP 2: If assigned → block delete
+            if let data = data, !data.isEmpty {
+                DispatchQueue.main.async {
+                    self.errorMessage = "Vehicle is currently assigned to an active trip"
+                }
+                return
+            }
+
+            // ✅ STEP 3: Safe to delete
             try await SupabaseManager.shared.client
                 .from("vehicles")
                 .delete()
                 .eq("vehicle_id", value: vehicle.id.uuidString)
                 .execute()
-
 
             DispatchQueue.main.async {
                 self.vehicles.removeAll { $0.id == vehicle.id }
@@ -54,6 +71,9 @@ final class FleetListViewModel: ObservableObject {
 
         } catch {
             print("❌ Error deleting vehicle: \(error)")
+            DispatchQueue.main.async {
+                self.errorMessage = "Failed to delete vehicle"
+            }
         }
     }
     func fetchVehicles() async {

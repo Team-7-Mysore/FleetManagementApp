@@ -158,7 +158,16 @@ class AddVehicleViewModel: ObservableObject {
             try await storage.upload(path: fileName, file: data)
             let publicURL = "\(SUPABASE_URL)/storage/v1/object/public/vehicle-documents/\(fileName)"
             await MainActor.run {
-                if type == "RC" { self.rcURL = publicURL; self.rcFileName = fileURL.lastPathComponent }
+                if type == "RC" {
+                    self.rcURL = publicURL
+                    self.rcFileName = fileURL.lastPathComponent
+                } else if type == "INSURANCE" {
+                    self.insuranceURL = publicURL
+                    self.insuranceFileName = fileURL.lastPathComponent
+                } else if type == "PUC" {
+                    self.pucURL = publicURL
+                    self.pucFileName = fileURL.lastPathComponent
+                }
             }
         } catch { print("File failed") }
     }
