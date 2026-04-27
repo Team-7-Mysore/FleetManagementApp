@@ -6,13 +6,15 @@ struct ChatDetailRepresentable: UIViewControllerRepresentable {
     let currentUser: Sender
     let otherUser: Sender
     let viewModel: ChatViewModel
+    let accentUIColor: UIColor
     
     func makeUIViewController(context: Context) -> ChatViewController {
         return ChatViewController(
             chatRoomId: chatRoomId,
             currentUser: currentUser,
             otherUser: otherUser,
-            viewModel: viewModel
+            viewModel: viewModel,
+            accentColor: accentUIColor
         )
     }
     

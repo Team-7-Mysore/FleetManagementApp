@@ -1,6 +1,7 @@
 import UIKit
 import MessageKit
 import InputBarAccessoryView
+import Combine
 
 class ChatViewController: MessagesViewController {
     
@@ -10,14 +11,15 @@ class ChatViewController: MessagesViewController {
     var viewModel: ChatViewModel
     
     private var messages: [MessageKitMessage] = []
-    private var timer: Timer?
-    private let accentColor = UIColor(red: 26/255, green: 122/255, blue: 61/255, alpha: 1.0)
+    private var cancellables = Set<AnyCancellable>()
+    private let accentColor: UIColor
 
-    init(chatRoomId: UUID, currentUser: Sender, otherUser: Sender, viewModel: ChatViewModel) {
+    init(chatRoomId: UUID, currentUser: Sender, otherUser: Sender, viewModel: ChatViewModel, accentColor: UIColor) {
         self.chatRoomId = chatRoomId
         self.currentUser = currentUser
         self.otherUser = otherUser
         self.viewModel = viewModel
+        self.accentColor = accentColor
         super.init(nibName: nil, bundle: nil)
     }
     
@@ -30,17 +32,55 @@ class ChatViewController: MessagesViewController {
         
         setupCollectionView()
         setupInputBar()
-        loadMessages()
         
-        // Polling (as fallback or per user request)
-        timer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
-            self?.loadMessages()
+        // ✅ Keyboard handling — let MessageKit manage input bar position
+        maintainPositionOnKeyboardFrameChanged = true
+        scrollsToLastItemOnKeyboardBeginsEditing = true
+        additionalBottomInset = 0
+        messagesCollectionView.keyboardDismissMode = .interactive
+        
+        // Hide avatars for iMessage feel
+        if let layout = messagesCollectionView.collectionViewLayout as? MessagesCollectionViewFlowLayout {
+            layout.textMessageSizeCalculator.outgoingAvatarSize = .zero
+            layout.textMessageSizeCalculator.incomingAvatarSize = .zero
         }
+        
+        // ✅ Dismiss keyboard on tap outside input bar
+        let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
+        tapGesture.cancelsTouchesInView = false
+        messagesCollectionView.addGestureRecognizer(tapGesture)
+        
+        // Input bar styling
+        messageInputBar.backgroundView.backgroundColor = .systemBackground
+        
+        setupViewModelObservation()
+        loadMessages()
+    }
+    
+    private func setupViewModelObservation() {
+        viewModel.$messages
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] msgs in
+                self?.updateMessages(msgs)
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func updateMessages(_ newMessages: [ChatMessage]) {
+        self.messages = newMessages.map { msg in
+            let isCurrent = msg.senderId.uuidString == currentUser.senderId
+            return MessageKitMessage(chatMessage: msg, senderName: isCurrent ? currentUser.displayName : otherUser.displayName)
+        }
+        messagesCollectionView.reloadData()
+        messagesCollectionView.scrollToLastItem(animated: true)
+    }
+    
+    @objc private func dismissKeyboard() {
+        view.endEditing(true)
     }
     
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        timer?.invalidate()
     }
     
     private func setupCollectionView() {
@@ -48,12 +88,6 @@ class ChatViewController: MessagesViewController {
         messagesCollectionView.messagesLayoutDelegate = self
         messagesCollectionView.messagesDisplayDelegate = self
         messagesCollectionView.messageCellDelegate = self
-        
-        // Hide avatars for iMessage feel
-        if let layout = messagesCollectionView.collectionViewLayout as? MessagesCollectionViewFlowLayout {
-            layout.textMessageSizeCalculator.outgoingAvatarSize = .zero
-            layout.textMessageSizeCalculator.incomingAvatarSize = .zero
-        }
     }
     
     private func setupInputBar() {
@@ -64,12 +98,6 @@ class ChatViewController: MessagesViewController {
     private func loadMessages() {
         Task {
             await viewModel.fetchMessages(chatRoomId: chatRoomId)
-            self.messages = viewModel.messages.map { msg in
-                let isCurrent = msg.senderId.uuidString == currentUser.senderId
-                return MessageKitMessage(chatMessage: msg, senderName: isCurrent ? currentUser.displayName : otherUser.displayName)
-            }
-            messagesCollectionView.reloadData()
-            messagesCollectionView.scrollToLastItem(animated: true)
         }
     }
 }

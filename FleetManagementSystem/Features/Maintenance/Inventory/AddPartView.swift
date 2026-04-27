@@ -103,6 +103,7 @@ struct AddPartView: View {
                     TextField("Supplier", text: $supplier)
                 }
             }
+            .hideKeyboardOnTap()
             .navigationTitle("Add New Part")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

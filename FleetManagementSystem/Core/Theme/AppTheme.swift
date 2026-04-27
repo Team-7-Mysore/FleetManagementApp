@@ -46,6 +46,49 @@ enum AppTheme {
     static let cardShadowColor  = Color.black.opacity(0.03)
     static let cardShadowRadius: CGFloat = 4
     static let cardShadowY: CGFloat      = 2
+    
+    // MARK: Chat Accents
+    static let techBlue = Color(red: 0/255, green: 89/255, blue: 184/255)
+    static let chatRed  = Color(red: 163/255, green: 53/255, blue: 42/255) // #A3352A
+    
+    static func chatAccentColor(for role: String?) -> Color {
+        guard let role = role?.lowercased().replacingOccurrences(of: " ", with: "_") else {
+            return chatRed
+        }
+        
+        switch role {
+        case "driver":
+            return primaryGreen
+        case "fleet_manager":
+            return techBlue
+        case "maintenance":
+            return chatRed
+        default:
+            return chatRed
+        }
+    }
+    
+    static func chatAccentUIColor(for role: String?) -> UIColor {
+        let color = chatAccentColor(for: role)
+        return UIColor(color)
+    }
+
+    // Role-based accent colors (Primary Source of Truth)
+    static func accentColor(for role: AppUserRole?) -> Color {
+        guard let role = role else { return primaryGreen }
+        switch role {
+        case .driver:
+            return primaryGreen
+        case .fleetManager:
+            return techBlue
+        case .maintenance:
+            return chatRed
+        }
+    }
+
+    static func accentUIColor(for role: AppUserRole?) -> UIColor {
+        return UIColor(accentColor(for: role))
+    }
 }
 
 // MARK: - View Modifiers
