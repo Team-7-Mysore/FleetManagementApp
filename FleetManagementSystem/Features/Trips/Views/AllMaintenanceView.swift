@@ -112,7 +112,7 @@ struct AllMaintenanceView: View {
         }
         .sheet(item: $selectedWorkOrder) { workOrder in
             NavigationStack {
-                WorkOrderDetailView(workOrder: workOrder)
+                WorkOrderDetailView(workOrder: workOrder, isManagerApprovalMode: true)
             }
         }
     }

@@ -313,15 +313,18 @@ struct VehicleCategoryDetailView: View {
                 VehicleDetailView(vehicle: vehicle)
             }
         }
-        .confirmationDialog("Delete Vehicle", isPresented: $showingDeleteConfirmation, presenting: vehicleToDelete) { vehicle in
-            Button("Delete \(vehicle.name)", role: .destructive) {
+        .alert("Delete Vehicle", isPresented: $showingDeleteConfirmation, presenting: vehicleToDelete) { vehicle in
+
+            Button("Delete", role: .destructive) {
                 Task { await vm.deleteVehicle(vehicle) }
             }
+
             Button("Cancel", role: .cancel) { }
+
         } message: { vehicle in
             Text("Are you sure you want to delete \(vehicle.registrationNumber)? This action cannot be undone.")
         }
-        
+
     }
 
     private var vehicleList: some View {
@@ -342,7 +345,7 @@ struct VehicleCategoryDetailView: View {
                         showingDeleteConfirmation = true
                     } label: {
                         Label("Delete", systemImage: "trash")
-                    }
+                    }.tint(.red)
                 }
             }
         }

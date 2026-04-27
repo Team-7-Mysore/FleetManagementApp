@@ -120,7 +120,7 @@ struct FleetManagerNotificationsView: View {
             let fetched: [AppNotification] = try await SupabaseManager.shared.client
                 .from("notifications")
                 .select()
-                .eq("recipient_id", value: currentUserId.uuidString)
+                .eq("recipient_id", value: currentUserId)
                 .order("created_at", ascending: false)
                 .execute()
                 .value
@@ -143,7 +143,7 @@ struct FleetManagerNotificationsView: View {
             try await SupabaseManager.shared.client
                 .from("notifications")
                 .update(UpdateRead(is_read: true))
-                .eq("id", value: notificationId.uuidString)
+                .eq("id", value: notificationId)
                 .execute()
         } catch {
             print("🚨 Failed to mark as read in DB: \(error)")
