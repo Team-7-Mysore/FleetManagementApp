@@ -346,3 +346,55 @@ struct ParticipantUserIdWithRoom: Codable {
         case userId = "user_id"
     }
 }
+
+// MARK: - Driver Report Models
+enum DriverReportCategory: String, Codable, CaseIterable {
+    case mechanical = "mechanical"
+    case electrical = "electrical"
+    case tyreWheel = "tyre/wheel"
+    case fluidLeak = "fluid leak"
+    case bodyDamage = "body damage"
+    case safety = "safety"
+    case other = "other"
+}
+
+enum DriverReportSeverity: String, Codable, CaseIterable {
+    case low = "low"
+    case medium = "medium"
+    case critical = "critical"
+}
+
+enum DriverReportStatus: String, Codable, CaseIterable {
+    case reported = "reported"
+    case acknowledged = "acknowledged"
+    case convertedToWorkOrder = "converted_to_work_order"
+    case resolved = "resolved"
+}
+
+struct DriverReport: Identifiable, Codable {
+    let id: UUID
+    var driverId: UUID?
+    var vehicleId: UUID?
+    var tripId: UUID?
+    var category: DriverReportCategory
+    var severity: DriverReportSeverity
+    var description: String
+    var status: DriverReportStatus
+    let createdAt: Date?
+    
+    // Joined data
+    var vehicle: WorkOrderVehicle?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case driverId = "driver_id"
+        case vehicleId = "vehicle_id"
+        case tripId = "trip_id"
+        case category
+        case severity
+        case description
+        case status
+        case createdAt = "created_at"
+        case vehicle = "vehicles"
+    }
+}

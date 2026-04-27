@@ -126,6 +126,7 @@ struct SetPasswordView: View {
                 .padding(.vertical, 24)
             }
         }
+        .hideKeyboardOnTap()
         .animation(.snappy(duration: 0.25), value: errorMessage)
     }
 

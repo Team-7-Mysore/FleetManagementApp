@@ -21,6 +21,7 @@ final class TripDetailViewModel: ObservableObject {
     private var routeCoordinates: [CLLocationCoordinate2D] = []
     
     private var locationPollingTask: Task<Void, Never>?
+    private var realtimeChannel: RealtimeChannelV2?
     
     init(trip: Trip) {
         self.trip = trip
@@ -28,6 +29,9 @@ final class TripDetailViewModel: ObservableObject {
     
     deinit {
         locationPollingTask?.cancel()
+        // Note: Realtime channels are usually cleaned up automatically, 
+        // but we should ideally call unsubscribe. However, in @MainActor 
+        // deinit, we can't easily call async methods.
     }
     
     /// Starts a polling loop that refreshes the vehicle location every 2 seconds.
@@ -36,7 +40,7 @@ final class TripDetailViewModel: ObservableObject {
         locationPollingTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refreshVehicleLocation()
-                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                try? await Task.sleep(nanoseconds: 900_000_000_000) // 2 seconds
             }
         }
     }
@@ -44,6 +48,13 @@ final class TripDetailViewModel: ObservableObject {
     func stopLocationPolling() {
         locationPollingTask?.cancel()
         locationPollingTask = nil
+        
+        if let channel = realtimeChannel {
+            Task {
+                await channel.unsubscribe()
+            }
+            realtimeChannel = nil
+        }
     }
     
     /// Allows the manager to acknowledge a deviation (e.g. shortcut) for the current session.
@@ -55,40 +66,92 @@ final class TripDetailViewModel: ObservableObject {
     /// Fetches the single latest location for the trip's vehicle from vehicle_locations.
     func refreshVehicleLocation() async {
         guard let vehicleId = vehicle?.id ?? trip.vehicle_id else {
-            print("⚠️ No vehicle_id available for location fetch")
             return
         }
-        
-        let idString = vehicleId.uuidString.lowercased()
         
         do {
             let locations: [TripDetailVehicleLocation] = try await SupabaseManager.shared.client
                 .from("vehicle_locations")
                 .select()
-                .eq("vehicle_id", value: idString)
+                .eq("vehicle_id", value: vehicleId)
                 .order("timestamp", ascending: false)
                 .limit(1)
                 .execute()
                 .value
             
             if let location = locations.first {
-                let newLocation = CLLocationCoordinate2D(
-                    latitude: location.latitude,
-                    longitude: location.longitude
-                )
-                driverLocation = newLocation
-                
-                // Track route deviation if we have a route and the trip is active
-                if !routeCoordinates.isEmpty {
-                    checkRouteDeviation(currentLocation: newLocation)
-                }
-                
-                print("✅ Vehicle location refreshed (2s): \(location.latitude), \(location.longitude) (Deviated: \(isRouteDeviated))")
-            } else {
-                print("⚠️ No location matching vehicle_id: \(idString)")
+                updateDriverLocation(lat: location.latitude, lng: location.longitude)
             }
         } catch {
             print("❌ Error refreshing vehicle location: \(error)")
+        }
+    }
+    
+    private func updateDriverLocation(lat: Double, lng: Double) {
+        let newLocation = CLLocationCoordinate2D(latitude: lat, longitude: lng)
+        
+        // Only update if coordinates changed significantly to avoid unnecessary UI jitter
+        if let current = driverLocation {
+            let threshold = 0.000001
+            if abs(current.latitude - lat) < threshold && abs(current.longitude - lng) < threshold {
+                return
+            }
+        }
+        
+        self.driverLocation = newLocation
+        
+        // Track route deviation if we have a route and the trip is active
+        if !routeCoordinates.isEmpty {
+            checkRouteDeviation(currentLocation: newLocation)
+        }
+    }
+    
+    /// Sets up a real-time listener for vehicle location changes.
+    func setupRealtimeLocation() async {
+        guard let vehicleId = vehicle?.id ?? trip.vehicle_id else { return }
+        
+        // Remove existing channel if any
+        if let existingChannel = realtimeChannel {
+            await existingChannel.unsubscribe()
+        }
+        
+        let channelId = "vehicle-loc-\(vehicleId.uuidString)"
+        let channel = SupabaseManager.shared.client.realtimeV2.channel(channelId)
+        
+        let insertionStream = channel.postgresChange(
+            AnyAction.self,
+            schema: "public",
+            table: "vehicle_locations"
+        )
+        
+        realtimeChannel = channel
+        try? await channel.subscribeWithError()
+        
+        Task { [weak self] in
+            for await change in insertionStream {
+                guard let self = self else { break }
+                
+                var lat: Double?
+                var lng: Double?
+                
+                // Realtime V2 uses an enum for changes
+                switch change {
+                case .insert(let action):
+                    lat = action.record["latitude"]?.doubleValue
+                    lng = action.record["longitude"]?.doubleValue
+                case .update(let action):
+                    lat = action.record["latitude"]?.doubleValue
+                    lng = action.record["longitude"]?.doubleValue
+                default:
+                    break
+                }
+                
+                if let lat = lat, let lng = lng {
+                    await MainActor.run {
+                        self.updateDriverLocation(lat: lat, lng: lng)
+                    }
+                }
+            }
         }
     }
     

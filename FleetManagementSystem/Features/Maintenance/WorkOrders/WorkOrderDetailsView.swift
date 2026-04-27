@@ -92,7 +92,7 @@ struct WorkOrderDetailView: View {
         ZStack {
             Color(uiColor: .systemGroupedBackground)
                 .ignoresSafeArea()
-                .onTapGesture { hideKeyboard() }
+                .hideKeyboardOnTap()
 
             ScrollView {
                 if isLoading {
@@ -129,7 +129,7 @@ struct WorkOrderDetailView: View {
         .onChange(of: editedLabourCost) { _, _ in scheduleAutosave() }
         .onChange(of: editedMaintenanceNotes) { _, _ in scheduleAutosave() }
         .onDisappear {
-            hideKeyboard()
+            UIApplication.shared.endEditing()
             if !showingCompletionReport && !showingCompletionAlert {
                 saveTask?.cancel()
                 Task { await performSilentSave() }
@@ -164,9 +164,7 @@ struct WorkOrderDetailView: View {
         .padding(.top, 20)
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
-        .onTapGesture {
-            hideKeyboard()
-        }
+        .hideKeyboardOnTap()
     }
 
     // MARK: - Extracted View Sections
@@ -387,41 +385,37 @@ struct WorkOrderDetailView: View {
     }
 
     @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarLeading) {
-            Button(action: {
-                dismiss()
-            }) {
-                Image(systemName: "xmark")
-                    .fontWeight(.semibold)
-                    .foregroundColor(Color(hex: "#A3352A"))
-            }
-        }
-
-        if workOrder.status == .inProgress || workOrder.status == .completed {
-            ToolbarItem(placement: .navigationBarTrailing) {
+        private var toolbarContent: some ToolbarContent {
+            ToolbarItem(placement: .navigationBarLeading) {
                 Button(action: {
-                    cancelPendingSave()
-                    if workOrder.status == .completed {
-                        showingCompletionReport = true
-                    } else {
-                        showingCompletionAlert = true
-                    }
+                    dismiss()
                 }) {
-                    HStack(spacing: 4) {
-                        Text(workOrder.status == .completed ? "View Report" : "Done")
-                            .fontWeight(.semibold)
+                    Image(systemName: "xmark")
+                        .fontWeight(.semibold)
+                        .foregroundColor(Color(hex: "#A3352A"))
+                }
+            }
+
+            if (!isManagerApprovalMode && workOrder.status == .inProgress) || workOrder.status == .completed {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        cancelPendingSave()
+                        if workOrder.status == .completed {
+                            showingCompletionReport = true
+                        } else {
+                            showingCompletionAlert = true
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            Text(workOrder.status == .completed ? "View Report" : "Done")
+                                .fontWeight(.semibold)
+                        }
+                        .foregroundColor(Color(hex: "#A3352A"))
                     }
-                    .foregroundColor(Color(hex: "#A3352A"))
                 }
             }
         }
-    }
 
-    // MARK: - Actions
-    private func hideKeyboard() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-    }
 
     private func startWorkOrder() {
         cancelPendingSave()

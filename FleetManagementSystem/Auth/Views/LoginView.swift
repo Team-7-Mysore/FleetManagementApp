@@ -170,12 +170,13 @@ struct LoginView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
         }
+        .hideKeyboardOnTap()
     }
-}
 
-struct LoginView_Previews: PreviewProvider {
-    static var previews: some View {
-        let appSession = AppSession()
-        LoginView(viewModel: AuthViewModel(appSession: appSession))
+    struct LoginView_Previews: PreviewProvider {
+        static var previews: some View {
+            let appSession = AppSession()
+            LoginView(viewModel: AuthViewModel(appSession: appSession))
+        }
     }
 }

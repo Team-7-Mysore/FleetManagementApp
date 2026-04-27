@@ -193,23 +193,19 @@ struct FleetManagerTripDetailView: View {
             // MARK: - Vehicle
             if let vehicle = vm.vehicle {
                 Section("Vehicle") {
-                    NavigationLink {
-                        // Potential navigation to vehicle detail
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "car.fill")
-                                .foregroundStyle(.white)
-                                .frame(width: 32, height: 32)
-                                .background(Color.blue.gradient)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(vehicle.name)
-                                    .font(.subheadline.weight(.semibold))
-                                Text(vehicle.registrationNumber)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                    HStack(spacing: 12) {
+                        Image(systemName: "car.fill")
+                            .foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .background(Color.blue.gradient)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(vehicle.name)
+                                .font(.subheadline.weight(.semibold))
+                            Text(vehicle.registrationNumber)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
                     
@@ -280,6 +276,7 @@ struct FleetManagerTripDetailView: View {
             await vm.loadTripDetails()
             updateCameraPosition()
             vm.startLocationPolling()
+            await vm.setupRealtimeLocation()
         }
         .onDisappear {
             vm.stopLocationPolling()
@@ -556,6 +553,7 @@ struct EditTripSheet: View {
                     }
                 }
             }
+            .hideKeyboardOnTap()
             .navigationTitle("Edit Trip")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

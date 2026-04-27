@@ -8,6 +8,7 @@ struct TripsListView: View {
     
     @StateObject private var vm = TripListViewModel()
     @State private var showingProfile = false
+    @State private var selectedWorkOrder: WorkOrder? = nil
     
     init(profile: UserProfile? = nil, onSignOut: @escaping () async -> Void = {}) {
         self.profile = profile
@@ -71,6 +72,11 @@ struct TripsListView: View {
                 // FIXED: Opens Notifications as a pushed navigation view
                 .navigationDestination(isPresented: $navigateToNotifications) {
                     FleetManagerNotificationsView()
+                }
+                .sheet(item: $selectedWorkOrder) { workOrder in
+                    NavigationStack {
+                        WorkOrderDetailView(workOrder: workOrder)
+                    }
                 }
                 
                 floatingActionButton
@@ -174,7 +180,12 @@ struct TripsListView: View {
             
             
             ForEach(Array(vm.vehiclesInMaintenance.prefix(3))) { workOrder in
-                MaintenanceVehicleCard(workOrder: workOrder)
+                Button(action: {
+                    selectedWorkOrder = workOrder
+                }) {
+                    MaintenanceVehicleCard(workOrder: workOrder)
+                }
+                .buttonStyle(.plain)
             }
         }
     }

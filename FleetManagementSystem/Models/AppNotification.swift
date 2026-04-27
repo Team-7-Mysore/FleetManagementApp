@@ -8,6 +8,7 @@ enum NotificationType: String, Codable, CaseIterable {
     case message        = "Message"
     case alert          = "Alert"
     case general        = "General"
+    case driverReport   = "Driver Report"
     
     var systemImage: String {
         switch self {
@@ -17,6 +18,7 @@ enum NotificationType: String, Codable, CaseIterable {
         case .message:      return "envelope.fill"
         case .alert:        return "exclamationmark.triangle.fill"
         case .general:      return "bell.fill"
+        case .driverReport: return "person.text.rectangle.fill"
         }
     }
 }

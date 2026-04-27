@@ -39,6 +39,7 @@ struct FleetManagementSystemApp: App {
                 }
             }
             .tint(Color(hex: "#A3352A"))
+            .hideKeyboardOnTap()
             .onAppear {
                 NotificationManager.shared.requestPermission()
                 Task {

@@ -8,8 +8,9 @@ struct FleetManagerNotificationsView: View {
     
     // MARK: - Routing State for Modal
     @State private var routingWorkOrder: WorkOrder? = nil
+    @State private var routingDriverReport: DriverReport? = nil
     @State private var fetchError: String? = nil
-    @State private var isRoutingToWorkOrder = false
+    @State private var isRoutingActive = false
     
     var onUnreadCountChanged: ((Int) -> Void)? = nil
     
@@ -46,12 +47,13 @@ struct FleetManagerNotificationsView: View {
                             
                             // 2. Clear old data and show modal IMMEDIATELY
                             routingWorkOrder = nil
+                            routingDriverReport = nil
                             fetchError = nil
-                            isRoutingToWorkOrder = true
+                            isRoutingActive = true
                             
                             // 3. Fetch the actual data in the background
                             Task {
-                                await fetchWorkOrderAndRoute(notification)
+                                await fetchDataAndRoute(notification)
                             }
                         }) {
                             HStack(alignment: .top, spacing: 12) {
@@ -99,9 +101,10 @@ struct FleetManagerNotificationsView: View {
             await fetchNotifications()
         }
         // FIXED: Using an extracted View with Bindings completely bypasses the SwiftUI state freeze bug
-        .sheet(isPresented: $isRoutingToWorkOrder) {
-            WorkOrderModalContainer(
+        .sheet(isPresented: $isRoutingActive) {
+            NotificationModalContainer(
                 workOrder: $routingWorkOrder,
+                driverReport: $routingDriverReport,
                 fetchError: $fetchError
             )
             .presentationDragIndicator(.visible)
@@ -147,30 +150,49 @@ struct FleetManagerNotificationsView: View {
         }
     }
     
-    // MARK: - Route to Work Order
-    private func fetchWorkOrderAndRoute(_ notification: AppNotification) async {
-        guard let orderId = notification.relatedEntityId else {
-            await MainActor.run { self.fetchError = "No Work Order ID attached to this notification." }
+    // MARK: - Route to Data
+    private func fetchDataAndRoute(_ notification: AppNotification) async {
+        guard let entityId = notification.relatedEntityId else {
+            await MainActor.run { self.fetchError = "No related entity ID attached to this notification." }
             return
         }
         
         do {
-            let fetchedOrders: [WorkOrder] = try await SupabaseManager.shared.client
-                .from("work_orders")
-                .select("*, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type)")
-                .eq("work_order_id", value: orderId.uuidString)
-                .execute()
-                .value
-            
-            await MainActor.run {
-                if let targetOrder = fetchedOrders.first {
-                    self.routingWorkOrder = targetOrder // This updates the binding and reveals the UI
-                } else {
-                    self.fetchError = "Work order no longer exists or couldn't be found."
+            if notification.type == .driverReport {
+                // Fetch Driver Report
+                let fetchedReports: [DriverReport] = try await SupabaseManager.shared.client
+                    .from("driver_reports")
+                    .select("*, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type)")
+                    .eq("id", value: entityId.uuidString)
+                    .execute()
+                    .value
+                
+                await MainActor.run {
+                    if let targetReport = fetchedReports.first {
+                        self.routingDriverReport = targetReport
+                    } else {
+                        self.fetchError = "Driver report no longer exists or couldn't be found."
+                    }
+                }
+            } else {
+                // Default: Fetch Work Order
+                let fetchedOrders: [WorkOrder] = try await SupabaseManager.shared.client
+                    .from("work_orders")
+                    .select("*, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type)")
+                    .eq("work_order_id", value: entityId.uuidString)
+                    .execute()
+                    .value
+                
+                await MainActor.run {
+                    if let targetOrder = fetchedOrders.first {
+                        self.routingWorkOrder = targetOrder
+                    } else {
+                        self.fetchError = "Work order no longer exists or couldn't be found."
+                    }
                 }
             }
         } catch {
-            print("🚨 Failed to fetch work order: \(error)")
+            print("🚨 Failed to fetch entity: \(error)")
             await MainActor.run {
                 self.fetchError = "Network error: Failed to pull data from database."
             }
@@ -179,28 +201,37 @@ struct FleetManagerNotificationsView: View {
 }
 
 // MARK: - Extracted Modal Container
-// This forces SwiftUI to listen to the @Binding and redraw when the data arrives!
-struct WorkOrderModalContainer: View {
+struct NotificationModalContainer: View {
     @Binding var workOrder: WorkOrder?
+    @Binding var driverReport: DriverReport?
     @Binding var fetchError: String?
     @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         NavigationStack {
             if let workOrderToView = workOrder {
-                // SUCCESS: Data loaded, show details and Manager Approval buttons
                 WorkOrderDetailView(
                     workOrder: workOrderToView,
                     isManagerApprovalMode: true
                 )
+            } else if let reportToView = driverReport {
+                if let v = reportToView.vehicle {
+                    MaintenanceStaffPickerView(
+                        vehicle: Vehicle(workOrderVehicle: v),
+                        driverReportId: reportToView.id,
+                        initialSummary: "\(reportToView.category.rawValue.capitalized) Issue",
+                        initialDescription: reportToView.description
+                    )
+                } else {
+                    DriverReportDetailView(report: reportToView)
+                }
             } else if let errorMsg = fetchError {
-                // ERROR: Fetch failed, show why
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 50))
                         .foregroundColor(.red)
                     
-                    Text("Could not load Work Order")
+                    Text("Could not load Details")
                         .font(.headline)
                     
                     Text(errorMsg)
@@ -215,11 +246,10 @@ struct WorkOrderModalContainer: View {
                     }
                 }
             } else {
-                // LOADING: Data is still fetching
                 VStack(spacing: 16) {
                     ProgressView()
                         .scaleEffect(1.5)
-                    Text("Fetching Work Order...")
+                    Text("Fetching Details...")
                         .font(.headline)
                         .foregroundColor(.secondary)
                 }

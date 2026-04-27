@@ -13,6 +13,11 @@ struct MaintenanceStaffPickerView: View {
     @State private var taskDescription = ""
     @State private var isProcessing = false
     
+    // Optional data for autofill from driver reports
+    var driverReportId: UUID? = nil
+    var initialSummary: String? = nil
+    var initialDescription: String? = nil
+    
     var body: some View {
         NavigationStack {
             Form {
@@ -71,7 +76,14 @@ struct MaintenanceStaffPickerView: View {
                 }
             }
             .task {
-                // FIX 1: Ensure this function exists below
+                // Auto-fill if provided
+                if let summary = initialSummary {
+                    self.issueSummary = summary
+                }
+                if let desc = initialDescription {
+                    self.taskDescription = desc
+                }
+                
                 await fetchMaintenanceStaff()
             }
         }
@@ -140,6 +152,16 @@ struct MaintenanceStaffPickerView: View {
                 "is_read": AnyEncodable(false)
             ]
             try await SupabaseManager.shared.client.from("notifications").insert(notificationData).execute()
+            
+            // 🚨 NEW: If this came from a driver report, update its status
+            if let reportId = driverReportId {
+                struct StatusUpdate: Encodable { let status: String }
+                try await SupabaseManager.shared.client
+                    .from("driver_reports")
+                    .update(StatusUpdate(status: "acknowledged"))
+                    .eq("id", value: reportId.uuidString)
+                    .execute()
+            }
             
             await MainActor.run { dismiss() }
         } catch {

@@ -92,6 +92,7 @@ struct AddEditWorkOrderView: View {
                 .padding(.bottom, 40)
             }
         }
+        .hideKeyboardOnTap()
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(sourceType: .photoLibrary) { image in
                 if let imageData = image.jpegData(compressionQuality: 0.7) {

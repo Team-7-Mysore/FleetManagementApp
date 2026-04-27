@@ -259,6 +259,7 @@ struct AddStaffModalView: View {
                 }
             }
         }
+        .hideKeyboardOnTap()
         .navigationTitle("Add Person")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

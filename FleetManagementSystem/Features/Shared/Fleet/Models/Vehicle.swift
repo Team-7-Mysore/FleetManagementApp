@@ -147,4 +147,13 @@ struct Vehicle: Identifiable, Codable {
             return "truck.box.fill"
         }
     }
+
+    // Conversion from WorkOrderVehicle
+    init(workOrderVehicle: WorkOrderVehicle) {
+        self.id = workOrderVehicle.vehicleId
+        self.name = workOrderVehicle.vehicleName ?? "Unknown Vehicle"
+        self.registrationNumber = workOrderVehicle.numberPlate ?? "No Plate"
+        self.vehicleType = workOrderVehicle.vehicleType?.rawValue ?? "Unknown"
+        self.status = "Active"
+    }
 }

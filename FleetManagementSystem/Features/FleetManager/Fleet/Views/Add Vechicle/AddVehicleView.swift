@@ -161,6 +161,7 @@ struct AddVehicleView: View {
                     DatePicker("RC Expiry", selection: $vm.rcExpiry, displayedComponents: .date)
                 }
             }
+            .hideKeyboardOnTap()
             .navigationTitle("Add Vehicle")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
