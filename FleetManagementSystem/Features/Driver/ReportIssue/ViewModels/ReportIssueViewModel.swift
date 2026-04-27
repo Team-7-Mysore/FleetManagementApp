@@ -58,11 +58,20 @@ class ReportIssueViewModel: ObservableObject {
                 )
             }
 
-            // Batch insert all reports in one request
-            try await SupabaseManager.shared.client
+            // Batch insert all reports and get the inserted rows back to get the IDs
+            let response: [DriverReport] = try await SupabaseManager.shared.client
                 .from("driver_reports")
                 .insert(reports)
+                .select()
                 .execute()
+                .value
+
+            // Notify Fleet Managers
+            await notifyFleetManagers(
+                for: reports, 
+                insertedId: response.first?.id,
+                vehicleName: vehicle?.name ?? vehicle?.registrationNumber ?? "Unknown Vehicle"
+            )
 
             self.submitSuccess = true
 
@@ -72,6 +81,43 @@ class ReportIssueViewModel: ObservableObject {
         }
 
         isSubmitting = false
+    }
+
+    private func notifyFleetManagers(for reports: [DriverReportDTO], insertedId: UUID?, vehicleName: String) async {
+        do {
+            // 1. Fetch all fleet managers
+            let managers: [AppUser] = try await SupabaseManager.shared.client
+                .from("users")
+                .select()
+                .eq("role", value: "fleet_manager")
+                .execute()
+                .value
+            
+            guard !managers.isEmpty else { return }
+            
+            // 2. Create a notification for each manager
+            for manager in managers {
+                var notificationData: [String: AnyEncodable] = [
+                    "recipient_id": AnyEncodable(manager.id),
+                    "sender_id": AnyEncodable(user.id),
+                    "type": AnyEncodable("Driver Report"),
+                    "title": AnyEncodable("New Issue Reported"),
+                    "message": AnyEncodable("Driver \(user.email ?? "unknown") reported \(reports.count) issue(s) for \(vehicleName)."),
+                    "is_read": AnyEncodable(false)
+                ]
+                
+                if let reportId = insertedId {
+                    notificationData["related_entity_id"] = AnyEncodable(reportId)
+                }
+                
+                _ = try? await SupabaseManager.shared.client
+                    .from("notifications")
+                    .insert(notificationData)
+                    .execute()
+            }
+        } catch {
+            print("🚨 Failed to notify fleet managers: \(error)")
+        }
     }
 
     // MARK: - Single-report convenience (kept for backward compatibility)

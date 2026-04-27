@@ -14,6 +14,9 @@ struct FleetManagerNotificationsView: View {
     
     var onUnreadCountChanged: ((Int) -> Void)? = nil
     
+    // Real-time channel
+    @State private var realtimeChannel: RealtimeChannelV2?
+    
     var body: some View {
         ZStack {
             Color(.systemGroupedBackground).ignoresSafeArea()
@@ -96,9 +99,15 @@ struct FleetManagerNotificationsView: View {
         .navigationBarTitleDisplayMode(.large)
         .task {
             await fetchNotifications()
+            await setupRealtimeNotifications()
         }
         .refreshable {
             await fetchNotifications()
+        }
+        .onDisappear {
+            if let channel = realtimeChannel {
+                Task { await SupabaseManager.shared.client.realtimeV2.removeChannel(channel) }
+            }
         }
         // FIXED: Using an extracted View with Bindings completely bypasses the SwiftUI state freeze bug
         .sheet(isPresented: $isRoutingActive) {
@@ -134,6 +143,64 @@ struct FleetManagerNotificationsView: View {
         } catch {
             print("🚨 Failed to fetch notifications: \(error)")
             await MainActor.run { self.isLoading = false }
+        }
+    }
+    
+    private func setupRealtimeNotifications() async {
+        guard realtimeChannel == nil else { return }
+        
+        do {
+            let session = try await SupabaseManager.shared.client.auth.session
+            let currentUserId = session.user.id
+            
+            let channel = SupabaseManager.shared.client.realtimeV2.channel("notifications-changes")
+            self.realtimeChannel = channel
+            
+            let insertions = channel.postgresChange(
+                AnyAction.self,
+                schema: "public",
+                table: "notifications"
+            )
+            
+            try await channel.subscribeWithError()
+            
+            Task {
+                let decoder = JSONDecoder()
+                decoder.dateDecodingStrategy = .iso8601
+                
+                for await action in insertions {
+                    await MainActor.run {
+                        switch action {
+                        case .insert(let action):
+                            // Manually filter for recipient_id to avoid deprecated filter syntax
+                            guard action.record["recipient_id"]?.stringValue == currentUserId.uuidString else { return }
+                            
+                            if let newNotif = try? action.decodeRecord(as: AppNotification.self, decoder: decoder) {
+                                // Add to top if not already present
+                                if !notifications.contains(where: { $0.id == newNotif.id }) {
+                                    notifications.insert(newNotif, at: 0)
+                                    unreadCount = notifications.filter { !$0.isRead }.count
+                                    onUnreadCountChanged?(unreadCount)
+                                }
+                            }
+                        case .update(let action):
+                            guard action.record["recipient_id"]?.stringValue == currentUserId.uuidString else { return }
+                            
+                            if let updatedNotif = try? action.decodeRecord(as: AppNotification.self, decoder: decoder) {
+                                if let index = notifications.firstIndex(where: { $0.id == updatedNotif.id }) {
+                                    notifications[index] = updatedNotif
+                                    unreadCount = notifications.filter { !$0.isRead }.count
+                                    onUnreadCountChanged?(unreadCount)
+                                }
+                            }
+                        default:
+                            break
+                        }
+                    }
+                }
+            }
+        } catch {
+            print("🚨 Failed to setup Realtime notifications: \(error)")
         }
     }
     

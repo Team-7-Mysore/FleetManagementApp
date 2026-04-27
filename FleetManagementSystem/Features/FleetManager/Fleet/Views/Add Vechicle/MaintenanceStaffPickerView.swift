@@ -172,15 +172,3 @@ struct MaintenanceStaffPickerView: View {
         }
     }
 } // End of MaintenanceStaffPickerView
-
-// MARK: - Helpers
-// FIX 3: AnyEncodable MUST be outside the View struct to be easily found by the compiler
-struct AnyEncodable: Encodable {
-    private let _encode: (Encoder) throws -> Void
-    init<T: Encodable>(_ value: T) {
-        _encode = value.encode
-    }
-    func encode(to encoder: Encoder) throws {
-        try _encode(encoder)
-    }
-}
