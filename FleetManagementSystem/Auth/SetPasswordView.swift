@@ -289,29 +289,12 @@ struct SetPasswordView: View {
 
         Task {
             do {
-                // 1️⃣ Update password in Supabase Auth
                 try await SupabaseManager.shared.client.auth.update(
                     user: UserAttributes(password: password)
                 )
 
                 print("✅ Password set successfully")
 
-                // 2️⃣ Get current logged-in user
-                let session = try await SupabaseManager.shared.client.auth.session
-                let userId = session.user.id
-
-                print("👤 User ID:", userId)
-
-                // 3️⃣ Update status in public.users table → active
-                try await SupabaseManager.shared.client
-                    .from("users")
-                    .update(["status": "active"])
-                    .eq("user_id", value: userId)
-                    .execute()
-
-                print("✅ User status updated to active")
-
-                // 4️⃣ Continue flow
                 await MainActor.run {
                     isLoading = false
                     onPasswordSet()
@@ -319,7 +302,6 @@ struct SetPasswordView: View {
 
             } catch {
                 print("❌ Error setting password:", error)
-
                 await MainActor.run {
                     isLoading = false
                     errorMessage = "Could not set password right now. Please try again."
