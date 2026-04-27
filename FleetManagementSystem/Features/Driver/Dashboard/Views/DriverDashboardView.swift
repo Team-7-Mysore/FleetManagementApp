@@ -44,7 +44,7 @@ struct DriverDashboardView: View {
         .background(AppTheme.pageBackground)
         .overlay(alignment: .bottomTrailing) {
             NavigationLink {
-                ChatListView(currentUserId: user.id, currentUserRole: user.role)
+                ChatListView(currentUserId: user.id, useInlineTitle: true)
             } label: {
                 Image(systemName: "message.fill")
                     .font(.system(size: 22, weight: .semibold))
@@ -315,12 +315,12 @@ struct DriverDashboardView: View {
     private func vehicleCard(_ vehicle: Vehicle) -> some View {
         // Mock data since `Vehicle` model doesn't track live document statuses directly
         let documentsValid = true
-        
+
         // Determine fuel type and icon
         let fuelTypeName = vehicle.fuelType ?? "Petrol"
         let isEV = fuelTypeName.localizedCaseInsensitiveContains("ev") || fuelTypeName.localizedCaseInsensitiveContains("electric")
         let fuelIcon = isEV ? "bolt.fill" : "fuelpump.fill"
-        
+
         VStack(alignment: .leading, spacing: 16) {
             // 1. Header Section
             HStack(alignment: .top) {
@@ -328,7 +328,7 @@ struct DriverDashboardView: View {
                     Text(vehicle.licensePlate)
                         .font(.system(.title2, design: .default, weight: .bold))
                         .foregroundStyle(.primary)
-                    
+
                     HStack(spacing: 6) {
                         Image(systemName: vehicle.imageSystemName)
                         let modelText = "\(vehicle.make) \(vehicle.model ?? "")".trimmingCharacters(in: .whitespaces)
@@ -337,9 +337,9 @@ struct DriverDashboardView: View {
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.secondary)
                 }
-                
+
                 Spacer()
-                
+
                 // Subtle iconography highlight
                 ZStack {
                     Circle()
@@ -350,7 +350,7 @@ struct DriverDashboardView: View {
                         .foregroundStyle(AppTheme.primaryGreen)
                 }
             }
-            
+
             // 2. Status Row
             HStack(spacing: 8) {
                 // Documents Badge
@@ -365,7 +365,7 @@ struct DriverDashboardView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(Capsule().fill((documentsValid ? AppTheme.primaryGreen : AppTheme.statusDanger).opacity(0.1)))
-                
+
                 // Fuel Type Badge
                 HStack(spacing: 6) {
                     Image(systemName: fuelIcon)

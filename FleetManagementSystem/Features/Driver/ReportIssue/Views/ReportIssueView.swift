@@ -12,16 +12,31 @@ struct IssueEntry: Identifiable {
 struct ReportIssueView: View {
     let user: User
     let vehicle: Vehicle?
+    let showsCloseButton: Bool
     @Environment(\.dismiss) private var dismiss
 
     @StateObject private var vm: ReportIssueViewModel
     @State private var issues: [IssueEntry] = [IssueEntry()]
     @State private var showDeleteConfirm: UUID? = nil
 
-    init(user: User, vehicle: Vehicle?) {
+    init(
+        user: User,
+        vehicle: Vehicle?,
+        vehicleId: UUID? = nil,
+        tripId: UUID? = nil,
+        showsCloseButton: Bool = false
+    ) {
         self.user = user
         self.vehicle = vehicle
-        _vm = StateObject(wrappedValue: ReportIssueViewModel(user: user, vehicle: vehicle))
+        self.showsCloseButton = showsCloseButton
+        _vm = StateObject(
+            wrappedValue: ReportIssueViewModel(
+                user: user,
+                vehicle: vehicle,
+                vehicleId: vehicleId,
+                activeTripId: tripId
+            )
+        )
     }
 
     private let categories = ["Mechanical", "Electrical", "Tyre/Wheel", "Fluid Leak", "Bodywork", "Safety", "Other"]
@@ -90,6 +105,19 @@ struct ReportIssueView: View {
             }
             .navigationTitle(issues.count > 1 ? "Report \(issues.count) Issues" : "Report Issue")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if showsCloseButton {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .foregroundStyle(AppTheme.primaryGreen)
+                                .fontWeight(.medium)
+                        }
+                    }
+                }
+            }
 
             .alert("Issues Reported ✓", isPresented: $vm.submitSuccess) {
                 Button("Done") { dismiss() }

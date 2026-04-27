@@ -3,7 +3,7 @@ import Foundation
 struct DriverReportDTO: Codable {
     var id: UUID?
     let driverId: UUID
-    let vehicleId: UUID
+    var vehicleId: UUID?
     var tripId: UUID?
     let category: String
     let severity: String

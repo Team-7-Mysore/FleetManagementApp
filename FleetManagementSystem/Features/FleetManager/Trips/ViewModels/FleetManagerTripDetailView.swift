@@ -8,6 +8,7 @@ struct FleetManagerTripDetailView: View {
     @StateObject private var vm: TripDetailViewModel
     @State private var showingEditSheet = false
     @State private var cameraPosition: MapCameraPosition = .automatic
+    @State private var hasAutoFocusedVehicle = false
     
     init(trip: Trip) {
         self.trip = trip
@@ -273,6 +274,7 @@ struct FleetManagerTripDetailView: View {
             EditTripSheet(trip: trip, vm: vm)
         }
         .task {
+            hasAutoFocusedVehicle = false
             await vm.loadTripDetails()
             updateCameraPosition()
             vm.startLocationPolling()
@@ -282,14 +284,10 @@ struct FleetManagerTripDetailView: View {
             vm.stopLocationPolling()
         }
         .onChange(of: vm.driverLocation?.latitude) { _ in
-            if let loc = vm.driverLocation {
-                withAnimation(.easeInOut(duration: 0.5)) {
-                    cameraPosition = .region(MKCoordinateRegion(
-                        center: loc,
-                        span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
-                    ))
-                }
-            }
+            focusOnVehicleIfNeeded()
+        }
+        .onChange(of: vm.driverLocation?.longitude) { _ in
+            focusOnVehicleIfNeeded()
         }
         .refreshable {
             await vm.loadTripDetails()
@@ -308,6 +306,18 @@ struct FleetManagerTripDetailView: View {
         
         if !coordinates.isEmpty {
             cameraPosition = .automatic
+        }
+    }
+
+    private func focusOnVehicleIfNeeded() {
+        guard !hasAutoFocusedVehicle else { return }
+        guard let loc = vm.driverLocation else { return }
+        hasAutoFocusedVehicle = true
+        withAnimation(.easeInOut(duration: 0.5)) {
+            cameraPosition = .region(MKCoordinateRegion(
+                center: loc,
+                span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
+            ))
         }
     }
     

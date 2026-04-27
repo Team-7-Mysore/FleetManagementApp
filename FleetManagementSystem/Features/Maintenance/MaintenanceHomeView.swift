@@ -20,7 +20,7 @@ struct MaintenanceHomeView: View {
 
             if let userId = profile?.userId {
                 NavigationStack {
-                    ChatListView(currentUserId: userId, currentUserRole: profile?.role)
+                    ChatListView(currentUserId: userId)
                 }
                     .tabItem {
                         Label("Chat", systemImage: "message")

@@ -2,6 +2,7 @@ import SwiftUI
 import Combine
 import Supabase
 import MapKit
+import Foundation
 
 @MainActor
 final class TripDetailViewModel: ObservableObject {
@@ -19,6 +20,7 @@ final class TripDetailViewModel: ObservableObject {
     @Published var isCurrentDeviationApproved = false
     
     private var routeCoordinates: [CLLocationCoordinate2D] = []
+    private var trackedVehicleId: UUID?
     
     private var locationPollingTask: Task<Void, Never>?
     private var realtimeChannel: RealtimeChannelV2?
@@ -40,7 +42,7 @@ final class TripDetailViewModel: ObservableObject {
         locationPollingTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refreshVehicleLocation()
-                try? await Task.sleep(nanoseconds: 900_000_000_000) // 2 seconds
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
             }
         }
     }
@@ -65,25 +67,71 @@ final class TripDetailViewModel: ObservableObject {
     
     /// Fetches the single latest location for the trip's vehicle from vehicle_locations.
     func refreshVehicleLocation() async {
-        guard let vehicleId = vehicle?.id ?? trip.vehicle_id else {
+        guard let vehicleId = trackedVehicleId ?? vehicle?.id ?? trip.vehicle_id else {
+            print("⚠️ refreshVehicleLocation skipped: no vehicle_id for trip \(trip.id.uuidString.lowercased())")
             return
         }
+        let vehicleIdString = vehicleId.uuidString.lowercased()
         
         do {
             let locations: [TripDetailVehicleLocation] = try await SupabaseManager.shared.client
                 .from("vehicle_locations")
-                .select()
-                .eq("vehicle_id", value: vehicleId)
+                .select("vehicle_id, latitude, longitude, timestamp")
+                .eq("vehicle_id", value: vehicleIdString)
                 .order("timestamp", ascending: false)
                 .limit(1)
                 .execute()
                 .value
             
             if let location = locations.first {
+                print("📍 Trip \(trip.id.uuidString.lowercased()) fetched location for vehicle \(vehicleIdString): (\(location.latitude), \(location.longitude)) at \(location.timestamp)")
                 updateDriverLocation(lat: location.latitude, lng: location.longitude)
+            } else {
+                print("⚠️ Trip \(trip.id.uuidString.lowercased()) found no vehicle_locations row for vehicle \(vehicleIdString) via authenticated session. Retrying with public anon read.")
+                if let publicLocation = await fetchPublicVehicleLocation(vehicleIdString: vehicleIdString) {
+                    print("📍 Public fallback fetched location for vehicle \(vehicleIdString): (\(publicLocation.latitude), \(publicLocation.longitude)) at \(publicLocation.timestamp)")
+                    updateDriverLocation(lat: publicLocation.latitude, lng: publicLocation.longitude)
+                } else {
+                    print("⚠️ Public fallback also found no vehicle_locations row for vehicle \(vehicleIdString)")
+                }
             }
         } catch {
-            print("❌ Error refreshing vehicle location: \(error)")
+            print("❌ Error refreshing vehicle location for vehicle \(vehicleIdString): \(error)")
+        }
+    }
+
+    private func fetchPublicVehicleLocation(vehicleIdString: String) async -> TripDetailVehicleLocation? {
+        guard var components = URLComponents(string: "\(SupabaseConfig.url.absoluteString)/rest/v1/vehicle_locations") else {
+            return nil
+        }
+
+        components.queryItems = [
+            URLQueryItem(name: "select", value: "vehicle_id,latitude,longitude,timestamp"),
+            URLQueryItem(name: "vehicle_id", value: "eq.\(vehicleIdString)"),
+            URLQueryItem(name: "order", value: "timestamp.desc"),
+            URLQueryItem(name: "limit", value: "1")
+        ]
+
+        guard let url = components.url else {
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(SupabaseConfig.anonKey)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, 200..<300 ~= httpResponse.statusCode else {
+                print("❌ Public vehicle location fallback failed with non-2xx response for vehicle \(vehicleIdString)")
+                return nil
+            }
+
+            let locations = try JSONDecoder().decode([TripDetailVehicleLocation].self, from: data)
+            return locations.first
+        } catch {
+            print("❌ Public vehicle location fallback failed for vehicle \(vehicleIdString): \(error)")
+            return nil
         }
     }
     
@@ -108,7 +156,11 @@ final class TripDetailViewModel: ObservableObject {
     
     /// Sets up a real-time listener for vehicle location changes.
     func setupRealtimeLocation() async {
-        guard let vehicleId = vehicle?.id ?? trip.vehicle_id else { return }
+        guard let vehicleId = trackedVehicleId ?? vehicle?.id ?? trip.vehicle_id else {
+            print("⚠️ setupRealtimeLocation skipped: no vehicle_id for trip \(trip.id.uuidString.lowercased())")
+            return
+        }
+        let trackedVehicleId = vehicleId.uuidString.lowercased()
         
         // Remove existing channel if any
         if let existingChannel = realtimeChannel {
@@ -131,20 +183,25 @@ final class TripDetailViewModel: ObservableObject {
             for await change in insertionStream {
                 guard let self = self else { break }
                 
+                var recordVehicleId: String?
                 var lat: Double?
                 var lng: Double?
                 
                 // Realtime V2 uses an enum for changes
                 switch change {
                 case .insert(let action):
+                    recordVehicleId = action.record["vehicle_id"]?.stringValue?.lowercased()
                     lat = action.record["latitude"]?.doubleValue
                     lng = action.record["longitude"]?.doubleValue
                 case .update(let action):
+                    recordVehicleId = action.record["vehicle_id"]?.stringValue?.lowercased()
                     lat = action.record["latitude"]?.doubleValue
                     lng = action.record["longitude"]?.doubleValue
                 default:
                     break
                 }
+                
+                guard recordVehicleId == trackedVehicleId else { continue }
                 
                 if let lat = lat, let lng = lng {
                     await MainActor.run {
@@ -240,13 +297,19 @@ final class TripDetailViewModel: ObservableObject {
         
         do {
             // Fetch full trip details with vehicle_id and driver_id
+            let tripIdString = trip.id.uuidString.lowercased()
             let fullTrip: TripDetail = try await SupabaseManager.shared.client
                 .from("trips")
                 .select()
-                .eq("trip_id", value: trip.id)
+                .eq("trip_id", value: tripIdString)
                 .single()
                 .execute()
                 .value
+            
+            trackedVehicleId = fullTrip.vehicle_id ?? trip.vehicle_id
+            print("🧭 Trip details loaded for trip \(tripIdString). passed vehicle_id=\(trip.vehicle_id?.uuidString.lowercased() ?? "nil"), full vehicle_id=\(fullTrip.vehicle_id?.uuidString.lowercased() ?? "nil"), tracked vehicle_id=\(trackedVehicleId?.uuidString.lowercased() ?? "nil")")
+            
+            await refreshVehicleLocation()
             
             // Fetch vehicle details if vehicle_id exists
             if let vehicleId = fullTrip.vehicle_id {
@@ -267,29 +330,32 @@ final class TripDetailViewModel: ObservableObject {
     }
     
     private func fetchVehicle(vehicleId: UUID) async {
+        let vehicleIdString = vehicleId.uuidString.lowercased()
         do {
             let vehicleData: Vehicle = try await SupabaseManager.shared.client
                 .from("vehicles")
                 .select()
-                .eq("vehicle_id", value: vehicleId)
+                .eq("vehicle_id", value: vehicleIdString)
                 .single()
                 .execute()
                 .value
             
             vehicle = vehicleData
-            print("✅ Vehicle loaded: \(vehicleData.name)")
+            trackedVehicleId = vehicleData.id
+            print("✅ Vehicle loaded: \(vehicleData.name) (\(vehicleIdString))")
         } catch {
-            print("❌ Error fetching vehicle: \(error)")
+            print("❌ Error fetching vehicle \(vehicleIdString): \(error)")
         }
     }
     
     private func fetchDriver(driverId: UUID) async {
+        let driverIdString = driverId.uuidString.lowercased()
         do {
             // Fetch driver record
             let driverRecord: TripDetailDriverRecord = try await SupabaseManager.shared.client
                 .from("drivers")
                 .select()
-                .eq("driver_id", value: driverId)
+                .eq("driver_id", value: driverIdString)
                 .single()
                 .execute()
                 .value
@@ -303,7 +369,7 @@ final class TripDetailViewModel: ObservableObject {
                     let userRecord: TripDetailUserRecord = try await SupabaseManager.shared.client
                         .from("users")
                         .select()
-                        .eq("user_id", value: userId)
+                        .eq("user_id", value: userId.uuidString.lowercased())
                         .single()
                         .execute()
                         .value
@@ -328,7 +394,7 @@ final class TripDetailViewModel: ObservableObject {
             
             print("✅ Driver loaded: \(userName)")
         } catch {
-            print("❌ Error fetching driver: \(error)")
+            print("❌ Error fetching driver \(driverIdString): \(error)")
         }
     }
     
@@ -386,6 +452,7 @@ struct TripDetailUserRecord: Codable {
 }
 
 struct TripDetailVehicleLocation: Codable {
+    let vehicle_id: UUID?
     let latitude: Double
     let longitude: Double
     let timestamp: String

@@ -27,9 +27,9 @@ struct WorkOrderDetailView: View {
 
     @State private var newTaskName: String = ""
 
-
     @State private var editedMaintenanceNotes: String = ""
     @State private var editedHoursWorked: String = ""
+    @State private var editedLabourRate: String = "125.0"
     @State private var editedLabourCost: String = ""
 
     @State private var editablePhotos: [String] = []
@@ -45,8 +45,6 @@ struct WorkOrderDetailView: View {
     var isManagerApprovalMode: Bool = false
 
     // MARK: - Live Cost Calculations
-    private let defaultLabourRate = 125.0
-
     private var parsedHours: Double {
         Double(editedHoursWorked) ?? 0.0
     }
@@ -87,7 +85,7 @@ struct WorkOrderDetailView: View {
         workOrder.isApproved ? "Start Work Order" : "Waiting for Approval"
     }
 
-    // MARK: - Body (Refactored to be cleaner)
+    // MARK: - Body
     var body: some View {
         ZStack {
             Color(uiColor: .systemGroupedBackground)
@@ -107,15 +105,13 @@ struct WorkOrderDetailView: View {
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Work Order")
         .navigationBarTitleDisplayMode(.inline)
+        // Only loading our specific Toolbar items (the cross)
         .toolbar { toolbarContent }
         .alert("Complete Work Order?", isPresented: $showingCompletionAlert) {
-
             Button("Cancel", role: .cancel) { }
-
             Button("Generate Report") {
                 completeWorkOrderAndShowReport()
             }
-
         } message: {
             Text("Are you sure you want to mark this task as completed and generate the final report?")
         }
@@ -126,6 +122,7 @@ struct WorkOrderDetailView: View {
         .onChange(of: editedIssueTitle) { _, _ in scheduleAutosave() }
         .onChange(of: editedIssueDescription) { _, _ in scheduleAutosave() }
         .onChange(of: editedHoursWorked) { _, _ in scheduleAutosave() }
+        .onChange(of: editedLabourRate) { _, _ in scheduleAutosave() }
         .onChange(of: editedLabourCost) { _, _ in scheduleAutosave() }
         .onChange(of: editedMaintenanceNotes) { _, _ in scheduleAutosave() }
         .onDisappear {
@@ -151,8 +148,8 @@ struct WorkOrderDetailView: View {
             WorkEntryAndDocumentationView(
                 viewModel: viewModel,
                 editedHoursWorked: $editedHoursWorked,
+                editedLabourRate: $editedLabourRate,
                 editedLabourCost: $editedLabourCost,
-                defaultLabourRate: defaultLabourRate,
                 editedMaintenanceNotes: $editedMaintenanceNotes,
                 photos: $editablePhotos
             )
@@ -326,96 +323,72 @@ struct WorkOrderDetailView: View {
 
     @ViewBuilder
     private var actionButtonSection: some View {
-        // 1. Manager Mode Buttons (Approve / Decline)
+        // 1. Manager Mode Buttons
         if isManagerApprovalMode && !workOrder.isApproved && workOrder.status != .cancelled {
             HStack(spacing: 16) {
-                Button(action: {
-                    Task { await handleApproval(approved: false) }
-                }) {
-                    Text("Decline")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.red)
-                        .cornerRadius(12)
+                Button(action: { Task { await handleApproval(approved: false) } }) {
+                    Text("Decline").font(.headline).foregroundColor(.white).frame(maxWidth: .infinity).padding().background(Color.red).cornerRadius(12)
                 }
-
-                Button(action: {
-                    Task { await handleApproval(approved: true) }
-                }) {
-                    Text("Approve")
-                        .font(.headline)
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.green)
-                        .cornerRadius(12)
+                Button(action: { Task { await handleApproval(approved: true) } }) {
+                    Text("Approve").font(.headline).foregroundColor(.white).frame(maxWidth: .infinity).padding().background(Color.green).cornerRadius(12)
                 }
             }
             .padding(.top, 10)
         }
         // 2. Mechanic View (Start Work Order)
-        // 🚨 FIXED: Added `!isManagerApprovalMode` so Fleet Managers never see this!
         else if !isManagerApprovalMode && workOrder.status == .pending {
             Button {
-                if workOrder.isApproved {
-                    startWorkOrder()
-                }
+                if workOrder.isApproved { startWorkOrder() }
             } label: {
                 HStack {
                     if isSaving {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .tint(.white)
+                        ProgressView().progressViewStyle(.circular).tint(.white)
                     } else {
-                        Text(startButtonTitle)
-                            .font(.headline)
+                        Text(startButtonTitle).font(.headline)
                     }
                 }
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(startButtonColor)
-                .cornerRadius(12)
+                .foregroundColor(.white).frame(maxWidth: .infinity).padding().background(startButtonColor).cornerRadius(12)
             }
             .disabled(!workOrder.isApproved || isSaving)
             .padding(.top, 10)
         }
-    }
-
-    @ToolbarContentBuilder
-        private var toolbarContent: some ToolbarContent {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button(action: {
-                    dismiss()
-                }) {
-                    Image(systemName: "xmark")
-                        .fontWeight(.semibold)
-                        .foregroundColor(Color(hex: "#A3352A"))
+        // 3. Mechanic View (Complete Work Order / View Report)
+        else if (!isManagerApprovalMode && workOrder.status == .inProgress) || workOrder.status == .completed {
+            Button {
+                cancelPendingSave()
+                if workOrder.status == .completed {
+                    showingCompletionReport = true
+                } else {
+                    showingCompletionAlert = true
                 }
-            }
-
-            if (!isManagerApprovalMode && workOrder.status == .inProgress) || workOrder.status == .completed {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        cancelPendingSave()
-                        if workOrder.status == .completed {
-                            showingCompletionReport = true
-                        } else {
-                            showingCompletionAlert = true
-                        }
-                    }) {
-                        HStack(spacing: 4) {
-                            Text(workOrder.status == .completed ? "View Report" : "Done")
-                                .fontWeight(.semibold)
-                        }
-                        .foregroundColor(Color(hex: "#A3352A"))
+            } label: {
+                HStack {
+                    if isSaving {
+                        ProgressView().progressViewStyle(.circular).tint(.white)
+                    } else {
+                        Text(workOrder.status == .completed ? "View Report" : "Complete Work Order").font(.headline)
                     }
                 }
+                .foregroundColor(.white).frame(maxWidth: .infinity).padding()
+                .background(Color(red: 163/255, green: 53/255, blue: 42/255)) // Brand red (#A3352A)
+                .cornerRadius(12)
+            }
+            .disabled(isSaving)
+            .padding(.top, 10)
+        }
+    }
+
+    // 🚨 EXPLICITLY ONLY SHOWING THE CROSS BUTTON FOR EVERYONE
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
+            Button(action: { dismiss() }) {
+                Image(systemName: "xmark")
+                    .fontWeight(.semibold)
+                    .foregroundColor(Color(red: 163/255, green: 53/255, blue: 42/255))
             }
         }
-
+    }
 
     private func startWorkOrder() {
         cancelPendingSave()
@@ -423,24 +396,18 @@ struct WorkOrderDetailView: View {
         workOrder.status = .inProgress
         Task {
             await performSilentSave()
-            await MainActor.run {
-                isSaving = false
-            }
+            await MainActor.run { isSaving = false }
         }
     }
 
     // MARK: - Manager Approval Logic
     private func handleApproval(approved: Bool) async {
         isSaving = true
-        cancelPendingSave() // Stop autosave if it's running
+        cancelPendingSave()
 
         do {
             let newStatus = approved ? WorkOrderStatus.pending.rawValue : WorkOrderStatus.cancelled.rawValue
-
-            struct ApprovalUpdate: Encodable {
-                let is_approved: Bool
-                let status: String
-            }
+            struct ApprovalUpdate: Encodable { let is_approved: Bool; let status: String }
 
             try await SupabaseManager.shared.client
                 .from("work_orders")
@@ -448,13 +415,12 @@ struct WorkOrderDetailView: View {
                 .eq("work_order_id", value: workOrder.workOrderId.uuidString)
                 .execute()
 
-            // Send Notification back to the mechanic
             await sendResponseNotificationToMechanic(approved: approved)
 
             await MainActor.run {
                 self.workOrder.isApproved = approved
                 self.isSaving = false
-                dismiss() // Close the view after deciding
+                dismiss()
             }
         } catch {
             print("🚨 Failed to process approval: \(error)")
@@ -464,11 +430,9 @@ struct WorkOrderDetailView: View {
 
     private func sendResponseNotificationToMechanic(approved: Bool) async {
         guard let mechanicId = workOrder.maintenancePersonnelId else { return }
-
         do {
             let session = try await SupabaseManager.shared.client.auth.session
             let managerId = session.user.id
-
             let statusString = approved ? "Approved" : "Declined"
 
             let responseNotification = NotificationInsertDTO(
@@ -480,11 +444,7 @@ struct WorkOrderDetailView: View {
                 related_entity_id: workOrder.workOrderId
             )
 
-            try await SupabaseManager.shared.client
-                .from("notifications")
-                .insert(responseNotification)
-                .execute()
-
+            try await SupabaseManager.shared.client.from("notifications").insert(responseNotification).execute()
         } catch {
             print("🚨 Failed to send response notification: \(error)")
         }
@@ -493,12 +453,9 @@ struct WorkOrderDetailView: View {
     private func completeWorkOrderAndShowReport() {
         workOrder.status = .completed
         workOrder.updatedAt = Date()
-
         Task {
             await performSilentSave()
-            await MainActor.run {
-                showingCompletionReport = true
-            }
+            await MainActor.run { showingCompletionReport = true }
         }
     }
 
@@ -506,7 +463,6 @@ struct WorkOrderDetailView: View {
     private func scheduleAutosave() {
         guard !isLoading else { return }
         cancelPendingSave()
-
         saveTask = Task {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             guard !Task.isCancelled else { return }
@@ -529,10 +485,7 @@ struct WorkOrderDetailView: View {
 
         do {
             try await viewModel.upsertWorkOrder(workOrder)
-
-            if !tasks.isEmpty {
-                try await viewModel.upsertTasks(tasks)
-            }
+            if !tasks.isEmpty { try await viewModel.upsertTasks(tasks) }
 
             let workOrderParts = partsUI.map { uiPart in
                 WorkOrderPart(
@@ -543,7 +496,6 @@ struct WorkOrderDetailView: View {
                 )
             }
             try await viewModel.upsertParts(workOrderParts)
-
         } catch {
             print("🚨 Autosave failed: \(error)")
         }
@@ -558,7 +510,8 @@ struct WorkOrderDetailView: View {
         let initialHours = workOrder.hoursWorked ?? 0.0
         editedHoursWorked = String(format: "%.1f", initialHours)
 
-        editedLabourCost = String(format: "%.2f", initialHours * defaultLabourRate)
+        let currentRate = Double(editedLabourRate) ?? 125.0
+        editedLabourCost = String(format: "%.2f", initialHours * currentRate)
         editablePhotos = workOrder.images ?? []
 
         do {
@@ -598,55 +551,28 @@ struct WorkOrderDetailView: View {
 
 struct WorkOrderHeaderView: View {
     let workOrder: WorkOrder
-
     var body: some View {
         CardView {
             HStack(spacing: 16) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color.blue.opacity(0.1))
-                        .frame(width: 60, height: 60)
-
-                    Image(systemName: workOrder.vehicle?.vehicleType?.sfSymbol ?? "car.fill")
-                        .font(.title)
-                        .foregroundColor(.blue)
+                    RoundedRectangle(cornerRadius: 12).fill(Color.blue.opacity(0.1)).frame(width: 60, height: 60)
+                    Image(systemName: workOrder.vehicle?.vehicleType?.sfSymbol ?? "car.fill").font(.title).foregroundColor(.blue)
                 }
-
                 VStack(alignment: .leading, spacing: 6) {
                     Text(workOrder.vehicle?.vehicleName ?? workOrder.vehicle?.numberPlate ?? "Fleet Vehicle")
-                        .font(.title3)
-                        .fontWeight(.bold)
-                        .foregroundColor(.primary)
-
-                    Text("VIN: \(workOrder.vehicle?.vin ?? "N/A")")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-
+                        .font(.title3).fontWeight(.bold).foregroundColor(.primary)
+                    Text("VIN: \(workOrder.vehicle?.vin ?? "VIN")").font(.subheadline).foregroundColor(.secondary)
                     HStack(spacing: 8) {
                         Text("#WO-\(workOrder.workOrderId.uuidString.prefix(4).uppercased())")
-                            .font(.caption2)
-                            .fontWeight(.bold)
-                            .foregroundColor(.blue)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.blue.opacity(0.1))
-                            .clipShape(Capsule())
-
+                            .font(.caption2).fontWeight(.bold).foregroundColor(.blue).padding(.horizontal, 8).padding(.vertical, 4).background(Color.blue.opacity(0.1)).clipShape(Capsule())
                         Text(workOrder.priority.rawValue.uppercased())
-                            .font(.caption2)
-                            .fontWeight(.bold)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(priorityBackgroundColor)
-                            .foregroundColor(priorityTextColor)
-                            .clipShape(Capsule())
+                            .font(.caption2).fontWeight(.bold).padding(.horizontal, 8).padding(.vertical, 4).background(priorityBackgroundColor).foregroundColor(priorityTextColor).clipShape(Capsule())
                     }
                 }
                 Spacer()
             }
         }
     }
-
     private var priorityBackgroundColor: Color {
         switch workOrder.priority {
         case .low: return Color.green.opacity(0.1)
@@ -654,7 +580,6 @@ struct WorkOrderHeaderView: View {
         case .high, .urgent: return Color.red.opacity(0.1)
         }
     }
-
     private var priorityTextColor: Color {
         switch workOrder.priority {
         case .low: return .green
@@ -667,24 +592,12 @@ struct WorkOrderHeaderView: View {
 struct EditableIssueSummaryCardView: View {
     @Binding var issueTitle: String
     @Binding var issueDescription: String
-
     var body: some View {
         CardView {
             VStack(alignment: .leading, spacing: 0) {
-                TextField("Issue Title", text: $issueTitle)
-                    .font(.headline)
-                    .fontWeight(.bold)
-                    .foregroundColor(Color(red: 0.65, green: 0.35, blue: 0.15))
-                    .padding(.vertical, 12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
+                TextField("Issue Title", text: $issueTitle).font(.headline).fontWeight(.bold).foregroundColor(Color(red: 0.65, green: 0.35, blue: 0.15)).padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading)
                 Divider()
-
-                TextField("Detailed description...", text: $issueDescription, axis: .vertical)
-                    .font(.subheadline)
-                    .padding(.vertical, 12)
-                    .frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading)
-                    .lineLimit(3...6)
+                TextField("Detailed description...", text: $issueDescription, axis: .vertical).font(.subheadline).padding(.vertical, 12).frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading).lineLimit(3...6)
             }
         }
     }
@@ -693,8 +606,8 @@ struct EditableIssueSummaryCardView: View {
 struct WorkEntryAndDocumentationView: View {
     @ObservedObject var viewModel: WorkOrderViewModel
     @Binding var editedHoursWorked: String
+    @Binding var editedLabourRate: String
     @Binding var editedLabourCost: String
-    let defaultLabourRate: Double
     @Binding var editedMaintenanceNotes: String
     @Binding var photos: [String]
 
@@ -710,40 +623,26 @@ struct WorkEntryAndDocumentationView: View {
             photoDocumentationSection
         }
         .confirmationDialog("Select Image Source", isPresented: $showSourceTypePicker, titleVisibility: .visible) {
-            Button("Camera") {
-                imageSource = .camera
-                showImagePicker = true
-            }
-            Button("Photo Library") {
-                imageSource = .photoLibrary
-                showImagePicker = true
-            }
+            Button("Camera") { imageSource = .camera; showImagePicker = true }
+            Button("Photo Library") { imageSource = .photoLibrary; showImagePicker = true }
             Button("Cancel", role: .cancel) { }
         }
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(sourceType: imageSource) { image in
                 if let imageData = image.jpegData(compressionQuality: 0.7) {
                     let filename = UUID().uuidString + ".jpg"
-
                     Task {
                         do {
-                            let uploadedImageUrl = try await viewModel.uploadImageToSupabase(
-                                imageData: imageData,
-                                fileName: filename
-                            )
-
+                            let uploadedImageUrl = try await viewModel.uploadImageToSupabase(imageData: imageData, fileName: filename)
                             await MainActor.run {
-                                if let target = photoToReplace,
-                                   let index = photos.firstIndex(of: target) {
+                                if let target = photoToReplace, let index = photos.firstIndex(of: target) {
                                     photos[index] = uploadedImageUrl
                                 } else {
                                     photos.append(uploadedImageUrl)
                                 }
                                 photoToReplace = nil
                             }
-                        } catch {
-                            print("🚨 Failed to upload image: \(error)")
-                        }
+                        } catch { print("🚨 Failed to upload image: \(error)") }
                     }
                 }
             }
@@ -754,39 +653,28 @@ struct WorkEntryAndDocumentationView: View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeaderView(title: "WORK ENTRY")
             CardView {
-                HStack(spacing: 16) {
+                HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("HOURS WORKED")
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                            .foregroundColor(.secondary)
-                        TextField("0.0", text: $editedHoursWorked)
-                            .font(.subheadline)
-                            .keyboardType(.decimalPad)
-                            .textFieldStyle(.roundedBorder)
-                            .onChange(of: editedHoursWorked) { _, newValue in
-                                if let hours = Double(newValue) {
-                                    editedLabourCost = String(format: "%.2f", hours * defaultLabourRate)
-                                } else {
-                                    editedLabourCost = "0.00"
-                                }
-                            }
+                        Text("HOURS").font(.caption2).fontWeight(.medium).foregroundColor(.secondary)
+                        TextField("0.0", text: $editedHoursWorked).font(.subheadline).keyboardType(.decimalPad).textFieldStyle(.roundedBorder).onChange(of: editedHoursWorked) { _, _ in recalculateLabourCost() }
                     }
-
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("LABOUR COST (₹)")
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                            .foregroundColor(.secondary)
-
-                        TextField("0.00", text: $editedLabourCost)
-                            .font(.subheadline)
-                            .keyboardType(.decimalPad)
-                            .textFieldStyle(.roundedBorder)
+                        Text("RATE/HR (₹)").font(.caption2).fontWeight(.medium).foregroundColor(.secondary)
+                        TextField("0.0", text: $editedLabourRate).font(.subheadline).keyboardType(.decimalPad).textFieldStyle(.roundedBorder).onChange(of: editedLabourRate) { _, _ in recalculateLabourCost() }
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("TOTAL (₹)").font(.caption2).fontWeight(.medium).foregroundColor(.secondary)
+                        TextField("0.00", text: $editedLabourCost).font(.subheadline).keyboardType(.decimalPad).textFieldStyle(.roundedBorder)
                     }
                 }
             }
         }
+    }
+
+    private func recalculateLabourCost() {
+        let hours = Double(editedHoursWorked) ?? 0.0
+        let rate = Double(editedLabourRate) ?? 0.0
+        editedLabourCost = String(format: "%.2f", hours * rate)
     }
 
     private var maintenanceNotesSection: some View {
@@ -794,12 +682,7 @@ struct WorkEntryAndDocumentationView: View {
             SectionHeaderView(title: "MAINTENANCE NOTES")
             CardView {
                 TextEditor(text: $editedMaintenanceNotes)
-                    .font(.subheadline)
-                    .frame(minHeight: 100)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color(uiColor: .systemGray5), lineWidth: 1)
-                    )
+                    .font(.subheadline).frame(minHeight: 100).overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(uiColor: .systemGray5), lineWidth: 1))
             }
         }
     }
@@ -807,96 +690,42 @@ struct WorkEntryAndDocumentationView: View {
     private var photoDocumentationSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeaderView(title: "DOCUMENTATION")
-
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 16) {
-                    addPhotoButton
+                    Button(action: { photoToReplace = nil; showSourceTypePicker = true }) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .systemGray5)).frame(width: 110, height: 110)
+                            Image(systemName: "plus").font(.system(size: 32, weight: .semibold)).foregroundColor(.blue)
+                        }
+                    }.padding(.leading, 1)
 
                     ForEach(photos, id: \.self) { urlString in
-                        photoThumbnail(for: urlString)
+                        if let url = URL(string: urlString) {
+                            AsyncImage(url: url) { phase in
+                                switch phase {
+                                case .empty: ZStack { RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .systemGray6)).frame(width: 110, height: 110); ProgressView() }
+                                case .success(let image): image.resizable().scaledToFill().frame(width: 110, height: 110).clipShape(RoundedRectangle(cornerRadius: 16))
+                                case .failure: ZStack { RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .systemGray6)).frame(width: 110, height: 110); Image(systemName: "exclamationmark.triangle").foregroundColor(.red) }
+                                @unknown default: EmptyView()
+                                }
+                            }
+                            .contextMenu {
+                                Button(action: { photoToReplace = urlString; showSourceTypePicker = true }) { Label("Replace", systemImage: "arrow.triangle.2.circlepath") }
+                                Button(role: .destructive, action: { withAnimation { photos.removeAll { $0 == urlString } } }) { Label("Delete", systemImage: "trash") }
+                            }
+                        }
                     }
-                }
-                .padding(.top, 10)
-                .padding(.horizontal, 16)
-            }
-        }
-    }
-
-    private var addPhotoButton: some View {
-        Button(action: {
-            photoToReplace = nil
-            showSourceTypePicker = true
-        }) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color(uiColor: .systemGray5))
-                    .frame(width: 110, height: 110)
-
-                Image(systemName: "plus")
-                    .font(.system(size: 32, weight: .semibold))
-                    .foregroundColor(.blue)
-            }
-        }
-        .padding(.leading, 1)
-    }
-
-    @ViewBuilder
-    private func photoThumbnail(for urlString: String) -> some View {
-        if let url = URL(string: urlString) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .empty:
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Color(uiColor: .systemGray6))
-                            .frame(width: 110, height: 110)
-                        ProgressView()
-                    }
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 110, height: 110)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                case .failure:
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Color(uiColor: .systemGray6))
-                            .frame(width: 110, height: 110)
-                        Image(systemName: "exclamationmark.triangle")
-                            .foregroundColor(.red)
-                    }
-                @unknown default:
-                    EmptyView()
-                }
-            }
-            .contextMenu {
-                Button(action: {
-                    photoToReplace = urlString
-                    showSourceTypePicker = true
-                }) {
-                    Label("Replace", systemImage: "arrow.triangle.2.circlepath")
-                }
-
-                Button(role: .destructive, action: {
-                    withAnimation {
-                        photos.removeAll { $0 == urlString }
-                    }
-                }) {
-                    Label("Delete", systemImage: "trash")
-                }
+                }.padding(.top, 10).padding(.horizontal, 16)
             }
         }
     }
 }
 
-// MARK: - Live Cost Block
 struct LiveCostTotalsView: View {
     let labourTotal: Double
     let partsTotal: Double
     let tax: Double
     let total: Double
-
     var body: some View {
         VStack(spacing: 8) {
             VStack(spacing: 8) {
@@ -904,67 +733,40 @@ struct LiveCostTotalsView: View {
                 LiveCostRow(label: "Parts subtotal", value: partsTotal)
                 LiveCostRow(label: "GST/Tax (13%)", value: tax)
             }
-
             Divider().padding(.vertical, 4)
-
             HStack {
-                Text("Estimated Total Cost")
-                    .font(.headline)
-                    .fontWeight(.bold)
-                    .foregroundColor(.primary)
+                Text("Estimated Total Cost").font(.headline).fontWeight(.bold).foregroundColor(.primary)
                 Spacer()
-                Text(String(format: "₹%.2f", total))
-                    .font(.title3)
-                    .fontWeight(.bold)
-                    .foregroundColor(.green)
+                Text(String(format: "₹%.2f", total)).font(.title3).fontWeight(.bold).foregroundColor(.green)
             }
-        }
-        .padding()
-        .background(Color.green.opacity(0.1))
-        .cornerRadius(12)
+        }.padding().background(Color.green.opacity(0.1)).cornerRadius(12)
     }
 }
 
 struct LiveCostRow: View {
     let label: String
     let value: Double
-
     var body: some View {
         HStack {
-            Text(label)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+            Text(label).font(.subheadline).foregroundColor(.secondary)
             Spacer()
-            Text(String(format: "₹%.2f", value))
-                .font(.headline)
-                .foregroundColor(.primary)
+            Text(String(format: "₹%.2f", value)).font(.headline).foregroundColor(.primary)
         }
     }
 }
 
-// MARK: - Core Components
 struct SectionHeaderView: View {
     let title: String
     var body: some View {
-        Text(title)
-            .font(.caption)
-            .fontWeight(.bold)
-            .foregroundColor(.secondary)
-            .tracking(1.0)
-            .padding(.leading, 4)
+        Text(title).font(.caption).fontWeight(.bold).foregroundColor(.secondary).tracking(1.0).padding(.leading, 4)
     }
 }
 
 struct CardView<Content: View>: View {
     let content: Content
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
+    init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
-        content
-            .padding()
-            .background(Color(uiColor: .secondarySystemGroupedBackground))
-            .cornerRadius(12)
+        content.padding().background(Color(uiColor: .secondarySystemGroupedBackground)).cornerRadius(12)
     }
 }
 
@@ -972,53 +774,19 @@ struct PartDetailRowView: View {
     @Binding var part: PartDisplayInfo
     var onQuantityChange: () -> Void
     var onDelete: () -> Void
-
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 4) {
-                Text(part.name)
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                Text(String(format: "₹%.2f ea", part.unitCost))
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+                Text(part.name).font(.subheadline).fontWeight(.medium)
+                Text(String(format: "₹%.2f ea", part.unitCost)).font(.caption2).foregroundColor(.secondary)
             }
-
             Spacer()
-
             HStack(spacing: 16) {
-                Button(action: {
-                    if part.quantity > 1 {
-                        part.quantity -= 1
-                        onQuantityChange()
-                    }
-                }) {
-                    Image(systemName: "minus")
-                        .foregroundColor(.blue)
-                }
-
-                Text("\(part.quantity)")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-
-                Button(action: {
-                    part.quantity += 1
-                    onQuantityChange()
-                }) {
-                    Image(systemName: "plus")
-                        .foregroundColor(.blue)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(Color(uiColor: .systemGray6))
-            .cornerRadius(8)
-
-            Button(action: onDelete) {
-                Image(systemName: "trash.fill")
-                    .foregroundColor(.red.opacity(0.8))
-            }
-            .padding(.leading, 8)
+                Button(action: { if part.quantity > 1 { part.quantity -= 1; onQuantityChange() } }) { Image(systemName: "minus").foregroundColor(.blue) }
+                Text("\(part.quantity)").font(.subheadline).fontWeight(.medium)
+                Button(action: { part.quantity += 1; onQuantityChange() }) { Image(systemName: "plus").foregroundColor(.blue) }
+            }.padding(.horizontal, 12).padding(.vertical, 8).background(Color(uiColor: .systemGray6)).cornerRadius(8)
+            Button(action: onDelete) { Image(systemName: "trash.fill").foregroundColor(.red.opacity(0.8)) }.padding(.leading, 8)
         }
     }
 }

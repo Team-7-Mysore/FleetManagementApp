@@ -46,18 +46,6 @@ struct TripsListView: View {
                         }) {
                             ZStack(alignment: .topTrailing) {
                                 Image(systemName: "bell")
-                                    .font(.body.weight(.semibold))
-                                    .foregroundColor(.primary)
-                                
-                                if vm.unreadNotificationCount > 0 {
-                                    Text("\(vm.unreadNotificationCount)")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundColor(.white)
-                                        .padding(4)
-                                        .background(Color.red)
-                                        .clipShape(Circle())
-                                        .offset(x: 10, y: -10)
-                                }
                             }
                         }
                         Button(action: {

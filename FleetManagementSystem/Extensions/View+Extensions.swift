@@ -1,17 +1,16 @@
 import SwiftUI
 
 extension View {
-    /// Dismisses the keyboard when the user taps anywhere on the view.
-    /// This is useful for views with TextFields where you want to dismiss the keyboard by tapping outside.
+    /// Dismisses the keyboard when the user scrolls or drags.
+    /// Uses the native iOS `scrollDismissesKeyboard` API which does NOT
+    /// intercept taps, buttons, or NavigationLinks in any way.
     func hideKeyboardOnTap() -> some View {
-        self.onTapGesture {
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        }
+        self.scrollDismissesKeyboard(.immediately)
     }
 }
 
 extension UIApplication {
-    /// Helper to dismiss the keyboard from anywhere in the app.
+    /// Helper to dismiss the keyboard programmatically from anywhere.
     func endEditing() {
         sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }

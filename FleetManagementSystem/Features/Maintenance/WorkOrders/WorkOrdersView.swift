@@ -138,18 +138,8 @@ struct WorkOrdersView: View {
                         ZStack(alignment: .topTrailing) {
 
                             Image(systemName: "bell")
-                                .font(.headline)
+                                .font(.system(size: 18, weight: .medium))
                                 .foregroundColor(Color(hex:"#A3352A"))
-
-                            if unreadNotificationCount > 0 {
-                                Text("\(unreadNotificationCount)")
-                                    .font(.system(size:10, weight:.bold))
-                                    .foregroundColor(.white)
-                                    .padding(5)
-                                    .background(.red)
-                                    .clipShape(Circle())
-                                    .offset(x:8,y:-6)
-                            }
                         }
                     }
                 }
