@@ -14,8 +14,16 @@ struct FleetManagerNotificationsView: View {
     
     var onUnreadCountChanged: ((Int) -> Void)? = nil
     
+    // User Context
+    let userId: UUID?
+    
     // Real-time channel
     @State private var realtimeChannel: RealtimeChannelV2?
+    
+    init(userId: UUID? = nil, onUnreadCountChanged: ((Int) -> Void)? = nil) {
+        self.userId = userId
+        self.onUnreadCountChanged = onUnreadCountChanged
+    }
     
     var body: some View {
         ZStack {
@@ -35,18 +43,21 @@ struct FleetManagerNotificationsView: View {
                 }
             } else {
                 List {
-                    ForEach($notifications) { $notification in
+                    ForEach(notifications.indices, id: \.self) { index in
                         Button(action: {
                             // 1. Handle Unread Status
-                            if !notification.isRead {
-                                notification.isRead = true
+                            if !notifications[index].isRead {
+                                notifications[index].isRead = true
                                 unreadCount = max(0, unreadCount - 1)
                                 onUnreadCountChanged?(unreadCount)
                                 
+                                let notifId = notifications[index].id
                                 Task {
-                                    await markNotificationAsReadInDB(notificationId: notification.id)
+                                    await markNotificationAsReadInDB(notificationId: notifId)
                                 }
                             }
+                            
+                            let currentNotif = notifications[index]
                             
                             // 2. Clear old data and show modal IMMEDIATELY
                             routingWorkOrder = nil
@@ -56,38 +67,39 @@ struct FleetManagerNotificationsView: View {
                             
                             // 3. Fetch the actual data in the background
                             Task {
-                                await fetchDataAndRoute(notification)
+                                await fetchDataAndRoute(currentNotif)
                             }
                         }) {
                             HStack(alignment: .top, spacing: 12) {
                                 Circle()
-                                    .fill(notification.isRead ? Color.clear : Color.blue)
+                                    .fill(notifications[index].isRead ? Color.clear : Color.blue)
                                     .frame(width: 10, height: 10)
                                     .padding(.top, 5)
                                 
                                 VStack(alignment: .leading, spacing: 6) {
                                     HStack {
-                                        Image(systemName: notification.type.systemImage)
-                                            .foregroundColor(notification.isRead ? .gray : .blue)
+                                        Image(systemName: notifications[index].type.systemImage)
+                                            .foregroundColor(notifications[index].isRead ? .gray : .blue)
                                         
-                                        Text(notification.title)
+                                        Text(notifications[index].title)
                                             .font(.headline)
-                                            .fontWeight(notification.isRead ? .regular : .bold)
+                                            .fontWeight(notifications[index].isRead ? .regular : .bold)
                                             .foregroundColor(.primary)
                                     }
                                     
-                                    Text(notification.message)
+                                    Text(notifications[index].message)
                                         .font(.subheadline)
                                         .foregroundColor(.secondary)
                                         .lineLimit(2)
                                     
-                                    Text(notification.createdAt, style: .time)
+                                    Text(notifications[index].createdAt, style: .time)
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                         .padding(.top, 2)
                                 }
                             }
                             .padding(.vertical, 4)
+                            .opacity(notifications[index].isRead ? 0.6 : 1.0)
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
@@ -123,8 +135,13 @@ struct FleetManagerNotificationsView: View {
     // MARK: - Fetch Notifications
     private func fetchNotifications() async {
         do {
-            let session = try await SupabaseManager.shared.client.auth.session
-            let currentUserId = session.user.id
+            let currentUserId: UUID
+            if let id = userId {
+                currentUserId = id
+            } else {
+                let session = try await SupabaseManager.shared.client.auth.session
+                currentUserId = session.user.id
+            }
             
             let fetched: [AppNotification] = try await SupabaseManager.shared.client
                 .from("notifications")
@@ -150,8 +167,13 @@ struct FleetManagerNotificationsView: View {
         guard realtimeChannel == nil else { return }
         
         do {
-            let session = try await SupabaseManager.shared.client.auth.session
-            let currentUserId = session.user.id
+            let currentUserId: UUID
+            if let id = userId {
+                currentUserId = id
+            } else {
+                let session = try await SupabaseManager.shared.client.auth.session
+                currentUserId = session.user.id
+            }
             
             let channel = SupabaseManager.shared.client.realtimeV2.channel("notifications-changes")
             self.realtimeChannel = channel
@@ -206,12 +228,16 @@ struct FleetManagerNotificationsView: View {
     
     private func markNotificationAsReadInDB(notificationId: UUID) async {
         do {
-            struct UpdateRead: Encodable { let is_read: Bool }
+            // Using a dictionary for partial update is often more reliable with Supabase Swift SDK
+            let updateData: [String: Bool] = ["is_read": true]
+            
             try await SupabaseManager.shared.client
                 .from("notifications")
-                .update(UpdateRead(is_read: true))
+                .update(updateData)
                 .eq("id", value: notificationId)
                 .execute()
+                
+            print("✅ Successfully marked notification \(notificationId) as read in DB")
         } catch {
             print("🚨 Failed to mark as read in DB: \(error)")
         }
@@ -286,7 +312,7 @@ struct NotificationModalContainer: View {
                     MaintenanceStaffPickerView(
                         vehicle: Vehicle(workOrderVehicle: v),
                         driverReportId: reportToView.id,
-                        initialSummary: "\(reportToView.category.rawValue.capitalized) Issue",
+                        initialSummary: reportToView.category.rawValue.capitalized,
                         initialDescription: reportToView.description
                     )
                 } else {

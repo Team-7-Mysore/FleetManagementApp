@@ -83,7 +83,7 @@ struct TripsListView: View {
                 }
                 // FIXED: Opens Notifications as a pushed navigation view
                 .navigationDestination(isPresented: $navigateToNotifications) {
-                    FleetManagerNotificationsView()
+                    FleetManagerNotificationsView(userId: profile?.userId)
                 }
                 .sheet(item: $selectedWorkOrder) { workOrder in
                     NavigationStack {

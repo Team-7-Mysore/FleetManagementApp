@@ -61,7 +61,6 @@ struct CreateTripView: View {
             .navigationTitle("Create Trip")
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(false)
-            .toolbar(.hidden, for: .tabBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
