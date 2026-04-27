@@ -2,17 +2,11 @@ import SwiftUI
 
 struct ChatListView: View {
     let currentUserId: UUID
-    let useInlineTitle: Bool
     @StateObject private var viewModel = ChatViewModel()
     @State private var isShowingNewChat = false
     @State private var pendingChatRoom: ChatRoom? = nil
     @State private var queuedChatRoom: ChatRoom? = nil
     private let accent = AppTheme.primaryGreen
-
-    init(currentUserId: UUID, useInlineTitle: Bool = false) {
-        self.currentUserId = currentUserId
-        self.useInlineTitle = useInlineTitle
-    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -46,7 +40,6 @@ struct ChatListView: View {
                 .padding(.horizontal, 20)
         }
         .navigationTitle("Chat")
-        .navigationBarTitleDisplayMode(useInlineTitle ? .inline : .large)
         .tint(accent)
         .navigationDestination(item: $pendingChatRoom) { chat in
             DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel)
@@ -225,8 +218,7 @@ struct DetailWrapper: View {
                 senderId: otherUserInfo?.id.uuidString ?? UUID().uuidString,
                 displayName: otherUserInfo?.name ?? "Chat"
             ),
-            viewModel: viewModel,
-            accentUIColor: UIColor(AppTheme.primaryGreen)
+            viewModel: viewModel, accentUIColor: .tintColor
         )
         .navigationTitle(otherUserInfo?.name ?? "Chat")
         .navigationBarTitleDisplayMode(.inline)

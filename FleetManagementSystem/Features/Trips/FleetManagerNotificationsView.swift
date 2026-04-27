@@ -251,24 +251,18 @@ struct FleetManagerNotificationsView: View {
         }
         
         do {
-            if notification.type == .driverReport {
-                // Fetch Driver Report
-                let fetchedReports: [DriverReport] = try await SupabaseManager.shared.client
-                    .from("driver_reports")
-                    .select("*, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type)")
-                    .eq("id", value: entityId.uuidString)
-                    .execute()
-                    .value
-                
-                await MainActor.run {
-                    if let targetReport = fetchedReports.first {
-                        self.routingDriverReport = targetReport
-                    } else {
-                        self.fetchError = "Driver report no longer exists or couldn't be found."
+            switch notificationDestination(for: notification) {
+            case .driverReport:
+                if let report = try await fetchDriverReport(for: notification, entityId: entityId) {
+                    await MainActor.run {
+                        self.routingDriverReport = report
+                    }
+                } else {
+                    await MainActor.run {
+                        self.fetchError = "Driver report could not be found for this notification."
                     }
                 }
-            } else {
-                // Default: Fetch Work Order
+            case .workOrder:
                 let fetchedOrders: [WorkOrder] = try await SupabaseManager.shared.client
                     .from("work_orders")
                     .select("*, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type)")
@@ -283,6 +277,10 @@ struct FleetManagerNotificationsView: View {
                         self.fetchError = "Work order no longer exists or couldn't be found."
                     }
                 }
+            case .unsupported(let message):
+                await MainActor.run {
+                    self.fetchError = message
+                }
             }
         } catch {
             print("🚨 Failed to fetch entity: \(error)")
@@ -291,6 +289,229 @@ struct FleetManagerNotificationsView: View {
             }
         }
     }
+
+    private func notificationDestination(for notification: AppNotification) -> NotificationDestination {
+        let normalizedTitle = notification.title.lowercased()
+        let normalizedMessage = notification.message.lowercased()
+
+        if notification.type == .maintenance {
+            return .workOrder
+        }
+
+        if notification.type == .driverReport {
+            return .driverReport
+        }
+
+        if normalizedTitle.contains("issue reported")
+            || normalizedTitle.contains("driver report")
+            || normalizedMessage.contains("issue reported") {
+            return .driverReport
+        }
+
+        if normalizedTitle.contains("route deviation")
+            || normalizedMessage.contains("deviated") {
+            return .unsupported("This alert does not open a work order or driver report.")
+        }
+
+        return .unsupported("This notification type does not have a detail screen yet.")
+    }
+
+    private func fetchDriverReport(
+        for notification: AppNotification,
+        entityId: UUID
+    ) async throws -> DriverReport? {
+        if let byId = try await fetchDriverReportByReportId(entityId) {
+            return byId
+        }
+
+        let vehicleMatches = try await fetchDriverReportsByVehicleId(entityId)
+        guard !vehicleMatches.isEmpty else { return nil }
+
+        if let matchedByCategory = matchDriverReport(vehicleMatches, to: notification) {
+            return matchedByCategory
+        }
+
+        if let firstVehicleMatch = vehicleMatches.first {
+            return firstVehicleMatch
+        }
+
+        return try await buildNotificationBackedDriverReport(notification: notification, vehicleId: entityId)
+    }
+
+    private func fetchDriverReportByReportId(_ reportId: UUID) async throws -> DriverReport? {
+        do {
+            let targetReport: DriverReport = try await SupabaseManager.shared.client
+                .from("driver_reports")
+                .select("*, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type)")
+                .eq("id", value: reportId.uuidString)
+                .single()
+                .execute()
+                .value
+            return targetReport
+        } catch {
+            print("⚠️ Driver report lookup by report id \(reportId.uuidString) failed: \(error)")
+        }
+
+        do {
+            let fallbackReport: DriverReport = try await SupabaseManager.shared.client
+                .from("driver_reports")
+                .select()
+                .eq("id", value: reportId.uuidString)
+                .single()
+                .execute()
+                .value
+            return fallbackReport
+        } catch {
+            print("⚠️ Plain driver report lookup by report id \(reportId.uuidString) failed: \(error)")
+            return nil
+        }
+    }
+
+    private func fetchDriverReportsByVehicleId(_ vehicleId: UUID) async throws -> [DriverReport] {
+        do {
+            let reports: [DriverReport] = try await SupabaseManager.shared.client
+                .from("driver_reports")
+                .select("*, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type)")
+                .eq("vehicle_id", value: vehicleId.uuidString)
+                .order("created_at", ascending: false)
+                .limit(20)
+                .execute()
+                .value
+            if !reports.isEmpty { return reports }
+        } catch {
+            print("⚠️ Joined driver report lookup by vehicle id \(vehicleId.uuidString) failed: \(error)")
+        }
+
+        let fallbackReports: [DriverReport] = try await SupabaseManager.shared.client
+            .from("driver_reports")
+            .select()
+            .eq("vehicle_id", value: vehicleId.uuidString)
+            .order("created_at", ascending: false)
+            .limit(20)
+            .execute()
+            .value
+        return fallbackReports
+    }
+
+    private func matchDriverReport(
+        _ reports: [DriverReport],
+        to notification: AppNotification
+    ) -> DriverReport? {
+        let categoryHint = extractCategoryHint(from: notification.message)
+
+        if let categoryHint {
+            let categoryMatch = reports.first { report in
+                report.category.rawValue.caseInsensitiveCompare(categoryHint) == .orderedSame
+            }
+            if let categoryMatch {
+                return categoryMatch
+            }
+        }
+
+        return reports.min { lhs, rhs in
+            let lhsDelta = abs((lhs.createdAt ?? .distantPast).timeIntervalSince(notification.createdAt))
+            let rhsDelta = abs((rhs.createdAt ?? .distantPast).timeIntervalSince(notification.createdAt))
+            return lhsDelta < rhsDelta
+        }
+    }
+
+    private func buildNotificationBackedDriverReport(
+        notification: AppNotification,
+        vehicleId: UUID
+    ) async throws -> DriverReport? {
+        let vehicle: WorkOrderVehicle?
+
+        do {
+            vehicle = try await SupabaseManager.shared.client
+                .from("vehicles")
+                .select("vehicle_id, vin, number_plate, vehicle_name, vehicle_type")
+                .eq("vehicle_id", value: vehicleId.uuidString)
+                .single()
+                .execute()
+                .value
+        } catch {
+            print("⚠️ Failed to fetch vehicle \(vehicleId.uuidString) for notification-backed driver report: \(error)")
+            vehicle = nil
+        }
+
+        let category = extractCategory(from: notification.message) ?? .other
+        let severity = extractSeverity(from: notification.message) ?? .medium
+
+        return DriverReport(
+            id: notification.id,
+            driverId: nil,
+            vehicleId: vehicleId,
+            tripId: nil,
+            category: category,
+            severity: severity,
+            description: notification.message,
+            status: .reported,
+            createdAt: notification.createdAt,
+            vehicle: vehicle
+        )
+    }
+
+    private func extractCategoryHint(from message: String) -> String? {
+        guard let separatorIndex = message.lastIndex(of: ":") else { return nil }
+        let rawSuffix = message[message.index(after: separatorIndex)...]
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ".", with: "")
+            .lowercased()
+
+        switch rawSuffix {
+        case "mechanical":
+            return "mechanical"
+        case "electrical":
+            return "electrical"
+        case "tyre/wheel", "tyre wheel":
+            return "tyre/wheel"
+        case "fluid leak":
+            return "fluid leak"
+        case "bodywork", "body damage":
+            return "body damage"
+        case "safety":
+            return "safety"
+        case "other":
+            return "other"
+        default:
+            return nil
+        }
+    }
+
+    private func extractCategory(from message: String) -> DriverReportCategory? {
+        switch extractCategoryHint(from: message) {
+        case "mechanical":
+            return .mechanical
+        case "electrical":
+            return .electrical
+        case "tyre/wheel":
+            return .tyreWheel
+        case "fluid leak":
+            return .fluidLeak
+        case "body damage":
+            return .bodyDamage
+        case "safety":
+            return .safety
+        case "other":
+            return .other
+        default:
+            return nil
+        }
+    }
+
+    private func extractSeverity(from message: String) -> DriverReportSeverity? {
+        let normalized = message.lowercased()
+        if normalized.contains("critical") { return .critical }
+        if normalized.contains("low") { return .low }
+        if normalized.contains("medium") { return .medium }
+        return nil
+    }
+}
+
+private enum NotificationDestination {
+    case workOrder
+    case driverReport
+    case unsupported(String)
 }
 
 // MARK: - Extracted Modal Container
@@ -308,16 +529,7 @@ struct NotificationModalContainer: View {
                     isManagerApprovalMode: true
                 )
             } else if let reportToView = driverReport {
-                if let v = reportToView.vehicle {
-                    MaintenanceStaffPickerView(
-                        vehicle: Vehicle(workOrderVehicle: v),
-                        driverReportId: reportToView.id,
-                        initialSummary: reportToView.category.rawValue.capitalized,
-                        initialDescription: reportToView.description
-                    )
-                } else {
-                    DriverReportDetailView(report: reportToView)
-                }
+                DriverReportDetailView(report: reportToView)
             } else if let errorMsg = fetchError {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle.fill")

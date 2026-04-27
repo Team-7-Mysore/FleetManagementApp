@@ -322,61 +322,113 @@ struct WorkOrderDetailView: View {
     }
 
     @ViewBuilder
-    private var actionButtonSection: some View {
-        // 1. Manager Mode Buttons
-        if isManagerApprovalMode && !workOrder.isApproved && workOrder.status != .cancelled {
-            HStack(spacing: 16) {
-                Button(action: { Task { await handleApproval(approved: false) } }) {
-                    Text("Decline").font(.headline).foregroundColor(.white).frame(maxWidth: .infinity).padding().background(Color.red).cornerRadius(12)
-                }
-                Button(action: { Task { await handleApproval(approved: true) } }) {
-                    Text("Approve").font(.headline).foregroundColor(.white).frame(maxWidth: .infinity).padding().background(Color.green).cornerRadius(12)
-                }
-            }
-            .padding(.top, 10)
-        }
-        // 2. Mechanic View (Start Work Order)
-        else if !isManagerApprovalMode && workOrder.status == .pending {
-            Button {
-                if workOrder.isApproved { startWorkOrder() }
-            } label: {
-                HStack {
-                    if isSaving {
-                        ProgressView().progressViewStyle(.circular).tint(.white)
-                    } else {
-                        Text(startButtonTitle).font(.headline)
+        private var actionButtonSection: some View {
+            if isManagerApprovalMode {
+                if !workOrder.isApproved && workOrder.status == .pending {
+                    HStack(spacing: 16) {
+                        Button(action: {
+                            Task { await handleApproval(approved: false) }
+                        }) {
+                            Text("Decline")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.red)
+                                .cornerRadius(12)
+                        }
+
+                        Button(action: {
+                            Task { await handleApproval(approved: true) }
+                        }) {
+                            Text("Approve")
+                                .font(.headline)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                                .background(Color.green)
+                                .cornerRadius(12)
+                        }
                     }
-                }
-                .foregroundColor(.white).frame(maxWidth: .infinity).padding().background(startButtonColor).cornerRadius(12)
-            }
-            .disabled(!workOrder.isApproved || isSaving)
-            .padding(.top, 10)
-        }
-        // 3. Mechanic View (Complete Work Order / View Report)
-        else if (!isManagerApprovalMode && workOrder.status == .inProgress) || workOrder.status == .completed {
-            Button {
-                cancelPendingSave()
-                if workOrder.status == .completed {
-                    showingCompletionReport = true
-                } else {
-                    showingCompletionAlert = true
-                }
-            } label: {
-                HStack {
-                    if isSaving {
-                        ProgressView().progressViewStyle(.circular).tint(.white)
-                    } else {
-                        Text(workOrder.status == .completed ? "View Report" : "Complete Work Order").font(.headline)
+                    .padding(.top, 10)
+                } else if workOrder.status == .completed {
+                    // Show View Report if completed
+                    Button {
+                        showingCompletionReport = true
+                    } label: {
+                        Text("View Report")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color(red: 163/255, green: 53/255, blue: 42/255))
+                            .cornerRadius(12)
                     }
+                    .padding(.top, 10)
                 }
-                .foregroundColor(.white).frame(maxWidth: .infinity).padding()
-                .background(Color(red: 163/255, green: 53/255, blue: 42/255)) // Brand red (#A3352A)
-                .cornerRadius(12)
+                // If approved but not yet completed, Manager sees NOTHING here.
+
+            } else {
+                // ==========================================
+                // 2. MECHANIC VIEW
+                // ==========================================
+                if workOrder.status == .pending {
+                    // Start Work Order
+                    Button {
+                        if workOrder.isApproved {
+                            startWorkOrder()
+                        }
+                    } label: {
+                        HStack {
+                            if isSaving {
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .tint(.white)
+                            } else {
+                                Text(startButtonTitle)
+                                    .font(.headline)
+                            }
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(startButtonColor)
+                        .cornerRadius(12)
+                    }
+                    .disabled(!workOrder.isApproved || isSaving)
+                    .padding(.top, 10)
+
+                } else if workOrder.status == .inProgress || workOrder.status == .completed {
+                    // Complete Work Order / View Report
+                    Button {
+                        cancelPendingSave()
+                        if workOrder.status == .completed {
+                            showingCompletionReport = true
+                        } else {
+                            showingCompletionAlert = true
+                        }
+                    } label: {
+                        HStack {
+                            if isSaving {
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .tint(.white)
+                            } else {
+                                Text(workOrder.status == .completed ? "View Report" : "Complete Work Order")
+                                    .font(.headline)
+                            }
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color(red: 163/255, green: 53/255, blue: 42/255))
+                        .cornerRadius(12)
+                    }
+                    .disabled(isSaving)
+                    .padding(.top, 10)
+                }
             }
-            .disabled(isSaving)
-            .padding(.top, 10)
         }
-    }
 
     // 🚨 EXPLICITLY ONLY SHOWING THE CROSS BUTTON FOR EVERYONE
     @ToolbarContentBuilder

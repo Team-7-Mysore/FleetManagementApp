@@ -660,7 +660,7 @@ struct StaffProfileView: View {
                                     Image(systemName: "dollarsign.circle.fill")
                                         .font(.title2)
                                         .foregroundColor(accentColor.opacity(0.8))
-                                    Text("$\(formatDistanceNum(workStats.totalCost))")
+                                    Text("₹\(formatDistanceNum(workStats.totalCost))")
                                         .font(.title.weight(.bold))
                                         .foregroundColor(.primary)
                                         .lineLimit(1)
@@ -711,7 +711,7 @@ struct StaffProfileView: View {
                                         .font(.caption.weight(.semibold))
                                         .foregroundColor(.secondary)
                                         .textCase(.uppercase)
-                                    Text("$\(formatDistanceNum(partsCost))")
+                                    Text("₹\(formatDistanceNum(partsCost))")
                                         .font(.title3.weight(.bold))
                                         .foregroundColor(accentColor)
                                 }

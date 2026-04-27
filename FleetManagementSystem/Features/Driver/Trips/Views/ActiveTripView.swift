@@ -25,8 +25,6 @@ struct ActiveTripView: View {
     // Route persistence — tracks the routes table row for this trip
     @State private var savedRouteId: UUID?
 
-    // Throttle: only upsert when moved significantly (avoids flooding Supabase)
-    @State private var lastUploadedLocation: CLLocationCoordinate2D? = nil
     // Database points with fallbacks to demonstration points
     var startPoint: CLLocationCoordinate2D {
         if let coord = trip.startCoordinate {
@@ -175,11 +173,11 @@ struct ActiveTripView: View {
         .navigationTitle("Active Trip")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
-        .alert("End Trip", isPresented: $showEndTripConfirmation) {
-            Button("Cancel", role: .cancel) {}
+        .confirmationDialog("End Trip", isPresented: $showEndTripConfirmation) {
             Button("End Trip", role: .destructive) {
                 router.path.append(AppRoute.vehicleInspection(trip, type: .postTrip))
             }
+            Button("Cancel", role: .cancel) {}
         } message: {
             Text("Are you sure you want to end this trip?")
         }
@@ -192,13 +190,7 @@ struct ActiveTripView: View {
             Text("This will immediately dial emergency contact. Only proceed in a genuine emergency.")
         }
         .sheet(isPresented: $showReportIssue) {
-            ReportIssueView(
-                user: user,
-                vehicle: nil,
-                vehicleId: trip.vehicleId,
-                tripId: trip.id,
-                showsCloseButton: true
-            )
+            ReportIssueView(user: user, vehicle: nil)
         }
         .onAppear {
             // Seed emergency contact (replace with user-configurable value later)
@@ -209,34 +201,6 @@ struct ActiveTripView: View {
             locationManager.requestLocation()
         }
         .onDisappear { stopTimer() }
-        .onChange(of: locationManager.userLocation?.latitude) { _ in
-            guard let coord = locationManager.userLocation else { return }
-            handleLocationChange(coord)
-        }
-        .onChange(of: locationManager.userLocation?.longitude) { _ in
-            guard let coord = locationManager.userLocation else { return }
-            handleLocationChange(coord)
-        }
-    }
-
-    private func handleLocationChange(_ coord: CLLocationCoordinate2D) {
-        let vehicleId = trip.vehicleId
-
-        if let last = lastUploadedLocation {
-            let lastLoc = CLLocation(latitude: last.latitude, longitude: last.longitude)
-            let newLoc  = CLLocation(latitude: coord.latitude, longitude: coord.longitude)
-            guard newLoc.distance(from: lastLoc) > 10 else { return }
-        }
-
-        lastUploadedLocation = coord
-
-        Task {
-            await uploadVehicleLocation(
-                vehicleId: vehicleId,
-                latitude: coord.latitude,
-                longitude: coord.longitude
-            )
-        }
     }
 
     private func tripInfoItem(value: String, label: String) -> some View {
@@ -274,60 +238,6 @@ struct ActiveTripView: View {
     private func stopTimer() {
         timer?.invalidate()
         timer = nil
-    }
-
-    // MARK: - Upload driver GPS to Supabase
-    /// Persists the vehicle's current position into the `vehicle_locations` table
-    /// without requiring a UNIQUE constraint on `vehicle_id`.
-    @MainActor
-    private func uploadVehicleLocation(vehicleId: UUID, latitude: Double, longitude: Double) async {
-        struct LocationPayload: Encodable {
-            let vehicle_id: UUID
-            let latitude: Double
-            let longitude: Double
-            let timestamp: String
-        }
-
-        struct ExistingLocationRow: Decodable {
-            let id: UUID
-        }
-
-        let iso = ISO8601DateFormatter()
-        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let payload = LocationPayload(
-            vehicle_id: vehicleId,
-            latitude: latitude,
-            longitude: longitude,
-            timestamp: iso.string(from: Date())
-        )
-        let vehicleIdString = vehicleId.uuidString.lowercased()
-
-        do {
-            let existingRows: [ExistingLocationRow] = try await SupabaseManager.shared.client
-                .from("vehicle_locations")
-                .select("id")
-                .eq("vehicle_id", value: vehicleIdString)
-                .limit(1)
-                .execute()
-                .value
-
-            if existingRows.isEmpty {
-                try await SupabaseManager.shared.client
-                    .from("vehicle_locations")
-                    .insert(payload)
-                    .execute()
-            } else {
-                try await SupabaseManager.shared.client
-                    .from("vehicle_locations")
-                    .update(payload)
-                    .eq("vehicle_id", value: vehicleIdString)
-                    .execute()
-            }
-
-            print("📍 Location persisted for vehicle \(vehicleIdString): (\(latitude), \(longitude))")
-        } catch {
-            print("❌ Failed to upload location for vehicle \(vehicleIdString): \(error)")
-        }
     }
 
     // MARK: - Map Logic
@@ -592,20 +502,10 @@ class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
-        manager.distanceFilter = 10
     }
 
     func requestLocation() {
-        switch manager.authorizationStatus {
-        case .notDetermined:
-            manager.requestWhenInUseAuthorization()
-        case .authorizedWhenInUse, .authorizedAlways:
-            manager.startUpdatingLocation()
-        case .denied, .restricted:
-            print("❌ Permission denied")
-        @unknown default:
-            break
-        }
+        manager.requestWhenInUseAuthorization()
     }
 
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {

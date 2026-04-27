@@ -21,6 +21,8 @@ final class TripDetailViewModel: ObservableObject {
     
     private var routeCoordinates: [CLLocationCoordinate2D] = []
     private var trackedVehicleId: UUID?
+    private var trackedFleetManagerId: UUID?
+    private var hasSentDeviationNotification = false
     
     private var locationPollingTask: Task<Void, Never>?
     private var realtimeChannel: RealtimeChannelV2?
@@ -247,12 +249,23 @@ final class TripDetailViewModel: ObservableObject {
         // If we move BACK onto the route, reset approval so next deviation triggers again
         if !isNowDeviated {
             isCurrentDeviationApproved = false
+            hasSentDeviationNotification = false
         }
         
         if isCurrentDeviationApproved {
             isRouteDeviated = false
         } else {
             isRouteDeviated = isNowDeviated
+        }
+
+        if isNowDeviated && !isCurrentDeviationApproved && !hasSentDeviationNotification {
+            hasSentDeviationNotification = true
+            Task {
+                await sendRouteDeviationNotification(
+                    currentLocation: currentLocation,
+                    deviationDistance: minDistance
+                )
+            }
         }
     }
     
@@ -307,6 +320,7 @@ final class TripDetailViewModel: ObservableObject {
                 .value
             
             trackedVehicleId = fullTrip.vehicle_id ?? trip.vehicle_id
+            trackedFleetManagerId = fullTrip.fleet_manager_id ?? trip.fleet_manager_id
             print("🧭 Trip details loaded for trip \(tripIdString). passed vehicle_id=\(trip.vehicle_id?.uuidString.lowercased() ?? "nil"), full vehicle_id=\(fullTrip.vehicle_id?.uuidString.lowercased() ?? "nil"), tracked vehicle_id=\(trackedVehicleId?.uuidString.lowercased() ?? "nil")")
             
             await refreshVehicleLocation()
@@ -401,6 +415,41 @@ final class TripDetailViewModel: ObservableObject {
     private func fetchDriverLocation(driverId: UUID) async {
         await refreshVehicleLocation()
     }
+
+    private func sendRouteDeviationNotification(
+        currentLocation: CLLocationCoordinate2D,
+        deviationDistance: Double
+    ) async {
+        guard let recipientId = trackedFleetManagerId ?? trip.fleet_manager_id else {
+            print("⚠️ Route deviation notification skipped: no fleet_manager_id for trip \(trip.id.uuidString.lowercased())")
+            return
+        }
+
+        let vehicleDisplayName = vehicle?.name ?? "Vehicle"
+        let tripDisplayName = trip.tripNameText
+        let distanceText = "\(Int(deviationDistance.rounded()))m"
+        let coordinateText = String(format: "%.5f, %.5f", currentLocation.latitude, currentLocation.longitude)
+
+        let payload = NotificationInsertDTO(
+            recipient_id: recipientId,
+            sender_id: nil,
+            title: "Route deviation detected",
+            message: "\(vehicleDisplayName) on \(tripDisplayName) deviated by about \(distanceText) near \(coordinateText).",
+            type: NotificationType.alert.rawValue,
+            related_entity_id: trip.id
+        )
+
+        do {
+            try await SupabaseManager.shared.client
+                .from("notifications")
+                .insert(payload)
+                .execute()
+            print("🚨 Route deviation notification sent for trip \(trip.id.uuidString.lowercased()) to fleet manager \(recipientId.uuidString.lowercased())")
+        } catch {
+            hasSentDeviationNotification = false
+            print("❌ Failed to send route deviation notification for trip \(trip.id.uuidString.lowercased()): \(error)")
+        }
+    }
 }
 
 // MARK: - Supporting Models
@@ -409,6 +458,7 @@ struct TripDetail: Codable {
     let trip_id: UUID
     let vehicle_id: UUID?
     let driver_id: UUID?
+    let fleet_manager_id: UUID?
     let trip_name: String?
     let origin: String?
     let destination: String?
@@ -425,6 +475,7 @@ struct TripDetail: Codable {
         trip_id        = try c.decode(UUID.self,   forKey: .trip_id)
         vehicle_id     = try c.decodeIfPresent(UUID.self,   forKey: .vehicle_id)
         driver_id      = try c.decodeIfPresent(UUID.self,   forKey: .driver_id)
+        fleet_manager_id = try c.decodeIfPresent(UUID.self, forKey: .fleet_manager_id)
         trip_name      = try c.decodeIfPresent(String.self, forKey: .trip_name)
         origin         = try c.decodeIfPresent(String.self, forKey: .origin)
         destination    = try c.decodeIfPresent(String.self, forKey: .destination)

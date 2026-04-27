@@ -216,6 +216,7 @@ struct DriverReportDetailView: View {
         guard let personnelId = selectedPersonnelId else { return }
         isUpdating = true
         errorMessage = nil
+        let hasPersistedDriverReport = report.driverId != nil || report.tripId != nil
         
         do {
             // 1. Create record in maintenance_issues
@@ -240,16 +241,18 @@ struct DriverReportDetailView: View {
                 .insert(newIssue)
                 .execute()
             
-            // 2. Update driver_reports status
-            struct StatusUpdate: Encodable {
-                let status: String
+            if hasPersistedDriverReport {
+                // 2. Update driver_reports status
+                struct StatusUpdate: Encodable {
+                    let status: String
+                }
+                
+                try await SupabaseManager.shared.client
+                    .from("driver_reports")
+                    .update(StatusUpdate(status: "acknowledged"))
+                    .eq("id", value: report.id.uuidString)
+                    .execute()
             }
-            
-            try await SupabaseManager.shared.client
-                .from("driver_reports")
-                .update(StatusUpdate(status: "acknowledged"))
-                .eq("id", value: report.id.uuidString)
-                .execute()
             
             await MainActor.run {
                 isUpdating = false
@@ -267,17 +270,20 @@ struct DriverReportDetailView: View {
     private func updateReportStatus(_ newStatus: DriverReportStatus) async {
         isUpdating = true
         errorMessage = nil
+        let hasPersistedDriverReport = report.driverId != nil || report.tripId != nil
         
         do {
-            struct StatusUpdate: Encodable {
-                let status: String
+            if hasPersistedDriverReport {
+                struct StatusUpdate: Encodable {
+                    let status: String
+                }
+                
+                try await SupabaseManager.shared.client
+                    .from("driver_reports")
+                    .update(StatusUpdate(status: newStatus.rawValue))
+                    .eq("id", value: report.id.uuidString)
+                    .execute()
             }
-            
-            try await SupabaseManager.shared.client
-                .from("driver_reports")
-                .update(StatusUpdate(status: newStatus.rawValue))
-                .eq("id", value: report.id.uuidString)
-                .execute()
             
             await MainActor.run {
                 isUpdating = false

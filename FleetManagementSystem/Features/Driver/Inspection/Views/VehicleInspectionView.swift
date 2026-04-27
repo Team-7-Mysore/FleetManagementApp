@@ -60,12 +60,7 @@ struct VehicleInspectionView: View {
             Text(confirmationMessage)
         }
         .sheet(isPresented: $showReportIssue) {
-            ReportIssueView(
-                user: user,
-                vehicle: nil,
-                vehicleId: trip?.vehicleId,
-                tripId: trip?.id
-            )
+            ReportIssueView(user: user, vehicle: nil)
         }
         .onAppear {
             vm.loadDataAndAutoStart(for: trip, type: defaultType)
@@ -271,17 +266,19 @@ struct VehicleInspectionView: View {
                     Text(item.status.rawValue)
                         .font(.caption.weight(.medium))
                         .foregroundStyle(itemColor(item.status))
-                    Button {
-                        vm.updateItem(itemId: item.id, status: .pending)
-                    } label: {
-                        Image(systemName: "pencil")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 26, height: 26)
-                            .background(Color(.systemGray5))
-                            .clipShape(Circle())
+                    if item.status == .pass {
+                        Button {
+                            vm.updateItem(itemId: item.id, status: .pending)
+                        } label: {
+                            Image(systemName: "pencil")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 26, height: 26)
+                                .background(Color(.systemGray5))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -353,8 +350,8 @@ struct VehicleInspectionView: View {
         if let trip {
             if isPostTripFlow {
                 Task {
-                    _ = await vm.submitAndCompleteTrip(notes: overallNotes, trip: trip)
-                    await MainActor.run {
+                    let didComplete = await vm.submitAndCompleteTrip(notes: overallNotes, trip: trip)
+                    if didComplete {
                         router.resetPath()
                     }
                 }

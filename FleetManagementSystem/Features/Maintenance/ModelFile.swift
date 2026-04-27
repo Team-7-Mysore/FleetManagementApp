@@ -219,18 +219,40 @@ struct WorkOrderVehicle: Codable {
     let vin: String?
     let numberPlate: String?
     let vehicleName: String?
-    
-    // NEW: Add this line so Swift knows about the type!
     let vehicleType: VehicleType?
-    
+
     enum CodingKeys: String, CodingKey {
         case vehicleId = "vehicle_id"
         case vin
         case numberPlate = "number_plate"
         case vehicleName = "vehicle_name"
-        
-        // NEW: Map it to the database column
         case vehicleType = "vehicle_type"
+    }
+
+    init(
+        vehicleId: UUID,
+        vin: String?,
+        numberPlate: String?,
+        vehicleName: String?,
+        vehicleType: VehicleType?
+    ) {
+        self.vehicleId = vehicleId
+        self.vin = vin
+        self.numberPlate = numberPlate
+        self.vehicleName = vehicleName
+        self.vehicleType = vehicleType
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        vehicleId = try container.decode(UUID.self, forKey: .vehicleId)
+        vin = try container.decodeIfPresent(String.self, forKey: .vin)
+        numberPlate = try container.decodeIfPresent(String.self, forKey: .numberPlate)
+        vehicleName = try container.decodeIfPresent(String.self, forKey: .vehicleName)
+
+        let rawVehicleType = try container.decodeIfPresent(String.self, forKey: .vehicleType)
+        vehicleType = VehicleType(rawValue: rawVehicleType ?? "")
+            ?? VehicleType(rawValue: rawVehicleType?.capitalized ?? "")
     }
 }
 
