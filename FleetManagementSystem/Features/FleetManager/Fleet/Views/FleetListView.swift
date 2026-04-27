@@ -14,12 +14,12 @@ struct VehicleCategory: Identifiable {
 struct FleetListView: View {
     @StateObject private var vm = FleetListViewModel()
     @State private var showingAddVehicle = false
-    
+
     let columns = [
         GridItem(.flexible(), spacing: 16),
         GridItem(.flexible(), spacing: 16)
     ]
-    
+
     // Updated with exact enum values: icons and hex colors
     let categories: [VehicleCategory] = [
         .init(name: "Bike", icon: "motorcycle", type: "bike",
@@ -31,22 +31,42 @@ struct FleetListView: View {
         .init(name: "Truck", icon: "box.truck.fill", type: "truck",
               iconColor: Color(hex: "#C75C1A"), iconBG: Color(hex: "#C75C1A").opacity(0.1))
     ]
-    
+
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottomTrailing) {
                 Color(.systemGroupedBackground)
                     .ignoresSafeArea()
-                
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 32) {
+                        // 1. The Grid of Categories (Bike, Car, etc.)
                         categoriesSection
-                        upcomingMaintenanceSection
+
+                        // 2. The Repairs Section (Blue - from Database)
+                        maintenanceListSection(
+                            title: "Upcoming Maintenance",
+                            alerts: vm.maintenanceAlerts,
+                            emptyText: "All vehicles operational",
+                            badgeColor: .blue
+                        )
+
+                        // 3. The Monthly Reminders (Purple - Calculated by App)
+                        if !vm.monthlyReminders.isEmpty {
+                            maintenanceListSection(
+                                title: "Monthly Service Reminders",
+                                alerts: vm.monthlyReminders,
+                                emptyText: nil,
+                                badgeColor: .purple
+                            )
+                        }
+
                         Spacer(minLength: 100)
                     }
                     .padding(.vertical)
+                    .padding(.vertical)
                 }
-                
+
                 floatingActionButton
             }
             .navigationTitle("Fleet")
@@ -59,14 +79,57 @@ struct FleetListView: View {
             }
         }
     }
-    
+    // This builds the list sections (Repairs and Monthly)
+    @ViewBuilder
+    private func maintenanceListSection(title: String, alerts: [MaintenanceAlert], emptyText: String?, badgeColor: Color) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text(title).font(.title2.weight(.bold))
+                Spacer()
+                if !alerts.isEmpty {
+                    Text("\(alerts.count) Due")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(badgeColor)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(badgeColor.opacity(0.1))
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(.horizontal, 20)
+
+            if alerts.isEmpty {
+                if let text = emptyText {
+                    emptyMaintenanceStateView(text: text)
+                }
+            } else {
+                VStack(spacing: 12) {
+                    ForEach(alerts) { alert in
+                        MaintenanceAlertCard(alert: alert)
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+        }
+    }
+
+    // This builds the green checkmark view
+    private func emptyMaintenanceStateView(text: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "checkmark.seal.fill").font(.system(size: 32)).foregroundColor(.green)
+            Text(text).font(.subheadline.weight(.medium)).foregroundColor(.secondary)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 40)
+        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(Color(.secondarySystemGroupedBackground)))
+        .padding(.horizontal, 20)
+    }
+
     // MARK: - Extracted Subviews
     private var categoriesSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Categories")
                 .font(.title2.weight(.bold))
                 .padding(.horizontal, 20)
-            
+
             LazyVGrid(columns: columns, spacing: 16) {
                 ForEach(categories) { category in
                     NavigationLink(destination: VehicleCategoryDetailView(category: category, vm: vm)) {
@@ -78,15 +141,15 @@ struct FleetListView: View {
             .padding(.horizontal, 20)
         }
     }
-    
+
     private var upcomingMaintenanceSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center) {
                 Text("Upcoming Maintenance")
                     .font(.title2.weight(.bold))
-                
+
                 Spacer()
-                
+
                 if !vm.maintenanceAlerts.isEmpty {
                     Text("\(vm.maintenanceAlerts.count) Alerts")
                         .font(.caption.weight(.bold))
@@ -98,7 +161,7 @@ struct FleetListView: View {
                 }
             }
             .padding(.horizontal, 20)
-            
+
             if vm.maintenanceAlerts.isEmpty {
                 emptyMaintenanceState
             } else {
@@ -111,7 +174,7 @@ struct FleetListView: View {
             }
         }
     }
-    
+
     private var emptyMaintenanceState: some View {
         VStack(spacing: 12) {
             Image(systemName: "checkmark.seal.fill")
@@ -129,7 +192,7 @@ struct FleetListView: View {
         )
         .padding(.horizontal, 20)
     }
-    
+
     private var floatingActionButton: some View {
         Button(action: { showingAddVehicle = true }) {
             Image(systemName: "plus")
@@ -148,19 +211,19 @@ struct FleetListView: View {
 // MARK: - Category Card Component
 struct CategoryCardView: View {
     let category: VehicleCategory
-    
+
     var body: some View {
         VStack(spacing: 12) {
             ZStack {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(category.iconBG)
                     .frame(width: 56, height: 56)
-                
+
                 Image(systemName: category.icon)
                     .font(.system(size: 26))
                     .foregroundColor(category.iconColor)
             }
-            
+
             Text(category.name)
                 .font(.headline)
                 .foregroundColor(.primary)
@@ -178,31 +241,31 @@ struct CategoryCardView: View {
 // MARK: - Maintenance Alert Card
 struct MaintenanceAlertCard: View {
     let alert: MaintenanceAlert
-    
+
     var body: some View {
         HStack(spacing: 14) {
             ZStack {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(alert.status == .overdue ? Color.red.opacity(0.1) : Color.blue.opacity(0.1))
                     .frame(width: 48, height: 48)
-                
+
                 Image(systemName: alert.status == .overdue ? "wrench.and.screwdriver.fill" : "clock.badge.exclamationmark.fill")
                     .font(.system(size: 18))
                     .foregroundColor(alert.status == .overdue ? .red : .blue)
             }
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text("Unit \(alert.unitNumber)")
                     .font(.system(size: 15, weight: .bold))
-                
+
                 Text(alert.serviceType)
                     .font(.system(size: 13))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             }
-            
+
             Spacer()
-            
+
             Text(alert.status == .overdue ? "OVERDUE" : "DUE SOON")
                 .font(.system(size: 10, weight: .black))
                 .padding(.horizontal, 10)
@@ -224,15 +287,15 @@ struct MaintenanceAlertCard: View {
 struct VehicleCategoryDetailView: View {
     let category: VehicleCategory
     @ObservedObject var vm: FleetListViewModel
-    
+
     @State private var vehicleToDelete: Vehicle?
     @State private var showingDeleteConfirmation = false
     @State private var selectedVehicle: Vehicle?
-    
+
     var filteredVehicles: [Vehicle] {
         vm.vehicles.filter { $0.vehicleType.lowercased() == category.type.lowercased() }
     }
-    
+
     var body: some View {
         Group {
             if filteredVehicles.isEmpty {
@@ -259,7 +322,7 @@ struct VehicleCategoryDetailView: View {
             Text("Are you sure you want to delete \(vehicle.registrationNumber)? This action cannot be undone.")
         }
     }
-    
+
     private var vehicleList: some View {
         List {
             ForEach(filteredVehicles) { vehicle in
@@ -289,7 +352,7 @@ struct VehicleCategoryDetailView: View {
 // MARK: - Compact Vehicle Row
 struct CompactVehicleRow: View {
     let vehicle: Vehicle
-    
+
     var body: some View {
         HStack(spacing: 16) {
             AsyncImage(url: URL(string: vehicle.imageURL ?? "")) { image in
@@ -304,26 +367,26 @@ struct CompactVehicleRow: View {
             }
             .frame(width: 60, height: 60)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(vehicle.name)
                     .font(.system(size: 16, weight: .bold))
-                
+
                 Text(vehicle.registrationNumber)
                     .font(.system(size: 14))
                     .foregroundColor(.secondary)
             }
-            
+
             Spacer()
-            
-            Text(vehicle.status?.uppercased() ?? "ACTIVE")
-                .font(.system(size: 10, weight: .black))
+
+            Text(vehicle.statusDisplayName) // Uses "Maintenance" or "Active" (Title Case)
+                .font(.system(size: 11, weight: .bold)) // Cleaned up weight and size
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .foregroundColor(vehicle.statusColor)
+                .foregroundColor(vehicle.statusColor) // Orange for Maintenance, Green for Active
                 .background(vehicle.statusColor.opacity(0.1))
                 .clipShape(Capsule())
-            
+
             Image(systemName: "chevron.right")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(Color(.systemGray4))

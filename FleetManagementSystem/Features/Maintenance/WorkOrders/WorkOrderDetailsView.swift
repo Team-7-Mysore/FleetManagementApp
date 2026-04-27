@@ -358,7 +358,8 @@ struct WorkOrderDetailView: View {
             .padding(.top, 10)
         }
         // 2. Mechanic View (Start Work Order)
-        else if workOrder.status == .pending {
+        // 🚨 FIXED: Added `!isManagerApprovalMode` so Fleet Managers never see this!
+        else if !isManagerApprovalMode && workOrder.status == .pending {
             Button {
                 if workOrder.isApproved {
                     startWorkOrder()

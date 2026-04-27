@@ -6,7 +6,7 @@ struct AddVehicleView: View {
     @ObservedObject var fleetVM: FleetListViewModel
     @StateObject var vm = AddVehicleViewModel()
     @Environment(\.dismiss) var dismiss
-    
+
     @State private var showImagePicker = false
     @State private var showDocumentPicker = false
     @State private var sourceType: UIImagePickerController.SourceType = .photoLibrary
@@ -33,7 +33,7 @@ struct AddVehicleView: View {
                     .foregroundColor(.secondary)
                     .textCase(nil)
                 ) {
-                    
+
                     // Vehicle Name
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Vehicle Name")
@@ -42,13 +42,13 @@ struct AddVehicleView: View {
                         TextField("Enter Name", text: $vm.vehicleName)
                     }
                     .padding(.vertical, 4)
-                    
+
                     // Plate Field
                     VStack(alignment: .leading, spacing: 6) {
                         Text("License Plate")
                             .font(.system(size: 16, weight: .bold))
                             .foregroundColor(Color(.systemGray2))
-                        
+
                         TextField("AA-00-AA-0000", text: $vm.licensePlate)
                             .textInputAutocapitalization(.characters)
                             .disableAutocorrection(true)
@@ -58,7 +58,7 @@ struct AddVehicleView: View {
                                     vm.licensePlate = formatted
                                 }
                             }
-                        
+
                         if !vm.licensePlate.isEmpty {
                             HStack(spacing: 4) {
                                 Image(systemName: vm.isPlateValidCheck ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
@@ -70,20 +70,20 @@ struct AddVehicleView: View {
                         }
                     }
                     .padding(.vertical, 4)
-                    
+
                     // VIN Field
                     VStack(alignment: .leading, spacing: 6) {
                         Text("VIN")
                             .font(.system(size: 16, weight: .bold))
                             .foregroundColor(Color(.systemGray2))
-                            
+
                         TextField("Enter 17-digit VIN", text: Binding(
                             get: { vm.vin },
                             set: { vm.vin = String($0.uppercased().prefix(17)) }
                         ))
                         .textInputAutocapitalization(.characters)
                         .disableAutocorrection(true)
-                        
+
                         if !vm.vin.isEmpty {
                             HStack(spacing: 4) {
                                 Image(systemName: vm.vin.count == 17 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
@@ -95,7 +95,7 @@ struct AddVehicleView: View {
                         }
                     }
                     .padding(.vertical, 4)
-                    
+
                     VStack(alignment: .leading, spacing: 6) {
                         Text("RC Number")
                             .font(.system(size: 16, weight: .bold))
@@ -110,7 +110,7 @@ struct AddVehicleView: View {
                         TextField("Enter Brand", text: $vm.brand)
                     }.padding(.vertical, 4)
                 }
-                
+
                 // MARK: - Specs
                 Section(header: Text("Manufacturer & Specs")
                     .font(.system(size: 20, weight: .bold))
@@ -121,22 +121,40 @@ struct AddVehicleView: View {
                         Text("Manufacturer").font(.system(size: 16, weight: .bold)).foregroundColor(Color(.systemGray2))
                         TextField("Enter Manufacturer", text: $vm.manufacturer)
                     }.padding(.vertical, 4)
-                    
+
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Model").font(.system(size: 16, weight: .bold)).foregroundColor(Color(.systemGray2))
                         TextField("Enter Model", text: $vm.model)
                     }.padding(.vertical, 4)
-                    
+                    VStack(alignment: .leading, spacing: 6) {
+                            Text("Model Year").font(.system(size: 16, weight: .bold)).foregroundColor(Color(.systemGray2))
+                            TextField("e.g. 2024", text: $vm.modelYear)
+                                .keyboardType(.numberPad) // Ensures numeric input only
+                                .onChange(of: vm.modelYear) { _, newValue in
+                                    // Simple cleanup to keep it to 4 digits
+                                    let filtered = newValue.filter { "0123456789".contains($0) }
+                                    if filtered != newValue {
+                                        vm.modelYear = String(filtered.prefix(4))
+                                    }
+                                }
+                        }.padding(.vertical, 4)
                     Picker("Vehicle Type", selection: $vm.vehicleType) {
                         ForEach(["Truck", "Car", "Bike", "Bus"], id: \.self) { Text($0).tag($0) }
                     }
+                    Picker("Fuel Type", selection: $vm.fuelType) {
+                        ForEach(["Petrol", "Diesel", "Electric", "CNG", "Hybrid"], id: \.self) {
+                            Text($0).tag($0)
+                        }
+                    }
                 }
-                
+
                 // MARK: - Docs & Dates
                 Section(header: Text("Required Documents").font(.headline)) {
                     documentRow(title: "RC Document", isUploaded: vm.rcURL != nil, fileName: vm.rcFileName, type: "RC")
+                    documentRow(title: "Insurance", isUploaded: vm.insuranceURL != nil, fileName: vm.insuranceFileName, type: "INSURANCE")
+                    documentRow(title: "PUC", isUploaded: vm.pucURL != nil, fileName: vm.pucFileName, type: "PUC")
                 }
-                
+
                 Section(header: Text("Validity").font(.headline)) {
                     DatePicker("Registration Date", selection: $vm.registrationDate, displayedComponents: .date)
                     DatePicker("PUC Expiry", selection: $vm.pucExpiry, displayedComponents: .date)
