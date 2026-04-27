@@ -188,6 +188,7 @@ struct PartDetailView: View {
             }
             .padding(.bottom, 30)
         }
+        .hideKeyboardOnTap()
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
         .navigationTitle("Part Details")
         .navigationBarTitleDisplayMode(.inline)

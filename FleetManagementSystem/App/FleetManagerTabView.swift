@@ -31,7 +31,7 @@ struct FleetManagerTabView: View {
                 }
 
             NavigationStack {
-                ChatListView(currentUserId: profile?.userId ?? UUID())
+                ChatListView(currentUserId: profile?.userId ?? UUID(), currentUserRole: profile?.role)
             }
                 .tabItem {
                     Image(systemName: "message.fill")

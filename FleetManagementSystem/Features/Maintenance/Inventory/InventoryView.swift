@@ -190,6 +190,7 @@ struct InventoryView: View {
                     .padding(.bottom, 20)
                 }
             }
+            .hideKeyboardOnTap()
             .navigationDestination(isPresented: $navigateToManual) {
                 AddPartView(viewModel: viewModel)
             }

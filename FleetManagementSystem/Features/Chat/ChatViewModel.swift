@@ -31,6 +31,9 @@ class ChatViewModel: ObservableObject {
     private let supabase = SupabaseManager.shared.client
     private var cancellables = Set<AnyCancellable>()
     
+    // In-memory cache for messages: [RoomID: [Messages]]
+    private var messageCache: [UUID: [ChatMessage]] = [:]
+    
     init() {
         // Debounce search if needed, but for now direct apply
     }
@@ -111,13 +114,16 @@ class ChatViewModel: ObservableObject {
                 if let latest = messageMap[roomId]?.first {
                     rooms[i].updatedAt = latest.createdAt
                     rooms[i].lastMessage = latest.content
-                } else {
-                    rooms[i].lastMessage = "No messages yet"
                 }
             }
 
-            // 5. Sort
-            self.chats = rooms.sorted {
+            // 5. Filter & Sort (48-hour strict policy)
+            let fortyEightHoursAgo = Calendar.current.date(byAdding: .hour, value: -48, to: Date()) ?? Date()
+            
+            self.chats = rooms.filter { room in
+                guard let updatedAt = room.updatedAt else { return false }
+                return updatedAt > fortyEightHoursAgo
+            }.sorted {
                 ($0.updatedAt ?? Date.distantPast) > ($1.updatedAt ?? Date.distantPast)
             }
 
@@ -162,9 +168,18 @@ class ChatViewModel: ObservableObject {
         return result
     }
     
-    // MARK: - Fetch Messages (with 48h limit)
+    // MARK: - Fetch Messages (with 48h limit + Cache)
     func fetchMessages(chatRoomId: UUID) async {
-        isLoading = true
+        // ⚡ LOAD FROM CACHE FIRST (INSTANT UI)
+        if let cached = messageCache[chatRoomId] {
+            self.messages = cached
+        }
+        
+        // Don't show loading spinner if we have cached data for smoother UX
+        if messageCache[chatRoomId] == nil {
+            isLoading = true
+        }
+        
         defer { isLoading = false }
         
         let fortyEightHoursAgo = Calendar.current.date(byAdding: .hour, value: -48, to: Date()) ?? Date()
@@ -181,11 +196,17 @@ class ChatViewModel: ObservableObject {
                 .execute()
                 .value
             
+            // UPDATE CACHE & UI
+            self.messageCache[chatRoomId] = fetchedMessages
             self.messages = fetchedMessages
+        } catch let error as PostgrestError {
+            print("❌ Database Error fetching messages: \(error.message)")
         } catch {
-            print("Error fetching messages: \(error)")
+            print("❌ General Error fetching messages: \(error)")
         }
     }
+    
+
     
     // MARK: - Send Message
     func sendMessage(chatRoomId: UUID, senderId: UUID, content: String) async {
@@ -204,10 +225,12 @@ class ChatViewModel: ObservableObject {
                 .insert(insertData)
                 .execute()
             
-            // Re-fetch to update UI (polling or realtime would handle this normally)
+            // 🔥 Refresh messages to update UI with the new message and timestamp
             await fetchMessages(chatRoomId: chatRoomId)
+        } catch let error as PostgrestError {
+            print("❌ Database Error sending message: \(error.message)")
         } catch {
-            print("Error sending message: \(error)")
+            print("❌ General Error sending message: \(error)")
         }
     }
     
