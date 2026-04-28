@@ -12,6 +12,8 @@ struct FleetManagerNotificationsView: View {
     @State private var fetchError: String? = nil
     @State private var isRoutingActive = false
     @State private var showingClearConfirmation = false
+    @State private var selectedNotifications = Set<UUID>()
+    @State private var editMode: EditMode = .inactive
 
     var onUnreadCountChanged: ((Int) -> Void)? = nil
 
@@ -43,84 +45,55 @@ struct FleetManagerNotificationsView: View {
                         .fontWeight(.semibold)
                 }
             } else {
-                List {
-                    ForEach(notifications.indices, id: \.self) { index in
-                        Button(action: {
-                            // 1. Handle Unread Status
-                            if !notifications[index].isRead {
-                                notifications[index].isRead = true
-                                unreadCount = max(0, unreadCount - 1)
-                                onUnreadCountChanged?(unreadCount)
-
-                                let notifId = notifications[index].id
-                                Task {
-                                    await markNotificationAsReadInDB(notificationId: notifId)
-                                }
-                            }
-
-                            let currentNotif = notifications[index]
-
-                            // Check if we should open the modal
-                            let destination = notificationDestination(for: currentNotif)
-                            if case .none = destination {
-                                return
-                            }
-
-                            // 2. Clear old data and show modal IMMEDIATELY
-                            routingWorkOrder = nil
-                            routingDriverReport = nil
-                            fetchError = nil
-                            isRoutingActive = true
-
-                            // 3. Fetch the actual data in the background
-                            Task {
-                                await fetchDataAndRoute(currentNotif)
-                            }
-                        }) {
-                            HStack(alignment: .top, spacing: 12) {
-                                Circle()
-                                    .fill(notifications[index].isRead ? Color.clear : Color.blue)
-                                    .frame(width: 10, height: 10)
-                                    .padding(.top, 5)
-
-                                VStack(alignment: .leading, spacing: 6) {
-                                    HStack {
-                                        Image(systemName: notifications[index].type.systemImage)
-                                            .foregroundColor(notifications[index].isRead ? .gray : .blue)
-
-                                        Text(notifications[index].title)
-                                            .font(.headline)
-                                            .fontWeight(notifications[index].isRead ? .regular : .bold)
-                                            .foregroundColor(.primary)
-                                    }
-
-                                    Text(notifications[index].message)
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(2)
-
-                                    Text(notifications[index].createdAt, style: .time)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                        .padding(.top, 2)
-                                }
-                            }
-                            .padding(.vertical, 4)
-                            .opacity(notifications[index].isRead ? 0.6 : 1.0)
-                        }
-                        .buttonStyle(PlainButtonStyle())
+                List(selection: $selectedNotifications) {
+                    ForEach(notifications) { notification in
+                        notificationRow(for: notification)
+                            .tag(notification.id)
                     }
+                    .onDelete(perform: deleteFromSwipe)
                 }
                 .listStyle(.insetGrouped)
+                .environment(\.editMode, $editMode)
             }
         }
         .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                if editMode == .active {
+                    Button(selectedNotifications.count == notifications.count ? "Deselect All" : "Select All") {
+                        if selectedNotifications.count == notifications.count {
+                            selectedNotifications.removeAll()
+                        } else {
+                            selectedNotifications = Set(notifications.map { $0.id })
+                        }
+                    }
+                }
+            }
+
             ToolbarItem(placement: .topBarTrailing) {
-                if !notifications.isEmpty {
-                    Button("Clear All") {
-                        showingClearConfirmation = true
+                Button(editMode == .active ? "Done" : "Select") {
+                    withAnimation {
+                        editMode = (editMode == .active) ? .inactive : .active
+                    }
+                }
+                .fontWeight(editMode == .active ? .bold : .medium)
+            }
+
+            if editMode == .active {
+                ToolbarItem(placement: .bottomBar) {
+                    HStack {
+                        Button(role: .destructive) {
+                            Task {
+                                await deleteSelectedNotifications()
+                            }
+                        } label: {
+                            Text("Delete\(selectedNotifications.isEmpty ? "" : " (\(selectedNotifications.count))")")
+                                .foregroundColor(selectedNotifications.isEmpty ? .secondary : .red)
+                        }
+                        .disabled(selectedNotifications.isEmpty)
+                        
+                        Spacer()
                     }
                 }
             }
@@ -151,6 +124,11 @@ struct FleetManagerNotificationsView: View {
                 Task { await SupabaseManager.shared.client.realtimeV2.removeChannel(channel) }
             }
         }
+        .onChange(of: editMode) { newValue in
+            if newValue == .inactive {
+                selectedNotifications.removeAll()
+            }
+        }
         .sheet(isPresented: $isRoutingActive) {
             NotificationModalContainer(
                 workOrder: $routingWorkOrder,
@@ -158,6 +136,112 @@ struct FleetManagerNotificationsView: View {
                 fetchError: $fetchError
             )
             .presentationDragIndicator(.visible)
+        }
+    }
+
+    @ViewBuilder
+    private func notificationRow(for notification: AppNotification) -> some View {
+        Button(action: {
+            if editMode == .active {
+                if selectedNotifications.contains(notification.id) {
+                    selectedNotifications.remove(notification.id)
+                } else {
+                    selectedNotifications.insert(notification.id)
+                }
+                return
+            }
+
+            // 1. Handle Unread Status
+            if !notification.isRead {
+                if let index = notifications.firstIndex(where: { $0.id == notification.id }) {
+                    notifications[index].isRead = true
+                }
+                unreadCount = max(0, unreadCount - 1)
+                onUnreadCountChanged?(unreadCount)
+
+                let notifId = notification.id
+                Task {
+                    await markNotificationAsReadInDB(notificationId: notifId)
+                }
+            }
+
+            let currentNotif = notification
+
+            // Check if we should open the modal
+            let destination = notificationDestination(for: currentNotif)
+            if case .none = destination {
+                return
+            }
+
+            // 2. Clear old data and show modal IMMEDIATELY
+            routingWorkOrder = nil
+            routingDriverReport = nil
+            fetchError = nil
+            isRoutingActive = true
+
+            // 3. Fetch the actual data in the background
+            Task {
+                await fetchDataAndRoute(currentNotif)
+            }
+        }) {
+            HStack(alignment: .top, spacing: 12) {
+                Circle()
+                    .fill(notification.isRead ? Color.clear : Color.blue)
+                    .frame(width: 10, height: 10)
+                    .padding(.top, 5)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Image(systemName: notification.type.systemImage)
+                            .foregroundColor(notification.isRead ? .gray : .blue)
+
+                        Text(notification.title)
+                            .font(.headline)
+                            .fontWeight(notification.isRead ? .regular : .bold)
+                            .foregroundColor(.primary)
+                    }
+
+                    Text(notification.message)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+
+                    Text(notification.createdAt, style: .time)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 2)
+                }
+            }
+            .padding(.vertical, 4)
+            .opacity(notification.isRead ? 0.6 : 1.0)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func deleteFromSwipe(at offsets: IndexSet) {
+        let notificationsToDelete = offsets.map { notifications[$0] }
+        Task {
+            for notif in notificationsToDelete {
+                await deleteNotificationByID(notif.id)
+            }
+        }
+        notifications.remove(atOffsets: offsets)
+        unreadCount = notifications.filter { !$0.isRead }.count
+        onUnreadCountChanged?(unreadCount)
+    }
+
+    private func deleteNotificationByID(_ id: UUID) async {
+        do {
+            print("🗑️ Attempting to delete notification from DB with ID: \(id)")
+            try await SupabaseManager.shared.client
+                .from("notifications")
+                .delete()
+                .eq("id", value: id)
+                .execute()
+            
+            print("✅ Successfully deleted notification \(id) from Supabase")
+        } catch {
+            print("🚨 Exception during delete notification \(id): \(error)")
         }
     }
 
@@ -172,6 +256,7 @@ struct FleetManagerNotificationsView: View {
                 currentUserId = session.user.id
             }
 
+            print("📡 Fetching notifications for user: \(currentUserId)")
             let fetched: [AppNotification] = try await SupabaseManager.shared.client
                 .from("notifications")
                 .select()
@@ -257,19 +342,48 @@ struct FleetManagerNotificationsView: View {
                 currentUserId = session.user.id
             }
 
+            print("🗑️ Attempting to clear all notifications for user: \(currentUserId)")
             try await SupabaseManager.shared.client
                 .from("notifications")
                 .delete()
                 .eq("recipient_id", value: currentUserId)
                 .execute()
 
+            print("✅ Successfully cleared all notifications from Supabase")
             await MainActor.run {
                 self.notifications = []
                 self.unreadCount = 0
                 onUnreadCountChanged?(0)
+                self.selectedNotifications.removeAll()
             }
         } catch {
-            print("🚨 Failed to clear notifications: \(error)")
+            print("🚨 Exception in clearAllNotifications: \(error)")
+        }
+    }
+
+    private func deleteSelectedNotifications() async {
+        guard !selectedNotifications.isEmpty else { return }
+        
+        do {
+            let idsToDelete = Array(selectedNotifications)
+            print("🗑️ Attempting to delete selected notifications: \(idsToDelete)")
+            
+            try await SupabaseManager.shared.client
+                .from("notifications")
+                .delete()
+                .in("id", values: idsToDelete)
+                .execute()
+
+            print("✅ Successfully deleted selected notifications from Supabase")
+            await MainActor.run {
+                self.notifications.removeAll { selectedNotifications.contains($0.id) }
+                self.unreadCount = self.notifications.filter { !$0.isRead }.count
+                onUnreadCountChanged?(self.unreadCount)
+                self.selectedNotifications.removeAll()
+                self.editMode = .inactive
+            }
+        } catch {
+            print("🚨 Exception in deleteSelectedNotifications: \(error)")
         }
     }
 

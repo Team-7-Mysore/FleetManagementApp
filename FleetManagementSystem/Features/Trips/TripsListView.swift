@@ -5,7 +5,7 @@ struct TripsListView: View {
 
     let profile: UserProfile?
     let onSignOut: () async -> Void
-    @State private var navigateToNotifications = false // State for navigation
+    @State private var navigateToNotifications = false
 
     @StateObject private var vm = TripListViewModel()
     @State private var showingProfile = false
@@ -15,6 +15,15 @@ struct TripsListView: View {
     init(profile: UserProfile? = nil, onSignOut: @escaping () async -> Void = {}) {
         self.profile = profile
         self.onSignOut = onSignOut
+    }
+
+    // MARK: - Computed Properties for Separation
+    private var pendingApprovals: [WorkOrder] {
+        vm.vehiclesInMaintenance.filter { $0.status == .pending }
+    }
+
+    private var activeMaintenance: [WorkOrder] {
+        vm.vehiclesInMaintenance.filter { $0.status == .inProgress }
     }
 
     var body: some View {
@@ -28,14 +37,19 @@ struct TripsListView: View {
                         // Ongoing Trips Section
                         ongoingTripsSection
 
-                        // Vehicles in Maintenance Section
-                        if !vm.vehiclesInMaintenance.isEmpty {
+                        // 👇 NEW: Pending Approvals Section
+                        if !pendingApprovals.isEmpty {
+                            pendingApprovalsSection
+                        }
+
+                        // Vehicles in Maintenance Section (Now only shows .inProgress)
+                        if !activeMaintenance.isEmpty {
                             maintenanceSection
                         }
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
-                    .padding(.bottom, 100)
+                    .padding(.bottom, 30)
                 }
                 .background(Color(.systemGroupedBackground))
                 .navigationTitle("Dashboard")
@@ -50,7 +64,6 @@ struct TripsListView: View {
                                     .font(.system(size: 18, weight: .medium))
                                     .foregroundColor(Color.black)
 
-                                // 👇 ADDED OVERLAY BADGE
                                 if unreadNotificationCount > 0 {
                                     Text("\(unreadNotificationCount)")
                                         .font(.system(size: 10, weight: .bold))
@@ -71,7 +84,6 @@ struct TripsListView: View {
                         }
                     }
                 }
-                // Inside TripsListView.swift
                 .task {
                     if vm.trips.isEmpty {
                         await vm.fetchTrips()
@@ -88,12 +100,12 @@ struct TripsListView: View {
                         .presentationDetents([.large])
                         .presentationDragIndicator(.visible)
                 }
-                // FIXED: Opens Notifications as a pushed navigation view
                 .navigationDestination(isPresented: $navigateToNotifications) {
                     FleetManagerNotificationsView(userId: profile?.userId)
                 }
                 .sheet(item: $selectedWorkOrder) { workOrder in
                     NavigationStack {
+                        // This already has manager approval mode enabled!
                         WorkOrderDetailView(workOrder: workOrder, isManagerApprovalMode: true)
                     }
                 }
@@ -203,6 +215,34 @@ struct TripsListView: View {
         }
     }
 
+    // MARK: - NEW: Pending Approvals Section
+    private var pendingApprovalsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Pending Approvals")
+                    .font(.title3.weight(.semibold))
+                    .foregroundColor(.primary)
+
+                Spacer()
+
+                // You can build an AllPendingApprovalsView later if needed
+                // NavigationLink("View All", destination: AllPendingApprovalsView())
+                //     .font(.subheadline.weight(.semibold))
+                //     .foregroundColor(.TechBlue)
+            }
+
+            ForEach(Array(pendingApprovals.prefix(3))) { workOrder in
+                Button(action: {
+                    // This sets the state, opening the sheet with manager mode
+                    selectedWorkOrder = workOrder
+                }) {
+                    MaintenanceVehicleCard(workOrder: workOrder)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
     // MARK: - Maintenance Section
     private var maintenanceSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -218,8 +258,8 @@ struct TripsListView: View {
                     .foregroundColor(.TechBlue)
             }
 
-
-            ForEach(Array(vm.vehiclesInMaintenance.prefix(3))) { workOrder in
+            // 👇 Now uses activeMaintenance to exclude the pending ones shown above
+            ForEach(Array(activeMaintenance.prefix(3))) { workOrder in
                 Button(action: {
                     selectedWorkOrder = workOrder
                 }) {
@@ -280,7 +320,6 @@ struct TripsListView: View {
         .padding(.trailing, 20)
         .padding(.bottom, 24)
     }
-
 }
 
 
@@ -418,9 +457,7 @@ struct MaintenanceVehicleCard: View {
             return Color.red
         }
     }
-
 }
-
 
 // MARK: - Hex Color Extension
 extension Color {
@@ -428,7 +465,6 @@ extension Color {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
         var int: UInt64 = 0
         Scanner(string: hex).scanHexInt64(&int)
-
 
         let a, r, g, b: UInt64
         switch hex.count {
@@ -439,7 +475,6 @@ extension Color {
         default:
             (a, r, g, b) = (255, 0, 0, 0)
         }
-
 
         self.init(
             .sRGB,
