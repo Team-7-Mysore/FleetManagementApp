@@ -7,11 +7,11 @@ struct ChatDetailView: View {
     let currentUserId: UUID
     let globalAccent: Color
 
-    @State private var recipientName: String = "Chat"
     @State private var messageText: String = ""
     @FocusState private var isInputFocused: Bool
 
     private var otherUserInfo: (id: UUID, name: String, role: String?)? {
+        guard chatRoom.participantIds.count == 2 else { return nil }
         guard let otherUserId = chatRoom.participantIds.first(where: { $0 != currentUserId }) else {
             return nil
         }
@@ -21,13 +21,24 @@ struct ChatDetailView: View {
         return (id: otherUserId, name: user.name, role: user.role)
     }
 
+    private var displayName: String {
+        if chatRoom.participantIds.count > 2 {
+            return chatRoom.name ?? "Group"
+        } else {
+            return otherUserInfo?.name ?? "Chat"
+        }
+    }
+
     var body: some View {
         ChatDetailRepresentable(
             chatRoomId: chatRoom.id,
-            currentUser: Sender(senderId: currentUserId.uuidString, displayName: "Me"),
+            currentUser: Sender(
+                senderId: currentUserId.uuidString,
+                displayName: "Me"
+            ),
             otherUser: Sender(
                 senderId: otherUserInfo?.id.uuidString ?? "recipient-id",
-                displayName: recipientName
+                displayName: displayName
             ),
             viewModel: viewModel,
             accentUIColor: UIColor(globalAccent)
@@ -35,14 +46,10 @@ struct ChatDetailView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             chatInputBar
         }
-        .navigationTitle(recipientName)
+        .navigationTitle(displayName)
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            recipientName = chatRoom.name ?? "Chat"
-        }
     }
 
-    // MARK: - Chat Input Bar
     private var chatInputBar: some View {
         VStack(spacing: 0) {
             Divider()
@@ -60,9 +67,11 @@ struct ChatDetailView: View {
                 } label: {
                     Image(systemName: "arrow.up.circle.fill")
                         .font(.system(size: 32))
-                        .foregroundStyle(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                         ? Color(.systemGray3)
-                                         : globalAccent)
+                        .foregroundStyle(
+                            messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            ? Color(.systemGray3)
+                            : globalAccent
+                        )
                 }
                 .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
@@ -72,7 +81,6 @@ struct ChatDetailView: View {
         }
     }
 
-    // MARK: - Send Message
     private func sendMessage() {
         let content = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !content.isEmpty else { return }
