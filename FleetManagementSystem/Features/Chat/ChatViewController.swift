@@ -59,6 +59,16 @@ class ChatViewController: MessagesViewController {
         loadMessages()
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        Task { await viewModel.startChatRoomRealtime(chatRoomId: chatRoomId) }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        Task { await viewModel.stopChatRoomRealtime(chatRoomId: chatRoomId) }
+    }
+
     private func setupViewModelObservation() {
         viewModel.$messages
             .receive(on: DispatchQueue.main)
