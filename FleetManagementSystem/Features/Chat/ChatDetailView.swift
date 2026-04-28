@@ -10,11 +10,13 @@ struct ChatDetailView: View {
     @State private var messageText: String = ""
     @FocusState private var isInputFocused: Bool
 
-    private var otherUserInfo: (id: UUID, name: String, role: String?)? {
+    private var otherParticipantId: UUID? {
         guard chatRoom.participantIds.count == 2 else { return nil }
-        guard let otherUserId = chatRoom.participantIds.first(where: { $0 != currentUserId }) else {
-            return nil
-        }
+        return chatRoom.participantIds.first(where: { $0 != currentUserId })
+    }
+
+    private var otherUserInfo: (id: UUID, name: String, role: String?)? {
+        guard let otherUserId = otherParticipantId else { return nil }
         guard let user = viewModel.users.first(where: { $0.id == otherUserId }) else {
             return nil
         }
@@ -37,7 +39,7 @@ struct ChatDetailView: View {
                 displayName: "Me"
             ),
             otherUser: Sender(
-                senderId: otherUserInfo?.id.uuidString ?? "recipient-id",
+                senderId: otherParticipantId?.uuidString ?? "recipient-id",
                 displayName: displayName
             ),
             viewModel: viewModel,
@@ -48,6 +50,13 @@ struct ChatDetailView: View {
         }
         .navigationTitle(displayName)
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            viewModel.setCurrentUserId(currentUserId)
+            markLatestMessageRead()
+        }
+        .onReceive(viewModel.$messages) { _ in
+            markLatestMessageRead()
+        }
     }
 
     private var chatInputBar: some View {
@@ -92,6 +101,20 @@ struct ChatDetailView: View {
                 chatRoomId: chatRoom.id,
                 senderId: currentUserId,
                 content: content
+            )
+        }
+    }
+
+    private func markLatestMessageRead() {
+        guard let latest = viewModel.messages.last else { return }
+        guard let otherId = otherParticipantId else { return }
+        guard latest.senderId == otherId else { return }
+        let createdAt = latest.createdAt ?? Date()
+        Task {
+            await viewModel.markChatRead(
+                chatRoomId: chatRoom.id,
+                userId: currentUserId,
+                readAt: createdAt
             )
         }
     }
