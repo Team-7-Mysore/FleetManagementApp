@@ -11,8 +11,6 @@ struct AddVehicleView: View {
     @State private var showDocumentPicker = false
     @State private var sourceType: UIImagePickerController.SourceType = .photoLibrary
     @State private var selectedType: String = ""
-    
-    // Logic for popover alignment
     @State private var showSourcePopover = false
 
     var body: some View {
@@ -29,7 +27,7 @@ struct AddVehicleView: View {
                 }
                 .listRowBackground(Color.clear)
 
-                // MARK: - 2. Required Documents (Repositioned)
+      
                 Section(header: sectionHeader("Required Documents")) {
                     documentRow(title: "RC Document", isUploaded: vm.rcURL != nil, fileName: vm.rcFileName, type: "RC")
                     documentRow(title: "Insurance", isUploaded: vm.insuranceURL != nil, fileName: vm.insuranceFileName, type: "INSURANCE")
@@ -38,7 +36,6 @@ struct AddVehicleView: View {
 
                 // MARK: - 3. Vehicle Identification
                 Section(header: sectionHeader("Vehicle Identification")) {
-                    
                     VStack(alignment: .leading, spacing: 6) {
                         fieldLabel("Vehicle Name")
                         TextField("Enter Name", text: $vm.vehicleName)
@@ -104,19 +101,27 @@ struct AddVehicleView: View {
                     }
                 }
 
-                // MARK: - 5. Validity
-                Section(header: sectionHeader("Validity")) {
-                    DatePicker("Registration Date", selection: $vm.registrationDate, displayedComponents: .date)
-                    DatePicker("PUC Expiry", selection: $vm.pucExpiry, displayedComponents: .date)
-                    DatePicker("RC Expiry", selection: $vm.rcExpiry, displayedComponents: .date)
+                // MARK: - 5. Validity (Individual Conditional Visibility)
+                // Section header only shows if at least one doc is present
+                if vm.rcURL != nil || vm.pucURL != nil {
+                    Section(header: sectionHeader("Validity")) {
+                        if vm.rcURL != nil {
+                            DatePicker("Registration Date", selection: $vm.registrationDate, displayedComponents: .date)
+                            DatePicker("RC Expiry", selection: $vm.rcExpiry, displayedComponents: .date)
+                        }
+                        
+                        if vm.pucURL != nil {
+                            DatePicker("PUC Expiry", selection: $vm.pucExpiry, displayedComponents: .date)
+                        }
+                    }
                 }
             }
             .hideKeyboardOnTap()
             .navigationTitle("Add Vehicle")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItem(placement: .navigationBarLeading) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Save") { Task { await vm.saveVehicle() } }
                         .disabled(!vm.isFormValid)
                 }
@@ -132,9 +137,6 @@ struct AddVehicleView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.system(size: 16, weight: .bold))
-                if type == "RC" && !isUploaded {
-                    Text("Scanning RC will autofill vehicle details").font(.system(size: 11)).foregroundColor(.blue)
-                }
                 if let fileName = fileName, isUploaded {
                     Text(fileName).font(.caption).foregroundColor(.secondary).lineLimit(1)
                 }
@@ -158,7 +160,6 @@ struct AddVehicleView: View {
         }
     }
 
-    // MARK: - Popover Content (No Tint)
     private var sourcePickerContents: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button(action: {
@@ -209,7 +210,6 @@ struct AddVehicleView: View {
         }
     }
 
-    // MARK: - Vehicle Image Section
     private var imageUploadSection: some View {
         Button {
             selectedType = "VEHICLE"
@@ -239,7 +239,6 @@ struct AddVehicleView: View {
         }
     }
 
-    // MARK: - Helper UI Styles
     private func sectionHeader(_ text: String) -> some View {
         Text(text).font(.system(size: 18, weight: .bold)).foregroundColor(.secondary).textCase(nil)
     }
@@ -248,7 +247,6 @@ struct AddVehicleView: View {
         Text(text).font(.system(size: 14, weight: .bold)).foregroundColor(Color(.systemGray2))
     }
 
-    // MARK: - Logic Handlers
     private func handleImageSelected(_ image: UIImage) {
         if selectedType == "VEHICLE" { vm.localVehicleImage = image }
         Task {
