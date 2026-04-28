@@ -58,7 +58,7 @@ struct TripsListView: View {
                                         .frame(minWidth: 16, minHeight: 16)
                                         .background(Color.red)
                                         .clipShape(Circle())
-                                        .offset(x: 8, y: -6)
+                                        .offset(x: 6, y: -2)
                                 }
                             }
                         }

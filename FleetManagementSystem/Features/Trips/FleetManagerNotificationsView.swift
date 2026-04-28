@@ -11,6 +11,7 @@ struct FleetManagerNotificationsView: View {
     @State private var routingDriverReport: DriverReport? = nil
     @State private var fetchError: String? = nil
     @State private var isRoutingActive = false
+    @State private var showingClearConfirmation = false
 
     var onUnreadCountChanged: ((Int) -> Void)? = nil
 
@@ -115,6 +116,29 @@ struct FleetManagerNotificationsView: View {
         }
         .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if !notifications.isEmpty {
+                    Button("Clear All") {
+                        showingClearConfirmation = true
+                    }
+                }
+            }
+        }
+        .confirmationDialog(
+            "Clear all notifications?",
+            isPresented: $showingClearConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clear All", role: .destructive) {
+                Task {
+                    await clearAllNotifications()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This action cannot be undone.")
+        }
         .task {
             await fetchNotifications()
             await setupRealtimeNotifications()
@@ -221,6 +245,32 @@ struct FleetManagerNotificationsView: View {
                 .eq("id", value: notificationId)
                 .execute()
         } catch { print("🚨 Mark as read failed: \(error)") }
+    }
+
+    private func clearAllNotifications() async {
+        do {
+            let currentUserId: UUID
+            if let id = userId {
+                currentUserId = id
+            } else {
+                let session = try await SupabaseManager.shared.client.auth.session
+                currentUserId = session.user.id
+            }
+
+            try await SupabaseManager.shared.client
+                .from("notifications")
+                .delete()
+                .eq("recipient_id", value: currentUserId)
+                .execute()
+
+            await MainActor.run {
+                self.notifications = []
+                self.unreadCount = 0
+                onUnreadCountChanged?(0)
+            }
+        } catch {
+            print("🚨 Failed to clear notifications: \(error)")
+        }
     }
 
     // MARK: - Routing Logic
