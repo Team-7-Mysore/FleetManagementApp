@@ -16,6 +16,7 @@ class ChatViewModel: ObservableObject {
     @Published var users: [AppUser] = []
     @Published var filteredUsers: [AppUser] = []
     @Published var messages: [ChatMessage] = []
+    @Published var participantLastRead: [UUID: Date] = [:]
     @Published var currentMessage: String = ""
     @Published var searchText: String = "" {
         didSet { applyFilter() }
@@ -30,12 +31,277 @@ class ChatViewModel: ObservableObject {
     
     private let supabase = SupabaseManager.shared.client
     private var cancellables = Set<AnyCancellable>()
+    private var roomsRealtimeChannel: RealtimeChannelV2?
+    private var roomMessagesChannel: RealtimeChannelV2?
+    private var participantsRealtimeChannel: RealtimeChannelV2?
+    private var roomsRealtimeTask: Task<Void, Never>?
+    private var roomMessagesTask: Task<Void, Never>?
+    private var participantsRealtimeTask: Task<Void, Never>?
+    private var activeChatRoomId: UUID?
+    private var currentUserId: UUID?
+    private var lastReadUpdateAt: [UUID: Date] = [:]
     
     // In-memory cache for messages: [RoomID: [Messages]]
     private var messageCache: [UUID: [ChatMessage]] = [:]
     
     init() {
         // Debounce search if needed, but for now direct apply
+    }
+
+    func setCurrentUserId(_ userId: UUID) {
+        currentUserId = userId
+    }
+
+    // MARK: - Realtime Setup
+    func startChatRoomsRealtime(userId: UUID) async {
+        currentUserId = userId
+        guard roomsRealtimeChannel == nil else { return }
+
+        let channel = supabase.realtimeV2.channel("chat-rooms-\(userId.uuidString)")
+        let changes = channel.postgresChange(
+            AnyAction.self,
+            schema: "public",
+            table: "chat_messages"
+        )
+
+        roomsRealtimeChannel = channel
+
+        do {
+            try await channel.subscribeWithError()
+        } catch {
+            print("❌ Chat rooms realtime subscribe failed: \(error)")
+            roomsRealtimeChannel = nil
+            return
+        }
+
+        let decoder = Self.makeChatDecoder()
+        roomsRealtimeTask?.cancel()
+        roomsRealtimeTask = Task { [weak self] in
+            guard let self = self else { return }
+            for await action in changes {
+                if Task.isCancelled { break }
+                guard let message = self.decodeChatMessage(from: action, decoder: decoder) else { continue }
+                await MainActor.run {
+                    self.handleRoomsMessage(message)
+                }
+            }
+        }
+    }
+
+    func stopChatRoomsRealtime() async {
+        roomsRealtimeTask?.cancel()
+        roomsRealtimeTask = nil
+        if let channel = roomsRealtimeChannel {
+            await channel.unsubscribe()
+            roomsRealtimeChannel = nil
+        }
+    }
+
+    func startChatRoomRealtime(chatRoomId: UUID) async {
+        if activeChatRoomId == chatRoomId, roomMessagesChannel != nil { return }
+        activeChatRoomId = chatRoomId
+
+        roomMessagesTask?.cancel()
+        roomMessagesTask = nil
+
+        if let channel = roomMessagesChannel {
+            await channel.unsubscribe()
+            roomMessagesChannel = nil
+        }
+
+        let channel = supabase.realtimeV2.channel("chat-room-\(chatRoomId.uuidString)")
+        let changes = channel.postgresChange(
+            AnyAction.self,
+            schema: "public",
+            table: "chat_messages"
+        )
+
+        roomMessagesChannel = channel
+
+        do {
+            try await channel.subscribeWithError()
+        } catch {
+            print("❌ Chat room realtime subscribe failed: \(error)")
+            roomMessagesChannel = nil
+            return
+        }
+
+        let decoder = Self.makeChatDecoder()
+        roomMessagesTask = Task { [weak self] in
+            guard let self = self else { return }
+            for await action in changes {
+                if Task.isCancelled { break }
+                guard let message = self.decodeChatMessage(from: action, decoder: decoder) else { continue }
+                guard message.chatRoomId == chatRoomId else { continue }
+                await MainActor.run {
+                    self.applyIncomingMessage(message)
+                }
+            }
+        }
+
+        await refreshParticipants(chatRoomId: chatRoomId)
+        await startChatParticipantsRealtime(chatRoomId: chatRoomId)
+    }
+
+    func stopChatRoomRealtime(chatRoomId: UUID) async {
+        guard activeChatRoomId == chatRoomId else { return }
+        roomMessagesTask?.cancel()
+        roomMessagesTask = nil
+        if let channel = roomMessagesChannel {
+            await channel.unsubscribe()
+            roomMessagesChannel = nil
+        }
+        participantsRealtimeTask?.cancel()
+        participantsRealtimeTask = nil
+        if let channel = participantsRealtimeChannel {
+            await channel.unsubscribe()
+            participantsRealtimeChannel = nil
+        }
+        activeChatRoomId = nil
+    }
+
+    private func startChatParticipantsRealtime(chatRoomId: UUID) async {
+        if let channel = participantsRealtimeChannel {
+            await channel.unsubscribe()
+            participantsRealtimeChannel = nil
+        }
+
+        let channel = supabase.realtimeV2.channel("chat-room-participants-\(chatRoomId.uuidString)")
+        let changes = channel.postgresChange(
+            AnyAction.self,
+            schema: "public",
+            table: "chat_participants"
+        )
+
+        participantsRealtimeChannel = channel
+
+        do {
+            try await channel.subscribeWithError()
+        } catch {
+            print("❌ Chat participants realtime subscribe failed: \(error)")
+            participantsRealtimeChannel = nil
+            return
+        }
+
+        let decoder = Self.makeChatDecoder()
+        participantsRealtimeTask?.cancel()
+        participantsRealtimeTask = Task { [weak self] in
+            guard let self = self else { return }
+            for await action in changes {
+                if Task.isCancelled { break }
+                guard let participant = self.decodeChatParticipant(from: action, decoder: decoder) else { continue }
+                guard participant.chatRoomId == chatRoomId else { continue }
+                await MainActor.run {
+                    self.participantLastRead[participant.userId] = participant.lastReadAt
+                }
+            }
+        }
+    }
+
+    private func handleRoomsMessage(_ message: ChatMessage) {
+        if chats.contains(where: { $0.id == message.chatRoomId }) {
+            applyIncomingMessage(message)
+            return
+        }
+
+        guard let userId = currentUserId else { return }
+        Task {
+            await fetchChatRooms(userId: userId)
+        }
+    }
+
+    private func applyIncomingMessage(_ message: ChatMessage) {
+        var cached = messageCache[message.chatRoomId] ?? []
+
+        if let index = cached.firstIndex(where: { $0.id == message.id }) {
+            cached[index] = message
+        } else {
+            cached.append(message)
+        }
+
+        cached.sort {
+            ($0.createdAt ?? Date.distantPast) < ($1.createdAt ?? Date.distantPast)
+        }
+
+        messageCache[message.chatRoomId] = cached
+
+        if activeChatRoomId == message.chatRoomId {
+            messages = cached
+            if let userId = currentUserId, message.senderId != userId {
+                let readAt = message.createdAt ?? Date()
+                Task {
+                    await markChatRead(chatRoomId: message.chatRoomId, userId: userId, readAt: readAt)
+                }
+            }
+        }
+
+        updateChatPreview(chatRoomId: message.chatRoomId, message: message)
+    }
+
+    private func updateChatPreview(chatRoomId: UUID, message: ChatMessage) {
+        guard let index = chats.firstIndex(where: { $0.id == chatRoomId }) else { return }
+
+        let preview = previewText(for: message)
+        if let preview = preview {
+            chats[index].lastMessage = preview
+        }
+
+        chats[index].updatedAt = message.createdAt ?? Date()
+        chats.sort {
+            ($0.updatedAt ?? Date.distantPast) > ($1.updatedAt ?? Date.distantPast)
+        }
+    }
+
+    private func previewText(for message: ChatMessage) -> String? {
+        let trimmed = message.content?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmed = trimmed, !trimmed.isEmpty { return trimmed }
+
+        switch message.messageType {
+        case .image:
+            return "Photo"
+        case .system:
+            return "System message"
+        default:
+            return nil
+        }
+    }
+
+    private func decodeChatMessage(from action: AnyAction, decoder: JSONDecoder) -> ChatMessage? {
+        switch action {
+        case .insert(let action):
+            return try? action.decodeRecord(as: ChatMessage.self, decoder: decoder)
+        case .update(let action):
+            return try? action.decodeRecord(as: ChatMessage.self, decoder: decoder)
+        default:
+            return nil
+        }
+    }
+
+    private func decodeChatParticipant(from action: AnyAction, decoder: JSONDecoder) -> ChatParticipantReadRecord? {
+        switch action {
+        case .insert(let action):
+            return try? action.decodeRecord(as: ChatParticipantReadRecord.self, decoder: decoder)
+        case .update(let action):
+            return try? action.decodeRecord(as: ChatParticipantReadRecord.self, decoder: decoder)
+        default:
+            return nil
+        }
+    }
+
+    private static func makeChatDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let raw = try container.decode(String.self)
+            if let date = BackendDateParser.parse(raw) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Invalid date: \(raw)"
+            )
+        }
+        return decoder
     }
     
     // MARK: - Fetch Users
@@ -170,6 +436,7 @@ class ChatViewModel: ObservableObject {
     
     // MARK: - Fetch Messages (with 48h limit + Cache)
     func fetchMessages(chatRoomId: UUID) async {
+        activeChatRoomId = chatRoomId
         // ⚡ LOAD FROM CACHE FIRST (INSTANT UI)
         if let cached = messageCache[chatRoomId] {
             self.messages = cached
@@ -187,23 +454,78 @@ class ChatViewModel: ObservableObject {
         let dateString = isoFormatter.string(from: fortyEightHoursAgo)
         
         do {
-            let fetchedMessages: [ChatMessage] = try await supabase
+            let response = try await supabase
                 .from("chat_messages")
                 .select()
                 .eq("chat_room_id", value: chatRoomId)
                 .gte("created_at", value: dateString)
                 .order("created_at", ascending: true)
                 .execute()
-                .value
+
+            let decoder = Self.makeChatDecoder()
+            let fetchedMessages = try decoder.decode([ChatMessage].self, from: response.data)
             
             // UPDATE CACHE & UI
             self.messageCache[chatRoomId] = fetchedMessages
             self.messages = fetchedMessages
+            updateChatPreviewFromCache(chatRoomId: chatRoomId)
         } catch let error as PostgrestError {
             print("❌ Database Error fetching messages: \(error.message)")
         } catch {
             print("❌ General Error fetching messages: \(error)")
         }
+    }
+
+    func refreshParticipants(chatRoomId: UUID) async {
+        do {
+            let response = try await supabase
+                .from("chat_participants")
+                .select("chat_room_id, user_id, last_read_at")
+                .eq("chat_room_id", value: chatRoomId)
+                .execute()
+
+            let decoder = Self.makeChatDecoder()
+            let records = try decoder.decode([ChatParticipantReadRecord].self, from: response.data)
+            var map: [UUID: Date] = [:]
+            for record in records {
+                if let lastReadAt = record.lastReadAt {
+                    map[record.userId] = lastReadAt
+                }
+            }
+            participantLastRead.merge(map) { _, new in new }
+        } catch {
+            print("❌ Failed to refresh chat participants: \(error)")
+        }
+    }
+
+    func markChatRead(chatRoomId: UUID, userId: UUID, readAt: Date) async {
+        let currentRead = participantLastRead[userId] ?? .distantPast
+        if readAt <= currentRead { return }
+
+        let now = Date()
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let dateString = formatter.string(from: readAt)
+
+        do {
+            _ = try await supabase
+                .from("chat_participants")
+                .update(["last_read_at": dateString])
+                .eq("chat_room_id", value: chatRoomId)
+                .eq("user_id", value: userId)
+                .execute()
+
+            participantLastRead[userId] = readAt
+            lastReadUpdateAt[chatRoomId] = now
+        } catch {
+            print("❌ Failed to update read receipt: \(error)")
+        }
+    }
+
+    private func updateChatPreviewFromCache(chatRoomId: UUID) {
+        guard let cached = messageCache[chatRoomId], let last = cached.last else { return }
+        updateChatPreview(chatRoomId: chatRoomId, message: last)
     }
     
 
@@ -375,5 +697,17 @@ class ChatViewModel: ObservableObject {
 
         room.participantIds = participantIds
         return room
+    }
+}
+
+private struct ChatParticipantReadRecord: Codable {
+    let chatRoomId: UUID
+    let userId: UUID
+    let lastReadAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case chatRoomId = "chat_room_id"
+        case userId = "user_id"
+        case lastReadAt = "last_read_at"
     }
 }
