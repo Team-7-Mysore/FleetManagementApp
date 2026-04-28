@@ -11,19 +11,19 @@ final class InventoryViewModel: ObservableObject {
         let id = UUID()
         let message: String
     }
-
+    
     private struct DeletedInventoryRow: Decodable {
         let inventoryId: UUID
-
+        
         enum CodingKeys: String, CodingKey {
             case inventoryId = "inventory_id"
         }
     }
-
+    
     enum InventoryDeletionError: LocalizedError {
         case placeholderID(UUID)
         case noRowDeleted(UUID)
-
+        
         var errorDescription: String? {
             switch self {
             case .placeholderID(let id):
@@ -33,7 +33,7 @@ final class InventoryViewModel: ObservableObject {
             }
         }
     }
-
+    
     @Published var items: [InventoryItem] = []
     @Published var filteredItems: [InventoryItem] = []
     
@@ -48,10 +48,10 @@ final class InventoryViewModel: ObservableObject {
     @Published var showLowStockBanner: Bool = true
     @Published var deleteErrorMessage: AlertItem?
     @Published var notifications: [NotificationItem] = []
-
-
+    
+    
     private let placeholderInventoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
-
+    
     private var deletedInventoryIDs = Set<UUID>()
     
     var lowStockItems: [InventoryItem] {
@@ -60,7 +60,7 @@ final class InventoryViewModel: ObservableObject {
             if selectedVehicleFilter == "All" {
                 return true
             }
-
+            
             return (item.vehicleCategory ?? "") == selectedVehicleFilter
         }
     }
@@ -76,20 +76,20 @@ final class InventoryViewModel: ObservableObject {
                 .select()
                 .execute()
                 .value
-
+            
             let invalidItems = fetchedItems.filter { $0.inventoryId == placeholderInventoryID }
             if !invalidItems.isEmpty {
                 print("INVALID INVENTORY UUIDS:", invalidItems.map(\.inventoryId))
             }
-
+            
             let sanitizedItems = fetchedItems.filter { item in
                 item.inventoryId != placeholderInventoryID &&
                 !deletedInventoryIDs.contains(item.inventoryId)
             }
-
+            
             print("DECODED COUNT:", fetchedItems.count)
             print("Fetched items:", sanitizedItems.count)
-
+            
             self.items = sanitizedItems
             self.filterItems()
         } catch {
@@ -112,7 +112,7 @@ final class InventoryViewModel: ObservableObject {
             result = result.filter { item in
                 let matchName = item.partName.lowercased().contains(lowercasedSearch)
                 let matchSKU = item.sku?.lowercased().contains(lowercasedSearch) ?? false
-                let matchCategory = item.vehicleCategory?.lowercased().contains(lowercasedSearch) ?? false 
+                let matchCategory = item.vehicleCategory?.lowercased().contains(lowercasedSearch) ?? false
                 let matchDesc = item.categoryDescription?.lowercased().contains(lowercasedSearch) ?? false
                 return matchName || matchSKU || matchCategory || matchDesc
             }
@@ -138,7 +138,7 @@ final class InventoryViewModel: ObservableObject {
         struct InventoryQuantityUpdate: Codable {
             let quantity: Int
             let updatedAt: String
-
+            
             enum CodingKeys: String, CodingKey {
                 case quantity
                 case updatedAt = "updated_at"
@@ -155,11 +155,11 @@ final class InventoryViewModel: ObservableObject {
             .update(updateData)
             .eq("inventory_id", value: id.uuidString)
             .execute()
-            
+        
         await fetchInventory()
         await syncLowStockNotifications()
     }
-
+    
     
     func addInventoryItem(partName: String, vehicleCategory: String?, categoryDescription: String?, supplier: String?, quantity: Int, costPerUnit: Double?, sku: String?, location: String?, imageUrl: String?) async throws {
         let insertItem = InventoryItemInsert(
@@ -182,18 +182,18 @@ final class InventoryViewModel: ObservableObject {
         await fetchInventory()
         await syncLowStockNotifications()
     }
-
+    
     
     func deleteInventoryItem(id: UUID) async throws {
         print("Attempting delete id:", id.uuidString)
         print("Deleting ID:", id.uuidString)
         deleteErrorMessage = nil
-
+        
         if id == placeholderInventoryID {
             print("DELETE FAILED: placeholder UUID", id.uuidString)
             throw InventoryDeletionError.placeholderID(id)
         }
-
+        
         do {
             let deletedRows: [DeletedInventoryRow] = try await SupabaseManager.shared.client
                 .from("inventory")
@@ -202,22 +202,22 @@ final class InventoryViewModel: ObservableObject {
                 .select("inventory_id")
                 .execute()
                 .value
-
+            
             print("DELETE RESPONSE:", deletedRows)
             print("DELETED ROWS:", deletedRows.map(\.inventoryId))
-
+            
             guard deletedRows.contains(where: { $0.inventoryId == id }) else {
                 print("DELETE FAILED FOR ID:", id.uuidString)
                 throw InventoryDeletionError.noRowDeleted(id)
             }
-
+            
             deletedInventoryIDs.insert(id)
-
+            
             withAnimation(.spring()) {
                 self.items.removeAll { $0.inventoryId == id }
                 self.filterItems()
             }
-
+            
             await fetchNotifications()
         } catch {
             if let pgError = error as? PostgrestError, pgError.code == "23503" {
@@ -225,7 +225,7 @@ final class InventoryViewModel: ObservableObject {
             } else {
                 deleteErrorMessage = AlertItem(message: "Failed to delete part. Please try again.")
             }
-
+            
             print("ERROR deleting item \(id):", error)
             throw error
         }
@@ -247,13 +247,13 @@ final class InventoryViewModel: ObservableObject {
             .update(updateData)
             .eq("inventory_id", value: id.uuidString)
             .execute()
-            
+        
         await fetchInventory()
         await syncLowStockNotifications()
     }
-
     
-
+    
+    
     func fetchNotifications() async {
         do {
             let data: [NotificationItem] = try await SupabaseManager.shared.client
@@ -262,37 +262,37 @@ final class InventoryViewModel: ObservableObject {
                 .order("created_at", ascending: false)
                 .execute()
                 .value
-
+            
             self.notifications = data
         } catch {
             print("Error fetching notifications:", error)
         }
     }
-
+    
     func createNotification(for item: InventoryItem) async -> Bool {
         if notifications.contains(where: { $0.inventoryId == item.inventoryId }) {
             return false
         }
-
+        
         do {
             let newNotification = [
                 "inventory_id": item.inventoryId.uuidString,
                 "title": "Low Stock Alert",
                 "message": "\(item.partName) is low in stock (Qty: \(item.quantity))"
             ]
-
+            
             try await SupabaseManager.shared.client
                 .from("notifications")
                 .insert(newNotification)
                 .execute()
-
+            
             return true
         } catch {
             print("Insert notification error:", error)
             return false
         }
     }
-
+    
     func deleteNotification(for item: InventoryItem) async {
         do {
             try await SupabaseManager.shared.client
@@ -304,14 +304,14 @@ final class InventoryViewModel: ObservableObject {
             print("Delete notification error:", error)
         }
     }
-
+    
     func syncLowStockNotifications() async {
         await fetchNotifications()
         
         for item in items {
             if item.quantity <= 10 {
                 let didCreateNotification = await createNotification(for: item)
-
+                
                 if didCreateNotification {
                     NotificationManager.shared.sendLowStockNotification(
                         partName: item.partName,
@@ -322,11 +322,33 @@ final class InventoryViewModel: ObservableObject {
                 await deleteNotification(for: item)
             }
         }
-
+        
         await fetchNotifications()
     }
-
-
+    
+    
+    // MARK: - Image Upload (Supabase Storage)
+    func uploadImage(data: Data, fileName: String) async throws -> String {
+        let path = "part-images/\(fileName)"
+        
+        // Upload to Supabase Storage
+        _ = try await SupabaseManager.shared.client
+            .storage
+            .from("inventory-images")
+            .upload(
+                path: path,
+                file: data,
+                options: FileOptions(contentType: "image/jpeg")
+            )
+        
+        // Get public URL (non-throwing)
+        let publicURL = try SupabaseManager.shared.client
+            .storage
+            .from("inventory-images")
+            .getPublicURL(path: path)
+        
+        return publicURL.absoluteString
+    }
 }
 
 

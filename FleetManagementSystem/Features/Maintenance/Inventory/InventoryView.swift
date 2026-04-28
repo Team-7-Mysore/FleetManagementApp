@@ -15,6 +15,7 @@ struct InventoryView: View {
     @State private var navigateToScanned = false
     @State private var scannedName: String?
     @State private var scannedQuantity: Int?
+    @State private var scannedCost: Double?
     @State private var showNotifications = false
     @State private var showingProfile = false // Added for Profile routing
     
@@ -198,7 +199,8 @@ struct InventoryView: View {
                 AddPartView(
                     viewModel: viewModel,
                     prefilledName: scannedName,
-                    prefilledQuantity: scannedQuantity
+                    prefilledQuantity: scannedQuantity,
+                    prefilledCost: scannedCost
                 )
             }
             
@@ -222,6 +224,7 @@ struct InventoryView: View {
                             await MainActor.run {
                                 scannedName = result.name
                                 scannedQuantity = result.quantity
+                                scannedCost = result.costPerUnit
                                 navigateToScanned = true
                             }
                         } catch {

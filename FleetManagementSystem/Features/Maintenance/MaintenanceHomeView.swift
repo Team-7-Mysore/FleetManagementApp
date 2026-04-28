@@ -27,7 +27,7 @@ struct MaintenanceHomeView: View {
                     }
             }
         }
-        .tint(Color(red: 163/255, green: 53/255, blue: 42/255))
+        .tint(AppTheme.accentColor(for: .maintenance))
     }
 }
 

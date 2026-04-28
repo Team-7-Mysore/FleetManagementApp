@@ -21,6 +21,7 @@ class ChatViewController: MessagesViewController {
         self.viewModel = viewModel
         self.accentColor = accentColor
         super.init(nibName: nil, bundle: nil)
+        self.hidesBottomBarWhenPushed = true
     }
     
     required init?(coder: NSCoder) {
@@ -30,31 +31,57 @@ class ChatViewController: MessagesViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        setupCollectionView()
+        // 🧼 iMessage Style Layout
+        messagesCollectionView.backgroundColor = .systemBackground
+        messagesCollectionView.messagesDataSource = self
+        messagesCollectionView.messagesLayoutDelegate = self
+        messagesCollectionView.messagesDisplayDelegate = self
+        messagesCollectionView.messageCellDelegate = self
+        
+        // Fix for full-screen layout
+        messagesCollectionView.contentInsetAdjustmentBehavior = .always
+        messagesCollectionView.contentInset = .zero
+        messagesCollectionView.scrollIndicatorInsets = .zero
+        additionalSafeAreaInsets.bottom = 0
+        
         setupInputBar()
         
-        // ✅ Keyboard handling — let MessageKit manage input bar position
+        // ✅ Keyboard handling
         maintainPositionOnKeyboardFrameChanged = true
         scrollsToLastItemOnKeyboardBeginsEditing = true
-        additionalBottomInset = 0
         messagesCollectionView.keyboardDismissMode = .interactive
         
-        // Hide avatars for iMessage feel
+        // 💎 Refined iMessage dimensions & paddings
         if let layout = messagesCollectionView.collectionViewLayout as? MessagesCollectionViewFlowLayout {
             layout.textMessageSizeCalculator.outgoingAvatarSize = .zero
             layout.textMessageSizeCalculator.incomingAvatarSize = .zero
+            layout.setMessageOutgoingAvatarSize(.zero)
+            layout.setMessageIncomingAvatarSize(.zero)
+            
+            // Native-style message padding (sent = right-aligned, received = left-aligned)
+            layout.setMessageIncomingMessagePadding(UIEdgeInsets(top: 4, left: 12, bottom: 4, right: 50))
+            layout.setMessageOutgoingMessagePadding(UIEdgeInsets(top: 4, left: 50, bottom: 4, right: 12))
+            
+            // Compact spacing between messages
+            layout.setMessageIncomingMessageTopLabelAlignment(LabelAlignment(textAlignment: .left, textInsets: UIEdgeInsets(top: 0, left: 20, bottom: 0, right: 0)))
+            layout.setMessageOutgoingMessageTopLabelAlignment(LabelAlignment(textAlignment: .right, textInsets: UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 20)))
         }
         
-        // ✅ Dismiss keyboard on tap outside input bar
+        // ✅ Dismiss keyboard on tap outside
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         tapGesture.cancelsTouchesInView = false
         messagesCollectionView.addGestureRecognizer(tapGesture)
         
-        // Input bar styling
-        messageInputBar.backgroundView.backgroundColor = .systemBackground
-        
         setupViewModelObservation()
         loadMessages()
+    }
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // Force inline display as requested
+        navigationItem.largeTitleDisplayMode = .never
+        navigationController?.navigationBar.prefersLargeTitles = true
+        navigationItem.title = otherUser.displayName
     }
     
     private func setupViewModelObservation() {
@@ -79,20 +106,26 @@ class ChatViewController: MessagesViewController {
         view.endEditing(true)
     }
     
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-    }
-    
-    private func setupCollectionView() {
-        messagesCollectionView.messagesDataSource = self
-        messagesCollectionView.messagesLayoutDelegate = self
-        messagesCollectionView.messagesDisplayDelegate = self
-        messagesCollectionView.messageCellDelegate = self
-    }
-    
     private func setupInputBar() {
         messageInputBar.delegate = self
+        messageInputBar.backgroundView.backgroundColor = .systemBackground
+        
+        // Remove extra padding/margins
+        messageInputBar.padding = UIEdgeInsets(top: 5, left: 5, bottom: 5, right: 5)
+        messageInputBar.separatorLine.isHidden = false // Subtle line above input
+        
+        // Role-based accents in input bar
+        messageInputBar.tintColor = accentColor
+        messageInputBar.inputTextView.tintColor = accentColor
         messageInputBar.sendButton.setTitleColor(accentColor, for: .normal)
+        messageInputBar.sendButton.setTitleColor(accentColor.withAlphaComponent(0.3), for: .disabled)
+        
+        // Improved input bar capsule look
+        messageInputBar.inputTextView.backgroundColor = UIColor.systemGray6
+        messageInputBar.inputTextView.layer.cornerRadius = 18
+        messageInputBar.inputTextView.layer.masksToBounds = true
+        messageInputBar.inputTextView.textContainerInset = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
+        messageInputBar.inputTextView.placeholderLabelInsets = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
     }
     
     private func loadMessages() {
@@ -103,30 +136,18 @@ class ChatViewController: MessagesViewController {
 }
 
 // MARK: - MessagesDataSource
-
 extension ChatViewController: MessagesDataSource {
-    
-    var currentSender: SenderType {
-        return currentUser
-    }
-
-    func numberOfSections(in messagesCollectionView: MessagesCollectionView) -> Int {
-        return messages.count
-    }
-
-    func messageForItem(at indexPath: IndexPath,
-                        in messagesCollectionView: MessagesCollectionView) -> MessageKit.MessageType {
+    var currentSender: SenderType { return currentUser }
+    func numberOfSections(in messagesCollectionView: MessagesCollectionView) -> Int { return messages.count }
+    func messageForItem(at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> MessageType {
         return messages[indexPath.section]
     }
 }
 
-
 // MARK: - MessagesDisplayDelegate
 extension ChatViewController: MessagesDisplayDelegate {
     func backgroundColor(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> UIColor {
-        return isFromCurrentSender(message: message) 
-            ? accentColor
-            : UIColor.systemGray5
+        return isFromCurrentSender(message: message) ? accentColor : UIColor.systemGray6
     }
     
     func textColor(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> UIColor {

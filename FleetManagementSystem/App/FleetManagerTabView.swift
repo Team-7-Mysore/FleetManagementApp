@@ -39,8 +39,8 @@ struct FleetManagerTabView: View {
                 }
 
         }
-        .accentColor(.TechBlue)
-        .tint(.TechBlue)
+        .accentColor(AppTheme.accentColor(for: .fleetManager))
+        .tint(AppTheme.accentColor(for: .fleetManager))
     }
 }
 

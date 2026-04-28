@@ -70,7 +70,7 @@ struct ChatListView: View {
                 queuedChatRoom = nil
             }
         }) {
-            NewChatView(viewModel: viewModel, currentUserId: currentUserId) { room in
+            NewChatView(viewModel: viewModel, currentUserId: currentUserId, currentUserRole: currentUserRole) { room in
                 print("🚀 Room received from NewChatView: \(room.id)")
                 queuedChatRoom = room
                 isShowingNewChat = false
@@ -228,5 +228,6 @@ struct DetailWrapper: View {
         )
         .navigationTitle(otherUserInfo?.name ?? "Chat")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar) // HIDE TAB BAR IN DETAIL
     }
 }

@@ -3,6 +3,7 @@ import SwiftUI
 struct NewChatView: View {
     @ObservedObject var viewModel: ChatViewModel
     let currentUserId: UUID
+    let currentUserRole: AppUserRole?
     var onChatCreated: (ChatRoom) -> Void
     @Environment(\.dismiss) var dismiss
     
@@ -49,7 +50,7 @@ struct NewChatView: View {
             }
             .navigationTitle("New Chat")
             .navigationBarTitleDisplayMode(.inline)
-            .tint(AppTheme.primaryGreen)
+            .tint(AppTheme.accentColor(for: currentUserRole))
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always))
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
