@@ -2,51 +2,47 @@ import SwiftUI
 
 struct ChatListView: View {
     let currentUserId: UUID
-    let currentUserRole: AppUserRole?
     @StateObject private var viewModel = ChatViewModel()
     @State private var isShowingNewChat = false
     @State private var pendingChatRoom: ChatRoom? = nil
     @State private var queuedChatRoom: ChatRoom? = nil
-    
-    private var globalAccent: Color {
-        AppTheme.accentColor(for: currentUserRole)
-    }
+    private let accent = AppTheme.primaryGreen
 
     var body: some View {
-        VStack(spacing: 0) {
-            List {
-                if viewModel.chats.isEmpty && !viewModel.isLoading {
-                    ContentUnavailableView(
-                        "No Messages",
-                        systemImage: "bubble.left.and.bubble.right",
-                        description: Text("Start a conversation with your team.")
-                    )
-                    .listRowSeparator(.hidden)
-                } else {
-                    Section {
-                        ForEach(filteredChats) { chat in
-                            NavigationLink {
-                                DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel, globalAccent: globalAccent)
-                            } label: {
-                                let otherUserName = getOtherUserName(for: chat)
-                                ChatInboxRow(chat: chat, accent: globalAccent, otherUserName: otherUserName)
+        ZStack(alignment: .bottom) {
+            VStack(spacing: 0) {
+                List {
+                    if viewModel.chats.isEmpty && !viewModel.isLoading {
+                        ContentUnavailableView(
+                            "No Messages",
+                            systemImage: "bubble.left.and.bubble.right",
+                            description: Text("Start a conversation with your team.")
+                        )
+                        .listRowSeparator(.hidden)
+                    } else {
+                        Section {
+                            ForEach(filteredChats) { chat in
+                                NavigationLink {
+                                    DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel)
+                                } label: {
+                                    let otherUserName = getOtherUserName(for: chat)
+                                    ChatInboxRow(chat: chat, accent: accent, otherUserName: otherUserName)
+                                }
                             }
                         }
                     }
                 }
+                .listStyle(PlainListStyle())
             }
-            .listStyle(PlainListStyle())
-            
+
             searchBar
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(Color(.systemBackground))
+                .padding(.bottom, 30)
+                .padding(.horizontal, 20)
         }
-        .hideKeyboardOnTap()
         .navigationTitle("Chat")
-        .tint(globalAccent)
+        .tint(accent)
         .navigationDestination(item: $pendingChatRoom) { chat in
-            DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel, globalAccent: globalAccent)
+            DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel)
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -58,7 +54,7 @@ struct ChatListView: View {
                     } label: {
                         Image(systemName: "square.and.pencil")
                             .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(globalAccent)
+                            .foregroundColor(accent)
                     }
                 }
             }
@@ -91,14 +87,14 @@ struct ChatListView: View {
         let query = viewModel.searchText
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
-        
+
         // No search → show all
         guard !query.isEmpty else { return viewModel.chats }
-        
+
         return viewModel.chats.filter { chat in
             let name = (getOtherUserName(for: chat) ?? "").lowercased()
             let message = (chat.lastMessage ?? "").lowercased()
-            
+
             return name.contains(query) || message.contains(query)
         }
     }
@@ -118,7 +114,7 @@ struct ChatListView: View {
             Button("Drivers") { viewModel.selectedRoleFilter = "Driver" }
         } label: {
             Image(systemName: "line.3.horizontal.decrease.circle")
-                .foregroundColor(globalAccent)
+                .foregroundColor(accent)
         }
     }
 
@@ -203,16 +199,15 @@ struct DetailWrapper: View {
     let chat: ChatRoom
     let currentUserId: UUID
     let viewModel: ChatViewModel
-    let globalAccent: Color
 
-    private var otherUserInfo: (id: UUID, name: String, role: String?)? {
+    private var otherUserInfo: (id: UUID, name: String)? {
         guard let otherUserId = chat.participantIds.first(where: { $0 != currentUserId }) else {
             return nil
         }
         guard let user = viewModel.users.first(where: { $0.id == otherUserId }) else {
             return nil
         }
-        return (id: otherUserId, name: user.name, role: user.role)
+        return (id: otherUserId, name: user.name)
     }
 
     var body: some View {
@@ -223,8 +218,7 @@ struct DetailWrapper: View {
                 senderId: otherUserInfo?.id.uuidString ?? UUID().uuidString,
                 displayName: otherUserInfo?.name ?? "Chat"
             ),
-            viewModel: viewModel,
-            accentUIColor: UIColor(globalAccent)
+            viewModel: viewModel, accentUIColor: .tintColor
         )
         .navigationTitle(otherUserInfo?.name ?? "Chat")
         .navigationBarTitleDisplayMode(.inline)

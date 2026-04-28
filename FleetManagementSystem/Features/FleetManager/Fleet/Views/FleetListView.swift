@@ -1,5 +1,5 @@
 import SwiftUI
-
+import Combine
 // MARK: - Models
 struct VehicleCategory: Identifiable {
     let id = UUID()
@@ -9,7 +9,37 @@ struct VehicleCategory: Identifiable {
     let iconColor: Color
     let iconBG: Color
 }
+// MARK: - Image Cache (One-time cache)
+final class ImageCache {
+    static let shared = NSCache<NSString, UIImage>()
+}
 
+// MARK: - Image Loader
+@MainActor
+class ImageLoader: ObservableObject {
+    @Published var image: UIImage?
+
+    func load(from urlString: String?) async {
+        guard let urlString = urlString,
+              let url = URL(string: urlString) else { return }
+
+        // ✅ Check cache first
+        if let cached = ImageCache.shared.object(forKey: urlString as NSString) {
+            self.image = cached
+            return
+        }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            if let uiImage = UIImage(data: data) {
+                ImageCache.shared.setObject(uiImage, forKey: urlString as NSString)
+                self.image = uiImage
+            }
+        } catch {
+            print("❌ Image load failed:", error)
+        }
+    }
+}
 // MARK: - Main Fleet View
 struct FleetListView: View {
     @StateObject private var vm = FleetListViewModel()
@@ -47,7 +77,7 @@ struct FleetListView: View {
                         maintenanceListSection(
                             title: "Upcoming Maintenance",
                             alerts: vm.maintenanceAlerts,
-                            emptyText: "All vehicles operational",
+                            emptyText: "No upcoming maintenance",
                             badgeColor: .blue
                         )
 
@@ -313,14 +343,18 @@ struct VehicleCategoryDetailView: View {
                 VehicleDetailView(vehicle: vehicle)
             }
         }
-        .confirmationDialog("Delete Vehicle", isPresented: $showingDeleteConfirmation, presenting: vehicleToDelete) { vehicle in
-            Button("Delete \(vehicle.name)", role: .destructive) {
+        .alert("Delete Vehicle", isPresented: $showingDeleteConfirmation, presenting: vehicleToDelete) { vehicle in
+
+            Button("Delete", role: .destructive) {
                 Task { await vm.deleteVehicle(vehicle) }
             }
+
             Button("Cancel", role: .cancel) { }
+
         } message: { vehicle in
             Text("Are you sure you want to delete \(vehicle.registrationNumber)? This action cannot be undone.")
         }
+
     }
 
     private var vehicleList: some View {
@@ -341,7 +375,7 @@ struct VehicleCategoryDetailView: View {
                         showingDeleteConfirmation = true
                     } label: {
                         Label("Delete", systemImage: "trash")
-                    }
+                    }.tint(.red)
                 }
             }
         }
@@ -352,18 +386,27 @@ struct VehicleCategoryDetailView: View {
 // MARK: - Compact Vehicle Row
 struct CompactVehicleRow: View {
     let vehicle: Vehicle
-
+    @StateObject private var loader = ImageLoader()
     var body: some View {
         HStack(spacing: 16) {
-            AsyncImage(url: URL(string: vehicle.imageURL ?? "")) { image in
-                image.resizable().scaledToFill()
-            } placeholder: {
-                ZStack {
+
+
+            ZStack {
+                if let img = loader.image {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                } else {
                     Color(.tertiarySystemFill)
                     Image(systemName: vehicle.imageSystemName)
                         .font(.title3)
                         .foregroundColor(.secondary)
                 }
+            }
+            .frame(width: 60, height: 60)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .task {
+                await loader.load(from: vehicle.imageURL)
             }
             .frame(width: 60, height: 60)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))

@@ -8,6 +8,7 @@ struct FleetManagerTripDetailView: View {
     @StateObject private var vm: TripDetailViewModel
     @State private var showingEditSheet = false
     @State private var cameraPosition: MapCameraPosition = .automatic
+    @State private var hasAutoFocusedVehicle = false
     
     init(trip: Trip) {
         self.trip = trip
@@ -44,6 +45,16 @@ struct FleetManagerTripDetailView: View {
                                             .foregroundStyle(.blue.gradient)
                                     }
                                 }
+                            }
+
+                            // Geofences
+                            ForEach(vm.geofences) { geofence in
+                                MapCircle(
+                                    center: CLLocationCoordinate2D(latitude: geofence.latitude, longitude: geofence.longitude),
+                                    radius: geofence.radius
+                                )
+                                .foregroundStyle(geofence.type.color.opacity(0.12))
+                                .stroke(geofence.type.color, lineWidth: 2)
                             }
                         }
                         .frame(height: 320)
@@ -193,23 +204,19 @@ struct FleetManagerTripDetailView: View {
             // MARK: - Vehicle
             if let vehicle = vm.vehicle {
                 Section("Vehicle") {
-                    NavigationLink {
-                        // Potential navigation to vehicle detail
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "car.fill")
-                                .foregroundStyle(.white)
-                                .frame(width: 32, height: 32)
-                                .background(Color.blue.gradient)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(vehicle.name)
-                                    .font(.subheadline.weight(.semibold))
-                                Text(vehicle.registrationNumber)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
+                    HStack(spacing: 12) {
+                        Image(systemName: "car.fill")
+                            .foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .background(Color.blue.gradient)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(vehicle.name)
+                                .font(.subheadline.weight(.semibold))
+                            Text(vehicle.registrationNumber)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         }
                     }
                     
@@ -277,22 +284,20 @@ struct FleetManagerTripDetailView: View {
             EditTripSheet(trip: trip, vm: vm)
         }
         .task {
+            hasAutoFocusedVehicle = false
             await vm.loadTripDetails()
             updateCameraPosition()
             vm.startLocationPolling()
+            await vm.setupRealtimeLocation()
         }
         .onDisappear {
             vm.stopLocationPolling()
         }
         .onChange(of: vm.driverLocation?.latitude) { _ in
-            if let loc = vm.driverLocation {
-                withAnimation(.easeInOut(duration: 0.5)) {
-                    cameraPosition = .region(MKCoordinateRegion(
-                        center: loc,
-                        span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
-                    ))
-                }
-            }
+            focusOnVehicleIfNeeded()
+        }
+        .onChange(of: vm.driverLocation?.longitude) { _ in
+            focusOnVehicleIfNeeded()
         }
         .refreshable {
             await vm.loadTripDetails()
@@ -311,6 +316,18 @@ struct FleetManagerTripDetailView: View {
         
         if !coordinates.isEmpty {
             cameraPosition = .automatic
+        }
+    }
+
+    private func focusOnVehicleIfNeeded() {
+        guard !hasAutoFocusedVehicle else { return }
+        guard let loc = vm.driverLocation else { return }
+        hasAutoFocusedVehicle = true
+        withAnimation(.easeInOut(duration: 0.5)) {
+            cameraPosition = .region(MKCoordinateRegion(
+                center: loc,
+                span: MKCoordinateSpan(latitudeDelta: 0.02, longitudeDelta: 0.02)
+            ))
         }
     }
     
@@ -556,6 +573,7 @@ struct EditTripSheet: View {
                     }
                 }
             }
+            .hideKeyboardOnTap()
             .navigationTitle("Edit Trip")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

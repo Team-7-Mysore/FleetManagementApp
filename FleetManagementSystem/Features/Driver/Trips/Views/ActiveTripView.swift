@@ -21,10 +21,11 @@ struct ActiveTripView: View {
     @StateObject private var locationManager = LocationManager()
     @State private var distance: Double = 0
     @State private var eta: Double = 0
+    @State private var geofences: [Geofence] = []
 
     // Route persistence — tracks the routes table row for this trip
     @State private var savedRouteId: UUID?
-    
+
     // Database points with fallbacks to demonstration points
     var startPoint: CLLocationCoordinate2D {
         if let coord = trip.startCoordinate {
@@ -32,14 +33,14 @@ struct ActiveTripView: View {
         }
         return CLLocationCoordinate2D(latitude: 12.3060, longitude: 76.6547)
     }
-    
+
     var endPoint: CLLocationCoordinate2D {
         if let coord = trip.endCoordinate {
             return CLLocationCoordinate2D(latitude: coord.latitude, longitude: coord.longitude)
         }
         return CLLocationCoordinate2D(latitude: 12.9716, longitude: 77.5946)
     }
-    
+
     private var formattedDistance: String {
         guard distance > 0 else { return "--" }
         return String(format: "%.1f km", distance / 1000)
@@ -47,11 +48,11 @@ struct ActiveTripView: View {
 
     private var formattedETA: String {
         guard eta > 0 else { return "--" }
-        
+
         let minutes = Int(eta / 60)
         let hours = minutes / 60
         let remainingMinutes = minutes % 60
-        
+
         if hours > 0 {
             return "\(hours)h \(remainingMinutes)m"
         } else {
@@ -64,16 +65,25 @@ struct ActiveTripView: View {
             // MARK: - Map
             Map(position: $cameraPosition) {
                 UserAnnotation()
-                
+
                 Marker("Start", coordinate: startPoint)
                     .tint(.green)
-                
+
                 Marker("Destination", coordinate: endPoint)
                     .tint(.red)
-                
+
                 if let route = route {
                     MapPolyline(route.polyline)
                         .stroke(.blue, lineWidth: 5)
+                }
+
+                ForEach(geofences) { geofence in
+                    MapCircle(
+                        center: CLLocationCoordinate2D(latitude: geofence.latitude, longitude: geofence.longitude),
+                        radius: geofence.radius
+                    )
+                    .foregroundStyle(geofence.type.color.opacity(0.12))
+                    .stroke(geofence.type.color, lineWidth: 2)
                 }
             }
             .mapControls {
@@ -116,7 +126,7 @@ struct ActiveTripView: View {
                         .background(Color.blue)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
-                    
+
                     HStack(spacing: 12) {
                         Button { showReportIssue = true } label: {
                             HStack(spacing: 6) {
@@ -173,11 +183,11 @@ struct ActiveTripView: View {
         .navigationTitle("Active Trip")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
-        .confirmationDialog("End Trip", isPresented: $showEndTripConfirmation) {
+        .alert("End Trip", isPresented: $showEndTripConfirmation) {
+            Button("Cancel", role: .cancel) {}
             Button("End Trip", role: .destructive) {
                 router.path.append(AppRoute.vehicleInspection(trip, type: .postTrip))
             }
-            Button("Cancel", role: .cancel) {}
         } message: {
             Text("Are you sure you want to end this trip?")
         }
@@ -199,8 +209,22 @@ struct ActiveTripView: View {
             startTimer()
             createRoute()
             locationManager.requestLocation()
+            
+            Task {
+                await fetchGeofences()
+            }
         }
         .onDisappear { stopTimer() }
+    }
+
+    private func fetchGeofences() async {
+        let geofenceService = GeofenceService()
+        do {
+            self.geofences = try await geofenceService.fetchGeofencesForVehicle(trip.vehicleId)
+            print("🗺️ ActiveTripView: Geofences loaded: \(geofences.count)")
+        } catch {
+            print("❌ ActiveTripView: Failed to load geofences: \(error)")
+        }
     }
 
     private func tripInfoItem(value: String, label: String) -> some View {
@@ -244,33 +268,33 @@ struct ActiveTripView: View {
     private func createRoute() {
         let sourcePlacemark = MKPlacemark(coordinate: startPoint)
         let destPlacemark = MKPlacemark(coordinate: endPoint)
-        
+
         let sourceItem = MKMapItem(placemark: sourcePlacemark)
         let destItem = MKMapItem(placemark: destPlacemark)
-        
+
         let request = MKDirections.Request()
         request.source = sourceItem
         request.destination = destItem
         request.transportType = .automobile
-        
+
         let directions = MKDirections(request: request)
         directions.calculate { response, error in
-            
+
             if let error = error {
                 print("Error getting route: \(error.localizedDescription)")
                 return
             }
-            
+
             guard let response = response else {
                 print("No response received")
                 return
             }
-            
+
             guard let route = response.routes.first else {
                 print("No routes found")
                 return
             }
-            
+
             DispatchQueue.main.async {
                 self.route = route
                 self.distance = route.distance
@@ -289,12 +313,12 @@ struct ActiveTripView: View {
             }
         }
     }
-    
+
     private func openInMaps() {
         let destinationPlacemark = MKPlacemark(coordinate: endPoint)
         let destinationItem = MKMapItem(placemark: destinationPlacemark)
         destinationItem.name = trip.endLocation
-        
+
         destinationItem.openInMaps(launchOptions: [
             MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
         ])
@@ -493,51 +517,51 @@ struct SOSButton: View {
 import Combine
 
 class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
-    
+
     private let manager = CLLocationManager()
-    
+
     @Published var userLocation: CLLocationCoordinate2D?
-    
+
     override init() {
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
     }
-    
+
     func requestLocation() {
         manager.requestWhenInUseAuthorization()
     }
-    
+
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        
+
         switch manager.authorizationStatus {
-            
+
         case .notDetermined:
             manager.requestWhenInUseAuthorization()
-            
+
         case .authorizedWhenInUse, .authorizedAlways:
             print("✅ Authorized")
             manager.startUpdatingLocation()
-            
+
         case .denied, .restricted:
             print("❌ Permission denied")
-            
+
         default:
             break
         }
     }
-    
+
     // Delegate method (this is where updates come)
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
         print("📍 didUpdateLocations called")
         guard let location = locations.last else { return }
-        
+
         DispatchQueue.main.async {
             print("📍 New location:", location.coordinate)
             self.userLocation = location.coordinate
         }
     }
-    
+
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         print("Location error: \(error.localizedDescription)")
     }

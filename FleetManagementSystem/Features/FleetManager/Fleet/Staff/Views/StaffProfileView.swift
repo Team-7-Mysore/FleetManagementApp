@@ -15,7 +15,7 @@ import Supabase
 private struct DriverRecord: Decodable {
     let driver_id: String
     let license_no: String
-    let license_expiry: String   
+    let license_expiry: String
 }
 
 private struct DriverTripRow: Decodable {
@@ -139,7 +139,7 @@ struct StaffProfileView: View {
     @State private var partsCost: Double = 0
     @State private var issueSummary = IssueSummary()
     @State private var lastActivityDate: Date? = nil
-    
+
     @State private var isLoadingMaintenance: Bool = false
     @State private var maintenanceError: String? = nil
 
@@ -170,7 +170,7 @@ struct StaffProfileView: View {
                     VStack(spacing: 4) {
                         Text(staff.name)
                             .font(.title2.weight(.bold))
-                        
+
                         HStack(spacing: 6) {
                             Image(systemName: staff.role == .driver ? "steeringwheel" : "person.fill")
                                 .font(.caption)
@@ -269,122 +269,153 @@ struct StaffProfileView: View {
                 }
             }
 
-            // ── 6. OVERVIEW & STATS ────────────────────
+            // ── 6. PERFORMANCE DASHBOARD (completed trips only) ────────────────────
             if staff.role == .driver {
-                Section(header: Text("Performance Dashboard").foregroundColor(.primary)) {
-                    VStack(spacing: 16) {
+                if isLoadingDriver {
+                    Section(header: Text("Performance Dashboard").foregroundColor(.primary)) {
                         HStack {
-                            VStack(spacing: 6) {
-                                Image(systemName: "map.fill")
-                                    .font(.title2)
-                                    .foregroundColor(accentColor.opacity(0.8))
-                                Text("\(tripStats.totalTrips)")
-                                    .font(.title.weight(.bold))
-                                    .foregroundColor(.primary)
-                                Text("Total Trips")
-                                    .font(.caption.weight(.medium))
-                                    .foregroundColor(.secondary)
-                                    .textCase(.uppercase)
-                            }
-                            .frame(maxWidth: .infinity)
-                            
-                            Divider()
-                            
-                            VStack(spacing: 6) {
-                                Image(systemName: "ruler.fill")
-                                    .font(.title2)
-                                    .foregroundColor(accentColor.opacity(0.8))
-                                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                                    Text(formatDistanceNum(tripStats.totalDistance))
+                            ProgressView().padding(.trailing, 6)
+                            Text("Loading stats…").foregroundColor(.secondary)
+                        }
+                    }
+                } else if tripStats.totalTrips > 0 {
+                    Section(header: Text("Performance Dashboard").foregroundColor(.primary)) {
+                        VStack(spacing: 16) {
+                            HStack {
+                                VStack(spacing: 6) {
+                                    Image(systemName: "map.fill")
+                                        .font(.title2)
+                                        .foregroundColor(accentColor.opacity(0.8))
+                                    Text("\(tripStats.totalTrips)")
                                         .font(.title.weight(.bold))
                                         .foregroundColor(.primary)
-                                    Text("km")
-                                        .font(.callout.weight(.bold))
+                                    Text("Completed")
+                                        .font(.caption.weight(.medium))
                                         .foregroundColor(.secondary)
+                                        .textCase(.uppercase)
                                 }
-                                Text("Distance")
-                                    .font(.caption.weight(.medium))
-                                    .foregroundColor(.secondary)
-                                    .textCase(.uppercase)
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                        .padding(.vertical, 8)
-                        
-                        Divider()
+                                .frame(maxWidth: .infinity)
 
-                        if let lastDate = tripStats.lastTripDate {
-                            HStack {
-                                Text("Last Trip")
-                                    .font(.subheadline)
-                                    .foregroundColor(.secondary)
-                                Spacer()
-                                Text(formatDate(lastDate))
-                                    .font(.subheadline.weight(.semibold))
-                            }
-                        }
+                                Divider()
 
-                        if !recentTrips.isEmpty {
-                            VStack(alignment: .leading, spacing: 16) {
-                                Text("Recent Distances (km)")
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundColor(.secondary)
-                                    .textCase(.uppercase)
-                                    .padding(.top, 8)
-                                
-                                Chart {
-                                    let trips = Array(recentTrips.prefix(5).reversed())
-                                    ForEach(Array(zip(trips.indices, trips)), id: \.1.trip_id) { index, trip in
-                                        let km = trip.distance_travelled ?? 0
-                                        let dateStr = trip.start_time.flatMap { formatShortDate($0) } ?? ""
-                                        let label = "Trip \(index + 1)|\(dateStr)"
-                                        
-                                        BarMark(
-                                            x: .value("Trip", label),
-                                            y: .value("Distance (km)", km)
-                                        )
-                                        .foregroundStyle(Color.blue.gradient)
-                                        .cornerRadius(6)
-                                        .annotation(position: .top) {
-                                            Text(formatDistanceNum(km))
-                                                .font(.caption2.bold())
-                                                .foregroundColor(.secondary)
+                                VStack(spacing: 6) {
+                                    Image(systemName: "ruler.fill")
+                                        .font(.title2)
+                                        .foregroundColor(accentColor.opacity(0.8))
+                                    HStack(alignment: .firstTextBaseline, spacing: 2) {
+                                        Text(formatDistanceNum(tripStats.totalDistance))
+                                            .font(.title.weight(.bold))
+                                            .foregroundColor(.primary)
+                                        Text("km")
+                                            .font(.callout.weight(.bold))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    Text("Distance")
+                                        .font(.caption.weight(.medium))
+                                        .foregroundColor(.secondary)
+                                        .textCase(.uppercase)
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .padding(.vertical, 8)
+
+                            Divider()
+
+                            if let lastDate = tripStats.lastTripDate {
+                                HStack {
+                                    Text("Last Completed Trip")
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Text(formatDate(lastDate))
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                            }
+
+                            if !recentTrips.isEmpty {
+                                VStack(alignment: .leading, spacing: 16) {
+                                    Text("Recent Distances (km)")
+                                        .font(.footnote.weight(.semibold))
+                                        .foregroundColor(.secondary)
+                                        .textCase(.uppercase)
+                                        .padding(.top, 8)
+
+                                    Chart {
+                                        let trips = Array(recentTrips.prefix(5).reversed())
+                                        ForEach(Array(zip(trips.indices, trips)), id: \.1.trip_id) { index, trip in
+                                            let km = trip.distance_travelled ?? 0
+                                            let dateStr = trip.start_time.flatMap { formatShortDate($0) } ?? ""
+                                            let label = "Trip \(index + 1)|\(dateStr)"
+
+                                            BarMark(
+                                                x: .value("Trip", label),
+                                                y: .value("Distance (km)", km)
+                                            )
+                                            .foregroundStyle(Color.blue.gradient)
+                                            .cornerRadius(6)
+                                            .annotation(position: .top) {
+                                                Text(formatDistanceNum(km))
+                                                    .font(.caption2.bold())
+                                                    .foregroundColor(.secondary)
+                                            }
                                         }
                                     }
-                                }
-                                .frame(height: 180)
-                                .chartXAxis {
-                                    AxisMarks { value in
-                                        AxisValueLabel {
-                                            if let label = value.as(String.self) {
-                                                let parts = label.split(separator: "|")
-                                                if parts.count == 2 {
-                                                    VStack(spacing: 2) {
-                                                        Text(String(parts[0]))
-                                                            .font(.caption2.weight(.medium))
-                                                            .foregroundColor(.primary)
-                                                        Text(String(parts[1]))
-                                                            .font(.system(size: 10))
-                                                            .foregroundColor(.secondary)
+                                    .frame(height: 180)
+                                    .chartXAxis {
+                                        AxisMarks { value in
+                                            AxisValueLabel {
+                                                if let label = value.as(String.self) {
+                                                    let parts = label.split(separator: "|")
+                                                    if parts.count == 2 {
+                                                        VStack(spacing: 2) {
+                                                            Text(String(parts[0]))
+                                                                .font(.caption2.weight(.medium))
+                                                                .foregroundColor(.primary)
+                                                            Text(String(parts[1]))
+                                                                .font(.system(size: 10))
+                                                                .foregroundColor(.secondary)
+                                                        }
+                                                    } else {
+                                                        Text(label)
                                                     }
-                                                } else {
-                                                    Text(label)
                                                 }
                                             }
                                         }
                                     }
-                                }
-                                .chartYAxis {
-                                    AxisMarks(position: .leading) {
-                                        AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4]))
-                                        AxisValueLabel()
+                                    .chartYAxis {
+                                        AxisMarks(position: .leading) {
+                                            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4]))
+                                            AxisValueLabel()
+                                        }
                                     }
                                 }
+                                .padding(.bottom, 4)
                             }
-                            .padding(.bottom, 4)
                         }
+                        .padding(.vertical, 8)
                     }
-                    .padding(.vertical, 8)
+                } else {
+                    // No completed trips yet
+                    Section(header: Text("Performance Dashboard").foregroundColor(.primary)) {
+                        HStack(spacing: 14) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.gray.opacity(0.12))
+                                    .frame(width: 44, height: 44)
+                                Image(systemName: "chart.bar.xaxis")
+                                    .font(.title3)
+                                    .foregroundColor(.secondary)
+                            }
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("No completed trips yet")
+                                    .font(.subheadline.weight(.medium))
+                                Text("Stats will appear once a trip is marked as completed.")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 6)
+                    }
                 }
             } else {
                 Section(header: Text("Overview").foregroundColor(.primary)) {
@@ -413,11 +444,11 @@ struct StaffProfileView: View {
                                 Spacer()
                                 statusBadge(trip.status ?? "ongoing")
                             }
-                            
+
                             VStack(alignment: .leading, spacing: 12) {
                                 Text(trip.trip_name ?? "Unnamed Trip")
                                     .font(.headline)
-                                
+
                                 if let origin = trip.origin, let dest = trip.destination {
                                     HStack(alignment: .top, spacing: 12) {
                                         VStack(spacing: 4) {
@@ -432,7 +463,7 @@ struct StaffProfileView: View {
                                                 .foregroundColor(.red)
                                         }
                                         .padding(.top, 4)
-                                        
+
                                         VStack(alignment: .leading, spacing: 16) {
                                             Text(shortAddress(origin))
                                                 .font(.subheadline)
@@ -496,7 +527,7 @@ struct StaffProfileView: View {
                                             .stroke(Color.primary.opacity(0.2), lineWidth: 1)
                                     )
                                     .cornerRadius(4)
-                                    
+
                                 if let vname = vehicle.vehicle_name {
                                     Text(vname)
                                         .font(.subheadline)
@@ -530,12 +561,12 @@ struct StaffProfileView: View {
                                     .font(.title3)
                                     .foregroundColor(.gray)
                             }
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("No Vehicle")
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("No Assigned Vehicle")
                                     .font(.headline)
                                     .foregroundColor(.primary)
-                                Text("No vehicle currently assigned")
-                                    .font(.subheadline)
+                                Text("No trip has been assigned to this driver yet.")
+                                    .font(.caption)
                                     .foregroundColor(.secondary)
                             }
                         }
@@ -551,7 +582,7 @@ struct StaffProfileView: View {
                         HStack(spacing: 16) {
                             let statusRaw = trip.status?.lowercased() ?? "unknown"
                             let style = tripStatusStyle(statusRaw)
-                            
+
                             ZStack {
                                 Circle()
                                     .fill(style.bg.opacity(0.15))
@@ -560,7 +591,7 @@ struct StaffProfileView: View {
                                     .font(.title3)
                                     .foregroundColor(style.fg)
                             }
-                            
+
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack(alignment: .firstTextBaseline) {
                                     Text(trip.trip_name ?? "Unnamed Trip")
@@ -574,7 +605,7 @@ struct StaffProfileView: View {
                                             .foregroundColor(.primary)
                                     }
                                 }
-                                
+
                                 if let origin = trip.origin, let dest = trip.destination {
                                     HStack(spacing: 6) {
                                         Text(shortAddress(origin))
@@ -587,7 +618,7 @@ struct StaffProfileView: View {
                                     .foregroundColor(.secondary)
                                     .lineLimit(1)
                                 }
-                                
+
                                 HStack {
                                     if let start = trip.start_time {
                                         Text(formatTimestamp(start))
@@ -632,9 +663,9 @@ struct StaffProfileView: View {
                                         .textCase(.uppercase)
                                 }
                                 .frame(maxWidth: .infinity)
-                                
+
                                 Divider()
-                                
+
                                 VStack(spacing: 6) {
                                     Image(systemName: "clock.fill")
                                         .font(.title2)
@@ -653,14 +684,14 @@ struct StaffProfileView: View {
                                         .textCase(.uppercase)
                                 }
                                 .frame(maxWidth: .infinity)
-                                
+
                                 Divider()
-                                
+
                                 VStack(spacing: 6) {
                                     Image(systemName: "dollarsign.circle.fill")
                                         .font(.title2)
                                         .foregroundColor(accentColor.opacity(0.8))
-                                    Text("$\(formatDistanceNum(workStats.totalCost))")
+                                    Text("₹\(formatDistanceNum(workStats.totalCost))")
                                         .font(.title.weight(.bold))
                                         .foregroundColor(.primary)
                                         .lineLimit(1)
@@ -674,9 +705,9 @@ struct StaffProfileView: View {
                                 .frame(maxWidth: .infinity)
                             }
                             .padding(.vertical, 8)
-                            
+
                             Divider()
-                            
+
                             if let lastDate = lastActivityDate {
                                 HStack {
                                     Text("Last Activity")
@@ -687,7 +718,7 @@ struct StaffProfileView: View {
                                         .font(.subheadline.weight(.semibold))
                                 }
                             }
-                            
+
                             // Task & Issues summary
                             HStack(spacing: 12) {
                                 // Tasks Progress
@@ -704,14 +735,14 @@ struct StaffProfileView: View {
                                 .padding(12)
                                 .background(Color.secondary.opacity(0.08))
                                 .cornerRadius(8)
-                                
+
                                 // Parts Usage
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Parts Usage")
                                         .font(.caption.weight(.semibold))
                                         .foregroundColor(.secondary)
                                         .textCase(.uppercase)
-                                    Text("$\(formatDistanceNum(partsCost))")
+                                    Text("₹\(formatDistanceNum(partsCost))")
                                         .font(.title3.weight(.bold))
                                         .foregroundColor(accentColor)
                                 }
@@ -724,7 +755,7 @@ struct StaffProfileView: View {
                         .padding(.vertical, 8)
                     }
                 }
-                
+
                 // 2. CURRENT WORK
                 Section(header: Text("Current Work").foregroundColor(.primary)) {
                     if let workOrder = activeWorkOrder {
@@ -741,11 +772,11 @@ struct StaffProfileView: View {
                                 Spacer()
                                 maintenanceStatusBadge(workOrder.status ?? "pending")
                             }
-                            
+
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(workOrder.issue_title)
                                     .font(.headline)
-                                
+
                                 HStack {
                                     if let priority = workOrder.priority {
                                         Text(priority.uppercased())
@@ -756,7 +787,7 @@ struct StaffProfileView: View {
                                             .background(priorityColor(priority).opacity(0.15))
                                             .cornerRadius(4)
                                     }
-                                    
+
                                     if let vehicle = activeWorkOrderVehicle {
                                         Text(vehicle.number_plate)
                                             .font(.caption.monospaced())
@@ -786,7 +817,7 @@ struct StaffProfileView: View {
                         .padding(.vertical, 4)
                     }
                 }
-                
+
                 // 3. ISSUES SNAPSHOT
                 Section(header: Text("Issues Snapshot").foregroundColor(.primary)) {
                     HStack(spacing: 20) {
@@ -796,14 +827,14 @@ struct StaffProfileView: View {
                     }
                     .padding(.vertical, 8)
                 }
-                
+
                 // 4. RECENT WORK ORDERS
                 if !recentWorkOrders.isEmpty {
                     Section(header: Text("Recent Work Orders").foregroundColor(.primary)) {
                         ForEach(recentWorkOrders, id: \.work_order_id) { order in
                             HStack(spacing: 16) {
                                 let statusRaw = order.status?.lowercased() ?? "unknown"
-                                
+
                                 ZStack {
                                     Circle()
                                         .fill(maintenanceStatusColor(statusRaw).opacity(0.15))
@@ -812,7 +843,7 @@ struct StaffProfileView: View {
                                         .font(.title3)
                                         .foregroundColor(maintenanceStatusColor(statusRaw))
                                 }
-                                
+
                                 VStack(alignment: .leading, spacing: 6) {
                                     HStack(alignment: .firstTextBaseline) {
                                         Text(order.issue_title)
@@ -826,7 +857,7 @@ struct StaffProfileView: View {
                                                 .foregroundColor(priorityColor(priority))
                                         }
                                     }
-                                    
+
                                     HStack {
                                         if let start = order.created_at {
                                             Text(formatTimestamp(start))
@@ -904,21 +935,23 @@ struct StaffProfileView: View {
 
     private func tripStatusStyle(_ raw: String) -> (bg: Color, fg: Color, label: String) {
         switch raw.lowercased() {
-        case "completed":            return (.green,  .green,  "Completed")
-        case "ongoing":              return (.blue,   .blue,   "Ongoing")
-        case "assigned":             return (.orange, .orange, "Assigned")
-        case "cancelled", "canceled":return (.red,    .red,    "Cancelled")
-        default:                     return (.gray,   .gray,   raw.capitalized)
+        case "completed":                        return (.green,  .green,  "Completed")
+        case "ongoing", "in_transit":            return (.blue,   .blue,   "In Transit")
+        case "in_progress":                      return (.blue,   .blue,   "In Progress")
+        case "assigned", "scheduled":            return (.orange, .orange, "Assigned")
+        case "cancelled", "canceled":            return (.red,    .red,    "Cancelled")
+        default:                                 return (.gray,   .gray,   raw.capitalized)
         }
     }
 
     private func statusIcon(_ raw: String) -> String {
         switch raw.lowercased() {
-        case "completed":            return "checkmark.circle.fill"
-        case "ongoing":              return "location.circle.fill"
-        case "assigned":             return "clock.fill"
-        case "cancelled", "canceled":return "xmark.circle.fill"
-        default:                     return "questionmark.circle.fill"
+        case "completed":                     return "checkmark.circle.fill"
+        case "ongoing", "in_transit":         return "location.circle.fill"
+        case "in_progress":                   return "arrow.triangle.2.circlepath.circle.fill"
+        case "assigned", "scheduled":         return "clock.fill"
+        case "cancelled", "canceled":         return "xmark.circle.fill"
+        default:                              return "questionmark.circle.fill"
         }
     }
 
@@ -981,10 +1014,12 @@ struct StaffProfileView: View {
     // MARK: - Fetch: trip stats (completed trips, total distance, last trip)
     private func fetchTripStats(driverId: String) async {
         do {
+            // Only count completed trips for performance metrics
             let rows: [DriverTripRow] = try await SupabaseManager.shared.client
                 .from("trips")
                 .select("trip_id, distance_travelled, start_time, end_time, status")
                 .eq("driver_id", value: driverId)
+                .eq("status", value: "completed")
                 .execute()
                 .value
 
@@ -992,16 +1027,13 @@ struct StaffProfileView: View {
             var latestDate: Date? = nil
 
             for row in rows {
-                let status = row.status?.lowercased() ?? ""
-                if status != "cancelled" && status != "canceled" {
-                    stats.totalTrips    += 1
-                    stats.totalDistance += row.distance_travelled ?? 0
-                    
-                    let dateStr = row.end_time ?? row.start_time
-                    if let dStr = dateStr, let d = parseTimestamp(dStr) {
-                        if latestDate == nil || d > latestDate! {
-                            latestDate = d
-                        }
+                stats.totalTrips    += 1
+                stats.totalDistance += row.distance_travelled ?? 0
+
+                let dateStr = row.end_time ?? row.start_time
+                if let dStr = dateStr, let d = parseTimestamp(dStr) {
+                    if latestDate == nil || d > latestDate! {
+                        latestDate = d
                     }
                 }
             }
@@ -1013,38 +1045,63 @@ struct StaffProfileView: View {
         }
     }
 
-    // MARK: - Fetch: active trip (status = assigned / ongoing)
+    // MARK: - Fetch: active trip (mirrors DriverDashboardViewModel — no server-side status filter)
     private func fetchActiveTrip(driverId: String) async {
+        // Active statuses (same set used by DriverDashboardViewModel's TripMap init)
+        let activeStatuses: Set<String> = [
+            "assigned", "planned", "upcoming", "scheduled",   // → .planned
+            "active", "in_progress", "inprogress", "started", // → .inProgress
+            "ongoing", "in_transit"                            // extra live statuses
+        ]
+
         do {
+            // Fetch all trips for this driver (same as DriverDashboardViewModel)
             let rows: [DriverTripRow] = try await SupabaseManager.shared.client
                 .from("trips")
                 .select("trip_id, trip_name, origin, destination, distance_travelled, start_time, end_time, status, vehicle_id")
                 .eq("driver_id", value: driverId)
-                .in("status", values: ["assigned", "ongoing"])
-                .limit(1)
+                .order("start_time", ascending: false)
+                .limit(20)
                 .execute()
                 .value
 
-            let trip = rows.first
-            await MainActor.run { self.activeTrip = trip }
+            print("🚗 All trips fetched: \(rows.count), statuses: \(rows.map { $0.status ?? "nil" })")
 
-            // Step 3: if active trip has a vehicle, fetch vehicle info
-            if let vehicleId = trip?.vehicle_id {
+            // Client-side: pick the most recent active/upcoming trip
+            let trip = rows.first { row in
+                let s = (row.status ?? "").lowercased()
+                return activeStatuses.contains(s)
+            }
+
+            await MainActor.run { self.activeTrip = trip }
+            print("🟢 Active trip: \(trip?.trip_id ?? "none"), vehicle_id: \(trip?.vehicle_id ?? "none")")
+
+            // Fetch vehicle from the active trip if it has one
+            if let vehicleId = trip?.vehicle_id, !vehicleId.isEmpty {
                 await fetchVehicleInfo(vehicleId: vehicleId)
+            } else {
+                // Fallback: check any trip with a vehicle_id (most recent assigned)
+                if let fallbackTrip = rows.first(where: { $0.vehicle_id != nil && !($0.vehicle_id ?? "").isEmpty }),
+                   let vehicleId = fallbackTrip.vehicle_id {
+                    print("🔄 Fallback vehicle from trip: \(fallbackTrip.trip_id)")
+                    await fetchVehicleInfo(vehicleId: vehicleId)
+                }
             }
         } catch {
             print("fetchActiveTrip error: \(error)")
         }
     }
 
-    // MARK: - Fetch: recent trips (last 5)
+
+    // MARK: - Fetch: recent completed trips (last 5 for chart)
     private func fetchRecentTrips(driverId: String) async {
         do {
             let rows: [DriverTripRow] = try await SupabaseManager.shared.client
                 .from("trips")
                 .select("trip_id, trip_name, origin, destination, distance_travelled, start_time, end_time, status, vehicle_id")
                 .eq("driver_id", value: driverId)
-                .order("start_time", ascending: false)
+                .eq("status", value: "completed")
+                .order("end_time", ascending: false)
                 .limit(5)
                 .execute()
                 .value
@@ -1098,17 +1155,17 @@ struct StaffProfileView: View {
 
     private func fetchMaintenanceDetails() async {
         await MainActor.run { isLoadingMaintenance = true }
-        
+
         let woIds = await fetchWorkOrders()
-        
+
         async let partsFetch: () = fetchPartsUsage(workOrderIds: woIds)
         async let issuesFetch: () = fetchIssuesSummary()
-        
+
         _ = await (partsFetch, issuesFetch)
-        
+
         await MainActor.run { isLoadingMaintenance = false }
     }
-    
+
     private func fetchWorkOrders() async -> [String] {
         var ids: [String] = []
         do {
@@ -1119,45 +1176,45 @@ struct StaffProfileView: View {
                 .order("created_at", ascending: false)
                 .execute()
                 .value
-            
+
             ids = rows.map { $0.work_order_id }
             var activeWO: WorkOrderRow? = nil
             var stats = WorkStats()
             var recent: [WorkOrderRow] = []
             var latestDate: Date? = nil
-            
+
             for row in rows {
                 let status = row.status?.lowercased() ?? ""
                 if activeWO == nil && (status == "pending" || status == "in progress") {
                     activeWO = row
                 }
-                
+
                 if status == "completed" {
                     stats.completedOrders += 1
                 }
                 stats.totalHours += row.hours_worked ?? 0
                 stats.totalCost += row.est_cost ?? 0
-                
+
                 if let uStr = row.updated_at, let d = parseTimestamp(uStr) {
                     if latestDate == nil || d > latestDate! {
                         latestDate = d
                     }
                 }
             }
-            
+
             recent = Array(rows.prefix(5))
-            
+
             await MainActor.run {
                 self.activeWorkOrder = activeWO
                 self.workStats = stats
                 self.recentWorkOrders = recent
                 self.lastActivityDate = latestDate
             }
-            
+
             if let wId = activeWO?.work_order_id {
                 await fetchTasksSummary(workOrderId: wId)
             }
-            
+
             if let vId = activeWO?.vehicle_id {
                 await fetchMaintenanceVehicleInfo(vehicleId: vId)
             }
@@ -1167,7 +1224,7 @@ struct StaffProfileView: View {
         }
         return ids
     }
-    
+
     private func fetchTasksSummary(workOrderId: String) async {
         do {
             let tasks: [TaskRow] = try await SupabaseManager.shared.client
@@ -1176,7 +1233,7 @@ struct StaffProfileView: View {
                 .eq("work_order_id", value: workOrderId)
                 .execute()
                 .value
-            
+
             var summary = TaskSummary()
             summary.total = tasks.count
             summary.completed = tasks.filter { $0.is_completed == true }.count
@@ -1185,7 +1242,7 @@ struct StaffProfileView: View {
             print("fetchTasksSummary error: \(error)")
         }
     }
-    
+
     private func fetchMaintenanceVehicleInfo(vehicleId: String) async {
         do {
             let rows: [VehicleRow] = try await SupabaseManager.shared.client
@@ -1200,7 +1257,7 @@ struct StaffProfileView: View {
             print("fetchMaintenanceVehicleInfo error: \(error)")
         }
     }
-    
+
     private func fetchPartsUsage(workOrderIds: [String]) async {
         guard !workOrderIds.isEmpty else { return }
         do {
@@ -1210,14 +1267,14 @@ struct StaffProfileView: View {
                 .in("work_order_id", values: workOrderIds)
                 .execute()
                 .value
-            
+
             var total: Double = 0
             for p in parts {
                 let q = Double(p.quantity_required ?? 0)
                 let c = p.cost_at_time ?? 0
                 total += (q * c)
             }
-            
+
             await MainActor.run { self.partsCost = total }
         } catch {
             print("fetchPartsUsage error: \(error)")
@@ -1232,7 +1289,7 @@ struct StaffProfileView: View {
                 .eq("maintenance_personnel_id", value: staff.user_id)
                 .execute()
                 .value
-            
+
             var summary = IssueSummary()
             for issue in issues {
                 let s = issue.status?.lowercased() ?? ""
@@ -1252,7 +1309,7 @@ struct StaffProfileView: View {
     private func maintenanceStatusBadge(_ raw: String) -> some View {
         let label = raw.capitalized
         let color = maintenanceStatusColor(raw)
-        
+
         Text(label)
             .font(.caption2.weight(.bold))
             .foregroundColor(color)

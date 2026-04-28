@@ -2,6 +2,7 @@ import SwiftUI
 import Combine
 import Supabase
 import MapKit
+import Foundation
 
 @MainActor
 final class TripDetailViewModel: ObservableObject {
@@ -10,6 +11,7 @@ final class TripDetailViewModel: ObservableObject {
     @Published var vehicle: Vehicle?
     @Published var driver: DriverInfo?
     @Published var driverLocation: CLLocationCoordinate2D?
+    @Published var geofences: [Geofence] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
     
@@ -18,9 +20,14 @@ final class TripDetailViewModel: ObservableObject {
     @Published var deviationRadius: Double = 500.0 // Default 500 meters, adjustable in session
     @Published var isCurrentDeviationApproved = false
     
+    private let geofenceService = GeofenceService()
     private var routeCoordinates: [CLLocationCoordinate2D] = []
+    private var trackedVehicleId: UUID?
+    private var trackedFleetManagerId: UUID?
+    private var hasSentDeviationNotification = false
     
     private var locationPollingTask: Task<Void, Never>?
+    private var realtimeChannel: RealtimeChannelV2?
     
     init(trip: Trip) {
         self.trip = trip
@@ -28,6 +35,9 @@ final class TripDetailViewModel: ObservableObject {
     
     deinit {
         locationPollingTask?.cancel()
+        // Note: Realtime channels are usually cleaned up automatically, 
+        // but we should ideally call unsubscribe. However, in @MainActor 
+        // deinit, we can't easily call async methods.
     }
     
     /// Starts a polling loop that refreshes the vehicle location every 2 seconds.
@@ -44,6 +54,13 @@ final class TripDetailViewModel: ObservableObject {
     func stopLocationPolling() {
         locationPollingTask?.cancel()
         locationPollingTask = nil
+        
+        if let channel = realtimeChannel {
+            Task {
+                await channel.unsubscribe()
+            }
+            realtimeChannel = nil
+        }
     }
     
     /// Allows the manager to acknowledge a deviation (e.g. shortcut) for the current session.
@@ -54,41 +71,148 @@ final class TripDetailViewModel: ObservableObject {
     
     /// Fetches the single latest location for the trip's vehicle from vehicle_locations.
     func refreshVehicleLocation() async {
-        guard let vehicleId = vehicle?.id ?? trip.vehicle_id else {
-            print("⚠️ No vehicle_id available for location fetch")
+        guard let vehicleId = trackedVehicleId ?? vehicle?.id ?? trip.vehicle_id else {
+            print("⚠️ refreshVehicleLocation skipped: no vehicle_id for trip \(trip.id.uuidString.lowercased())")
             return
         }
-        
-        let idString = vehicleId.uuidString.lowercased()
+        let vehicleIdString = vehicleId.uuidString.lowercased()
         
         do {
             let locations: [TripDetailVehicleLocation] = try await SupabaseManager.shared.client
                 .from("vehicle_locations")
-                .select()
-                .eq("vehicle_id", value: idString)
+                .select("vehicle_id, latitude, longitude, timestamp")
+                .eq("vehicle_id", value: vehicleIdString)
                 .order("timestamp", ascending: false)
                 .limit(1)
                 .execute()
                 .value
             
             if let location = locations.first {
-                let newLocation = CLLocationCoordinate2D(
-                    latitude: location.latitude,
-                    longitude: location.longitude
-                )
-                driverLocation = newLocation
-                
-                // Track route deviation if we have a route and the trip is active
-                if !routeCoordinates.isEmpty {
-                    checkRouteDeviation(currentLocation: newLocation)
-                }
-                
-                print("✅ Vehicle location refreshed (2s): \(location.latitude), \(location.longitude) (Deviated: \(isRouteDeviated))")
+                print("📍 Trip \(trip.id.uuidString.lowercased()) fetched location for vehicle \(vehicleIdString): (\(location.latitude), \(location.longitude)) at \(location.timestamp)")
+                updateDriverLocation(lat: location.latitude, lng: location.longitude)
             } else {
-                print("⚠️ No location matching vehicle_id: \(idString)")
+                print("⚠️ Trip \(trip.id.uuidString.lowercased()) found no vehicle_locations row for vehicle \(vehicleIdString) via authenticated session. Retrying with public anon read.")
+                if let publicLocation = await fetchPublicVehicleLocation(vehicleIdString: vehicleIdString) {
+                    print("📍 Public fallback fetched location for vehicle \(vehicleIdString): (\(publicLocation.latitude), \(publicLocation.longitude)) at \(publicLocation.timestamp)")
+                    updateDriverLocation(lat: publicLocation.latitude, lng: publicLocation.longitude)
+                } else {
+                    print("⚠️ Public fallback also found no vehicle_locations row for vehicle \(vehicleIdString)")
+                }
             }
         } catch {
-            print("❌ Error refreshing vehicle location: \(error)")
+            print("❌ Error refreshing vehicle location for vehicle \(vehicleIdString): \(error)")
+        }
+    }
+
+    private func fetchPublicVehicleLocation(vehicleIdString: String) async -> TripDetailVehicleLocation? {
+        guard var components = URLComponents(string: "\(SupabaseConfig.url.absoluteString)/rest/v1/vehicle_locations") else {
+            return nil
+        }
+
+        components.queryItems = [
+            URLQueryItem(name: "select", value: "vehicle_id,latitude,longitude,timestamp"),
+            URLQueryItem(name: "vehicle_id", value: "eq.\(vehicleIdString)"),
+            URLQueryItem(name: "order", value: "timestamp.desc"),
+            URLQueryItem(name: "limit", value: "1")
+        ]
+
+        guard let url = components.url else {
+            return nil
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue(SupabaseConfig.anonKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(SupabaseConfig.anonKey)", forHTTPHeaderField: "Authorization")
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, 200..<300 ~= httpResponse.statusCode else {
+                print("❌ Public vehicle location fallback failed with non-2xx response for vehicle \(vehicleIdString)")
+                return nil
+            }
+
+            let locations = try JSONDecoder().decode([TripDetailVehicleLocation].self, from: data)
+            return locations.first
+        } catch {
+            print("❌ Public vehicle location fallback failed for vehicle \(vehicleIdString): \(error)")
+            return nil
+        }
+    }
+    
+    private func updateDriverLocation(lat: Double, lng: Double) {
+        let newLocation = CLLocationCoordinate2D(latitude: lat, longitude: lng)
+        
+        // Only update if coordinates changed significantly to avoid unnecessary UI jitter
+        if let current = driverLocation {
+            let threshold = 0.000001
+            if abs(current.latitude - lat) < threshold && abs(current.longitude - lng) < threshold {
+                return
+            }
+        }
+        
+        self.driverLocation = newLocation
+        
+        // Track route deviation if we have a route and the trip is active
+        if !routeCoordinates.isEmpty {
+            checkRouteDeviation(currentLocation: newLocation)
+        }
+    }
+    
+    /// Sets up a real-time listener for vehicle location changes.
+    func setupRealtimeLocation() async {
+        guard let vehicleId = trackedVehicleId ?? vehicle?.id ?? trip.vehicle_id else {
+            print("⚠️ setupRealtimeLocation skipped: no vehicle_id for trip \(trip.id.uuidString.lowercased())")
+            return
+        }
+        let trackedVehicleId = vehicleId.uuidString.lowercased()
+        
+        // Remove existing channel if any
+        if let existingChannel = realtimeChannel {
+            await existingChannel.unsubscribe()
+        }
+        
+        let channelId = "vehicle-loc-\(vehicleId.uuidString)"
+        let channel = SupabaseManager.shared.client.realtimeV2.channel(channelId)
+        
+        let insertionStream = channel.postgresChange(
+            AnyAction.self,
+            schema: "public",
+            table: "vehicle_locations"
+        )
+        
+        realtimeChannel = channel
+        try? await channel.subscribeWithError()
+        
+        Task { [weak self] in
+            for await change in insertionStream {
+                guard let self = self else { break }
+                
+                var recordVehicleId: String?
+                var lat: Double?
+                var lng: Double?
+                
+                // Realtime V2 uses an enum for changes
+                switch change {
+                case .insert(let action):
+                    recordVehicleId = action.record["vehicle_id"]?.stringValue?.lowercased()
+                    lat = action.record["latitude"]?.doubleValue
+                    lng = action.record["longitude"]?.doubleValue
+                case .update(let action):
+                    recordVehicleId = action.record["vehicle_id"]?.stringValue?.lowercased()
+                    lat = action.record["latitude"]?.doubleValue
+                    lng = action.record["longitude"]?.doubleValue
+                default:
+                    break
+                }
+                
+                guard recordVehicleId == trackedVehicleId else { continue }
+                
+                if let lat = lat, let lng = lng {
+                    await MainActor.run {
+                        self.updateDriverLocation(lat: lat, lng: lng)
+                    }
+                }
+            }
         }
     }
     
@@ -127,12 +251,23 @@ final class TripDetailViewModel: ObservableObject {
         // If we move BACK onto the route, reset approval so next deviation triggers again
         if !isNowDeviated {
             isCurrentDeviationApproved = false
+            hasSentDeviationNotification = false
         }
         
         if isCurrentDeviationApproved {
             isRouteDeviated = false
         } else {
             isRouteDeviated = isNowDeviated
+        }
+
+        if isNowDeviated && !isCurrentDeviationApproved && !hasSentDeviationNotification {
+            hasSentDeviationNotification = true
+            Task {
+                await sendRouteDeviationNotification(
+                    currentLocation: currentLocation,
+                    deviationDistance: minDistance
+                )
+            }
         }
     }
     
@@ -177,17 +312,25 @@ final class TripDetailViewModel: ObservableObject {
         
         do {
             // Fetch full trip details with vehicle_id and driver_id
+            let tripIdString = trip.id.uuidString.lowercased()
             let fullTrip: TripDetail = try await SupabaseManager.shared.client
                 .from("trips")
                 .select()
-                .eq("trip_id", value: trip.id)
+                .eq("trip_id", value: tripIdString)
                 .single()
                 .execute()
                 .value
             
+            trackedVehicleId = fullTrip.vehicle_id ?? trip.vehicle_id
+            trackedFleetManagerId = fullTrip.fleet_manager_id ?? trip.fleet_manager_id
+            print("🧭 Trip details loaded for trip \(tripIdString). passed vehicle_id=\(trip.vehicle_id?.uuidString.lowercased() ?? "nil"), full vehicle_id=\(fullTrip.vehicle_id?.uuidString.lowercased() ?? "nil"), tracked vehicle_id=\(trackedVehicleId?.uuidString.lowercased() ?? "nil")")
+            
+            await refreshVehicleLocation()
+            
             // Fetch vehicle details if vehicle_id exists
             if let vehicleId = fullTrip.vehicle_id {
                 await fetchVehicle(vehicleId: vehicleId)
+                await fetchGeofences(vehicleId: vehicleId)
             }
             
             // Fetch driver details if driver_id exists
@@ -202,31 +345,44 @@ final class TripDetailViewModel: ObservableObject {
             isLoading = false
         }
     }
+
+    private func fetchGeofences(vehicleId: UUID) async {
+        do {
+            let fetchedGeofences = try await geofenceService.fetchGeofencesForVehicle(vehicleId)
+            self.geofences = fetchedGeofences
+            print("🗺️ Geofences loaded for vehicle \(vehicleId.uuidString): \(fetchedGeofences.count)")
+        } catch {
+            print("❌ Error fetching geofences for vehicle \(vehicleId.uuidString): \(error)")
+        }
+    }
     
     private func fetchVehicle(vehicleId: UUID) async {
+        let vehicleIdString = vehicleId.uuidString.lowercased()
         do {
             let vehicleData: Vehicle = try await SupabaseManager.shared.client
                 .from("vehicles")
                 .select()
-                .eq("vehicle_id", value: vehicleId)
+                .eq("vehicle_id", value: vehicleIdString)
                 .single()
                 .execute()
                 .value
             
             vehicle = vehicleData
-            print("✅ Vehicle loaded: \(vehicleData.name)")
+            trackedVehicleId = vehicleData.id
+            print("✅ Vehicle loaded: \(vehicleData.name) (\(vehicleIdString))")
         } catch {
-            print("❌ Error fetching vehicle: \(error)")
+            print("❌ Error fetching vehicle \(vehicleIdString): \(error)")
         }
     }
     
     private func fetchDriver(driverId: UUID) async {
+        let driverIdString = driverId.uuidString.lowercased()
         do {
             // Fetch driver record
             let driverRecord: TripDetailDriverRecord = try await SupabaseManager.shared.client
                 .from("drivers")
                 .select()
-                .eq("driver_id", value: driverId)
+                .eq("driver_id", value: driverIdString)
                 .single()
                 .execute()
                 .value
@@ -240,7 +396,7 @@ final class TripDetailViewModel: ObservableObject {
                     let userRecord: TripDetailUserRecord = try await SupabaseManager.shared.client
                         .from("users")
                         .select()
-                        .eq("user_id", value: userId)
+                        .eq("user_id", value: userId.uuidString.lowercased())
                         .single()
                         .execute()
                         .value
@@ -265,12 +421,47 @@ final class TripDetailViewModel: ObservableObject {
             
             print("✅ Driver loaded: \(userName)")
         } catch {
-            print("❌ Error fetching driver: \(error)")
+            print("❌ Error fetching driver \(driverIdString): \(error)")
         }
     }
     
     private func fetchDriverLocation(driverId: UUID) async {
         await refreshVehicleLocation()
+    }
+
+    private func sendRouteDeviationNotification(
+        currentLocation: CLLocationCoordinate2D,
+        deviationDistance: Double
+    ) async {
+        guard let recipientId = trackedFleetManagerId ?? trip.fleet_manager_id else {
+            print("⚠️ Route deviation notification skipped: no fleet_manager_id for trip \(trip.id.uuidString.lowercased())")
+            return
+        }
+
+        let vehicleDisplayName = vehicle?.name ?? "Vehicle"
+        let tripDisplayName = trip.tripNameText
+        let distanceText = "\(Int(deviationDistance.rounded()))m"
+        let coordinateText = String(format: "%.5f, %.5f", currentLocation.latitude, currentLocation.longitude)
+
+        let payload = NotificationInsertDTO(
+            recipient_id: recipientId,
+            sender_id: nil,
+            title: "Route deviation detected",
+            message: "\(vehicleDisplayName) on \(tripDisplayName) deviated by about \(distanceText) near \(coordinateText).",
+            type: NotificationType.alert.rawValue,
+            related_entity_id: trip.id
+        )
+
+        do {
+            try await SupabaseManager.shared.client
+                .from("notifications")
+                .insert(payload)
+                .execute()
+            print("🚨 Route deviation notification sent for trip \(trip.id.uuidString.lowercased()) to fleet manager \(recipientId.uuidString.lowercased())")
+        } catch {
+            hasSentDeviationNotification = false
+            print("❌ Failed to send route deviation notification for trip \(trip.id.uuidString.lowercased()): \(error)")
+        }
     }
 }
 
@@ -280,6 +471,7 @@ struct TripDetail: Codable {
     let trip_id: UUID
     let vehicle_id: UUID?
     let driver_id: UUID?
+    let fleet_manager_id: UUID?
     let trip_name: String?
     let origin: String?
     let destination: String?
@@ -296,6 +488,7 @@ struct TripDetail: Codable {
         trip_id        = try c.decode(UUID.self,   forKey: .trip_id)
         vehicle_id     = try c.decodeIfPresent(UUID.self,   forKey: .vehicle_id)
         driver_id      = try c.decodeIfPresent(UUID.self,   forKey: .driver_id)
+        fleet_manager_id = try c.decodeIfPresent(UUID.self, forKey: .fleet_manager_id)
         trip_name      = try c.decodeIfPresent(String.self, forKey: .trip_name)
         origin         = try c.decodeIfPresent(String.self, forKey: .origin)
         destination    = try c.decodeIfPresent(String.self, forKey: .destination)
@@ -323,6 +516,7 @@ struct TripDetailUserRecord: Codable {
 }
 
 struct TripDetailVehicleLocation: Codable {
+    let vehicle_id: UUID?
     let latitude: Double
     let longitude: Double
     let timestamp: String

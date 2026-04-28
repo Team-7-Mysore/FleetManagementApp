@@ -17,7 +17,7 @@ struct MaintenanceNotificationsView: View {
             Color(.systemGroupedBackground)
                 .ignoresSafeArea()
 
-            if isLoading {
+            if isLoading && notifications.isEmpty {
                 ProgressView("Loading Notifications...")
             } else if notifications.isEmpty {
                 VStack(spacing:20) {
@@ -84,12 +84,28 @@ struct MaintenanceNotificationsView: View {
         }
         .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.large)
+
+        // MARK: - Real-Time Fetching
         .task {
+            // 1. Initial fetch when view loads
             await fetchNotifications()
+
+            // 2. Setup Supabase Realtime Listener for Notifications
+            let channel = SupabaseManager.shared.client.channel("maintenance_notifications_realtime")
+            let changes = channel.postgresChange(AnyAction.self, schema: "public", table: "notifications")
+
+            await channel.subscribe()
+
+            // 3. Listen for changes in the background
+            for await _ in changes {
+                print("📡 Supabase Database updated! Refreshing Notifications instantly...")
+                await fetchNotifications()
+            }
         }
         .refreshable {
             await fetchNotifications()
         }
+
         // MARK: - Route 1: Navigation to Add/Edit Work Order (Unapproved/New Tasks)
         .navigationDestination(item: $routingDataForEdit) { data in
             AddEditWorkOrderView(

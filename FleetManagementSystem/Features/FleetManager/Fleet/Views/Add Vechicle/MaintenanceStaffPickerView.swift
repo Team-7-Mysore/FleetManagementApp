@@ -13,6 +13,11 @@ struct MaintenanceStaffPickerView: View {
     @State private var taskDescription = ""
     @State private var isProcessing = false
     
+    // Optional data for autofill from driver reports
+    var driverReportId: UUID? = nil
+    var initialSummary: String? = nil
+    var initialDescription: String? = nil
+    
     var body: some View {
         NavigationStack {
             Form {
@@ -71,7 +76,14 @@ struct MaintenanceStaffPickerView: View {
                 }
             }
             .task {
-                // FIX 1: Ensure this function exists below
+                // Auto-fill if provided
+                if let summary = initialSummary {
+                    self.issueSummary = summary
+                }
+                if let desc = initialDescription {
+                    self.taskDescription = desc
+                }
+                
                 await fetchMaintenanceStaff()
             }
         }
@@ -141,6 +153,16 @@ struct MaintenanceStaffPickerView: View {
             ]
             try await SupabaseManager.shared.client.from("notifications").insert(notificationData).execute()
             
+            // 🚨 NEW: If this came from a driver report, update its status
+            if let reportId = driverReportId {
+                struct StatusUpdate: Encodable { let status: String }
+                try await SupabaseManager.shared.client
+                    .from("driver_reports")
+                    .update(StatusUpdate(status: "acknowledged"))
+                    .eq("id", value: reportId.uuidString)
+                    .execute()
+            }
+            
             await MainActor.run { dismiss() }
         } catch {
             await MainActor.run {
@@ -150,15 +172,3 @@ struct MaintenanceStaffPickerView: View {
         }
     }
 } // End of MaintenanceStaffPickerView
-
-// MARK: - Helpers
-// FIX 3: AnyEncodable MUST be outside the View struct to be easily found by the compiler
-struct AnyEncodable: Encodable {
-    private let _encode: (Encoder) throws -> Void
-    init<T: Encodable>(_ value: T) {
-        _encode = value.encode
-    }
-    func encode(to encoder: Encoder) throws {
-        try _encode(encoder)
-    }
-}

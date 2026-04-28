@@ -13,6 +13,8 @@ final class TripListViewModel: ObservableObject {
    @Published var drivers: [Driver] = []
    @Published var isLoading = false
    @Published var searchText = ""
+   @Published var unreadNotificationCount: Int = 0
+   private var channels: [RealtimeChannelV2] = []
 
 
    /// Trips that are currently ongoing (in transit or in progress)
@@ -222,16 +224,105 @@ final class TripListViewModel: ObservableObject {
    private func fetchDrivers() async {
        do {
            let response: [Driver] = try await SupabaseManager.shared.client
-               .from("drivers")
-               .select()
-               .execute()
-               .value
+              .from("drivers")
+              .select()
+              .execute()
+              .value
            drivers = response
            print("✅ Fetched \(drivers.count) drivers")
        } catch {
            print("❌ FetchDrivers error: \(error)")
        }
    }
+
+   init() {
+      Task { await setupRealtimeListeners() }
+   }
+
+   func setupRealtimeListeners() async {
+      guard channels.isEmpty else { return }
+      let client = SupabaseManager.shared.client
+      
+      do {
+         let session = try await client.auth.session
+         let userId = session.user.id
+         
+         // 1. Trips Channel
+         let tripsChannel = client.realtimeV2.channel("dashboard-trips")
+         let tripChanges = tripsChannel.postgresChange(AnyAction.self, schema: "public", table: "trips")
+         try await tripsChannel.subscribe()
+         channels.append(tripsChannel)
+         
+         // 2. Vehicles Channel
+         let vehiclesChannel = client.realtimeV2.channel("dashboard-vehicles")
+         let vehicleChanges = vehiclesChannel.postgresChange(AnyAction.self, schema: "public", table: "vehicles")
+         try await vehiclesChannel.subscribe()
+         channels.append(vehiclesChannel)
+         
+         // 3. Work Orders Channel
+         let woChannel = client.realtimeV2.channel("dashboard-wo")
+         let woChanges = woChannel.postgresChange(AnyAction.self, schema: "public", table: "work_orders")
+         try await woChannel.subscribe()
+         channels.append(woChannel)
+         
+         // 4. Notifications Channel
+         let notifChannel = client.realtimeV2.channel("dashboard-notifs")
+         let notifChanges = notifChannel.postgresChange(
+            AnyAction.self, 
+            schema: "public", 
+            table: "notifications"
+         )
+         try await notifChannel.subscribe()
+         channels.append(notifChannel)
+         
+         Task {
+            for await _ in tripChanges { await fetchTrips() }
+         }
+         Task {
+            for await _ in vehicleChanges { await fetchTrips() }
+         }
+         Task {
+            for await _ in woChanges { await fetchTrips() }
+         }
+         Task {
+            for await action in notifChanges { 
+                // Only refresh if the change is for this user
+                let recipientId: String? = {
+                    switch action {
+                    case .insert(let act): return act.record["recipient_id"]?.stringValue
+                    case .update(let act): return act.record["recipient_id"]?.stringValue
+                    case .delete(let act): return act.oldRecord["recipient_id"]?.stringValue
+                    default: return nil
+                    }
+                }()
+                
+                if recipientId == userId.uuidString {
+                    await updateUnreadCount(userId: userId) 
+                }
+            }
+         }
+         
+         await updateUnreadCount(userId: userId)
+      } catch {
+         print("🚨 Realtime setup failed: \(error)")
+      }
+   }
+
+   private func updateUnreadCount(userId: UUID) async {
+      do {
+         let response = try await SupabaseManager.shared.client
+            .from("notifications")
+            .select("id", head: true, count: .exact)
+            .eq("recipient_id", value: userId)
+            .eq("is_read", value: false)
+            .execute()
+         
+         let count = response.count ?? 0
+         await MainActor.run {
+            self.unreadNotificationCount = count
+         }
+      } catch {
+         print("🚨 Failed to update unread count: \(error)")
+      }
+   }
 }
-
-

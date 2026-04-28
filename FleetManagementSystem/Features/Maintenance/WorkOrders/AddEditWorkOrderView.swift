@@ -20,42 +20,59 @@ private struct WorkOrderVehicleFetch: Decodable, Identifiable {
 
 struct AddEditWorkOrderView: View {
     @Environment(\.dismiss) private var dismiss
-    
+
     // MARK: - ViewModel Injection
     @StateObject private var viewModel = WorkOrderViewModel()
     @State private var activeUserId: UUID? = nil
-    
-    // MARK: - State Variables
-    // Using our local struct here so it doesn't mess with the rest of your app
+
+    // MARK: - Cascading Vehicle Selection States
     @State private var availableVehicles: [WorkOrderVehicleFetch] = []
+    @State private var selectedCategory: String? = nil
+    @State private var selectedModel: String? = nil
     @State private var selectedVehicleId: UUID? = nil
-    
+
+    // Computed Properties for cascading menus
+    private var availableCategories: [String] {
+        Array(Set(availableVehicles.compactMap { $0.vehicle_type })).sorted()
+    }
+
+    private var availableModels: [String] {
+        guard let category = selectedCategory else { return [] }
+        return Array(Set(availableVehicles.filter { $0.vehicle_type == category }.map { $0.vehicle_name })).sorted()
+    }
+
+    private var availablePlates: [WorkOrderVehicleFetch] {
+        guard let category = selectedCategory, let model = selectedModel else { return [] }
+        return availableVehicles.filter { $0.vehicle_type == category && $0.vehicle_name == model }
+    }
+
     // Vehicle Text Fields (Auto-filled & Read-Only)
     @State private var vehicleName: String = ""
     @State private var vin: String = ""
     @State private var numberPlate: String = ""
-    @State private var vehicleType: VehicleType = .car // For the dynamic image
-    
+    @State private var vehicleType: VehicleType = .car
+
+    // Issue Details
     @State private var issueTitle: String = ""
     @State private var issueDescription: String = ""
-    
+
     // Tasks State
     @State private var tasks: [String] = []
     @State private var newTaskName: String = ""
-    
+
     // Parts State
     @State private var parts: [PartSelectionUI] = []
-    
+
     // Photos State
     @State private var photos: [String] = []
     @State private var showImagePicker: Bool = false
-    
+
     @State private var priority: WorkOrderPriority = .medium
     @State private var internalNotes: String = ""
-    
+
     // Saving State
     @State private var isSaving: Bool = false
-    
+
     // Routing / Autofill Data
     var sourceIssueId: UUID?
     var managerId: UUID?
@@ -63,21 +80,29 @@ struct AddEditWorkOrderView: View {
     var prefilledSummary: String?
     var prefilledDescription: String?
     var maintenancePersonnelId: UUID?
-    
-    // Custom Initializer
+
+    // MARK: - Validation Check
+    private var isFormValid: Bool {
+        let titleIsValid = !issueTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let descriptionIsValid = !issueDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let vehicleSelected = selectedVehicleId != nil
+
+        return vehicleSelected && titleIsValid && descriptionIsValid
+    }
+
     init(sourceIssueId: UUID? = nil, preSelectedVehicleId: UUID? = nil, prefilledSummary: String? = nil, prefilledDescription: String? = nil, managerId: UUID? = nil, maintenancePersonnelId: UUID? = nil) {
         self.sourceIssueId = sourceIssueId
         self.managerId = managerId
         self.preSelectedVehicleId = preSelectedVehicleId
         self.prefilledSummary = prefilledSummary
         self.prefilledDescription = prefilledDescription
-        self.maintenancePersonnelId = maintenancePersonnelId // Assign it here
+        self.maintenancePersonnelId = maintenancePersonnelId
     }
+
     var body: some View {
         ZStack {
-            Color(uiColor: .systemGroupedBackground)
-                .ignoresSafeArea()
-            
+            Color(uiColor: .systemGroupedBackground).ignoresSafeArea()
+
             ScrollView {
                 VStack(spacing: 24) {
                     vehicleIdentificationSection
@@ -92,6 +117,7 @@ struct AddEditWorkOrderView: View {
                 .padding(.bottom, 40)
             }
         }
+        .hideKeyboardOnTap()
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(sourceType: .photoLibrary) { image in
                 if let imageData = image.jpegData(compressionQuality: 0.7) {
@@ -100,9 +126,7 @@ struct AddEditWorkOrderView: View {
                         do {
                             let uploadedImageUrl = try await viewModel.uploadImageToSupabase(imageData: imageData, fileName: filename)
                             await MainActor.run { photos.append(uploadedImageUrl) }
-                        } catch {
-                            print("Failed to upload image: \(error)")
-                        }
+                        } catch { print("Failed to upload image: \(error)") }
                     }
                 }
             }
@@ -110,19 +134,13 @@ struct AddEditWorkOrderView: View {
         .task {
             await viewModel.fetchAllInventory()
             await fetchVehicles()
-            if let desc = prefilledDescription, !desc.isEmpty {
-                self.issueDescription = desc
-            }
+            if let desc = prefilledDescription, !desc.isEmpty { self.issueDescription = desc }
         }
         .task {
-            // Fetch the user ID safely when the screen actually opens
             do {
                 let user = try await SupabaseManager.shared.client.auth.user()
                 self.activeUserId = user.id
-                print("🎯 Active User ID grabbed successfully: \(user.id)")
-            } catch {
-                print("⚠️ Failed to grab user ID on load: \(error)")
-            }
+            } catch { print("⚠️ Failed to grab user ID on load: \(error)") }
         }
         .navigationTitle("New Work Order")
         .navigationBarTitleDisplayMode(.inline)
@@ -135,109 +153,126 @@ struct AddEditWorkOrderView: View {
                     if isSaving {
                         ProgressView()
                     } else {
-                        Text("Save").fontWeight(.semibold)
+                        Text("Save").fontWeight(.semibold).foregroundColor(isFormValid ? .blue : .gray)
                     }
-                }
-                .disabled(isSaving || selectedVehicleId == nil)
+                }.disabled(isSaving || !isFormValid)
             }
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-                }
-                .fontWeight(.bold)
-            }
+            // Removed the redundant "Done" keyboard text dismiss button to clean up UI
         }
     }
-    
-    // MARK: - UI Sections (Chunked for fast compiling)
-    
+
+    // MARK: - Cascading UI Elements
     private var vehicleIdentificationSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeaderView(title: "VEHICLE IDENTIFICATION")
             CardView {
                 VStack(spacing: 16) {
-                    
-                    // Clean Dropdown Row
+
                     if availableVehicles.isEmpty {
-                        ProgressView("Loading vehicles...")
-                            .font(.subheadline)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        ProgressView("Loading vehicles...").font(.subheadline).frame(maxWidth: .infinity, alignment: .leading)
                     } else {
-                        HStack {
-                            Text("Select Vehicle")
-                                .font(.subheadline)
-                                .foregroundColor(.primary)
-                            
-                            Spacer()
-                            
-                            Picker("Select Vehicle", selection: $selectedVehicleId) {
-                                Text("Choose...").tag(UUID?.none)
-                                ForEach(availableVehicles, id: \.id) { vehicle in
-                                    Text(vehicle.vehicle_name).tag(UUID?.some(vehicle.id))
+                        // Cascading 3-Step Selection
+                        VStack(spacing: 12) {
+
+                            // 1. Category Selection
+                            HStack {
+                                Text("Category").font(.subheadline).foregroundColor(.primary)
+                                Spacer()
+                                Picker("Category", selection: $selectedCategory) {
+                                    Text("Select Category...").tag(String?.none)
+                                    ForEach(availableCategories, id: \.self) { cat in
+                                        Text(cat).tag(String?.some(cat))
+                                    }
                                 }
+                                .pickerStyle(.menu)
+                                .tint(.blue)
                             }
-                            .pickerStyle(.menu)
-                            .tint(.blue)
-                        }
-                        .onChange(of: selectedVehicleId) { newId in
-                            updateVehicleDetails(for: newId)
+                            .onChange(of: selectedCategory) { _ in
+                                selectedModel = nil
+                                selectedVehicleId = nil
+                                updateVehicleDetails(for: nil)
+                            }
+
+                            Divider()
+
+                            // 2. Model Selection
+                            HStack {
+                                Text("Model").font(.subheadline).foregroundColor(selectedCategory == nil ? .gray : .primary)
+                                Spacer()
+                                Picker("Model", selection: $selectedModel) {
+                                    Text("Select Model...").tag(String?.none)
+                                    ForEach(availableModels, id: \.self) { mod in
+                                        Text(mod).tag(String?.some(mod))
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(.blue)
+                                .disabled(selectedCategory == nil)
+                            }
+                            .onChange(of: selectedModel) { _ in
+                                selectedVehicleId = nil
+                                updateVehicleDetails(for: nil)
+                            }
+
+                            Divider()
+
+                            // 3. Plate Selection
+                            HStack {
+                                Text("License Plate").font(.subheadline).foregroundColor(selectedModel == nil ? .gray : .primary)
+                                Spacer()
+                                Picker("Plate", selection: $selectedVehicleId) {
+                                    Text("Select Plate...").tag(UUID?.none)
+                                    ForEach(availablePlates, id: \.id) { vehicle in
+                                        Text(vehicle.number_plate ?? "Unknown").tag(UUID?.some(vehicle.id))
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                                .tint(.blue)
+                                .disabled(selectedModel == nil)
+                            }
+                            .onChange(of: selectedVehicleId) { newId in
+                                updateVehicleDetails(for: newId)
+                            }
                         }
                     }
-                    
-                    Divider()
-                    
-                    // Visible Auto-filled Data Fields
+
+                    Divider().padding(.vertical, 4)
+
+                    // Auto-filled Data Display Fields
                     HStack(alignment: .top, spacing: 16) {
                         Image(systemName: vehicleType.sfSymbol)
-                            .font(.title2)
-                            .foregroundColor(.blue)
-                            .frame(width: 54, height: 54)
-                            .background(Color.blue.opacity(0.1))
-                            .cornerRadius(12)
-                        
+                            .font(.title2).foregroundColor(.blue).frame(width: 54, height: 54)
+                            .background(Color.blue.opacity(0.1)).cornerRadius(12)
+
                         VStack(spacing: 12) {
                             TextField("Vehicle Name", text: .constant(vehicleName.isEmpty ? "No Vehicle Selected" : vehicleName))
-                                .font(.subheadline)
-                                .foregroundColor(vehicleName.isEmpty ? .gray : .primary)
-                                .disabled(true)
-                            
+                                .font(.subheadline).foregroundColor(vehicleName.isEmpty ? .gray : .primary).disabled(true)
                             Divider()
-                            
-                            TextField("VIN", text: .constant(vin.isEmpty ? "N/A" : vin))
-                                .font(.subheadline)
-                                .foregroundColor(.gray)
-                                .disabled(true)
-                            
+                            TextField("VIN", text: .constant(vin.isEmpty ? "VIN" : vin))
+                                .font(.subheadline).foregroundColor(.gray).disabled(true)
                             Divider()
-                            
-                            TextField("Number Plate", text: .constant(numberPlate.isEmpty ? "N/A" : numberPlate))
-                                .font(.subheadline)
-                                .foregroundColor(.gray)
-                                .disabled(true)
+                            TextField("Number Plate", text: .constant(numberPlate.isEmpty ? "Number Plate" : numberPlate))
+                                .font(.subheadline).foregroundColor(.gray).disabled(true)
                         }
                     }
                 }
             }
         }
     }
-    
+
     private var issueSummarySection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeaderView(title: "ISSUE SUMMARY")
             CardView {
                 VStack(spacing: 12) {
-                    TextField("Short Description (e.g. Engine noise)", text: $issueTitle)
-                        .font(.subheadline)
+                    TextField("Short Description (e.g. Engine noise)", text: $issueTitle).font(.subheadline)
                     Divider()
-                    TextField("Detailed symptoms or notes...", text: $issueDescription, axis: .vertical)
-                        .font(.subheadline)
-                        .lineLimit(3...6)
+                    TextField("Detailed symptoms or notes...", text: $issueDescription, axis: .vertical).font(.subheadline).lineLimit(3...6)
                 }
             }
         }
     }
-    
+
     private var taskChecklistSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeaderView(title: "TASK CHECKLIST")
@@ -248,9 +283,7 @@ struct AddEditWorkOrderView: View {
                             Image(systemName: "circle.grid.2x2.fill").foregroundColor(Color(uiColor: .systemGray4)).font(.caption)
                             Text(task).font(.subheadline)
                             Spacer()
-                            Button(action: { tasks.removeAll { $0 == task } }) {
-                                Image(systemName: "minus.circle.fill").foregroundColor(.red.opacity(0.8))
-                            }
+                            Button(action: { tasks.removeAll { $0 == task } }) { Image(systemName: "minus.circle.fill").foregroundColor(.red.opacity(0.8)) }
                         }
                         Divider()
                     }
@@ -263,13 +296,12 @@ struct AddEditWorkOrderView: View {
                                 tasks.append(newTaskName)
                                 newTaskName = ""
                             }
-                    }
-                    .padding(.vertical, 8)
+                    }.padding(.vertical, 8)
                 }
             }
         }
     }
-    
+
     private var partsRequiredSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeaderView(title: "PARTS REQUIRED")
@@ -283,10 +315,8 @@ struct AddEditWorkOrderView: View {
                                 Button(action: { if part.quantity > 1 { part.quantity -= 1 } }) { Image(systemName: "minus").foregroundColor(.blue) }
                                 Text("\(part.quantity)").font(.subheadline).fontWeight(.medium)
                                 Button(action: { part.quantity += 1 }) { Image(systemName: "plus").foregroundColor(.blue) }
-                            }
-                            .padding(.horizontal, 12).padding(.vertical, 8).background(Color(uiColor: .systemGray6)).cornerRadius(8)
-                            Button(action: { parts.removeAll { $0.id == part.id } }) { Image(systemName: "trash.fill").foregroundColor(.red.opacity(0.8)) }
-                                .padding(.leading, 8)
+                            }.padding(.horizontal, 12).padding(.vertical, 8).background(Color(uiColor: .systemGray6)).cornerRadius(8)
+                            Button(action: { parts.removeAll { $0.id == part.id } }) { Image(systemName: "trash.fill").foregroundColor(.red.opacity(0.8)) }.padding(.leading, 8)
                         }
                         Divider()
                     }
@@ -308,14 +338,13 @@ struct AddEditWorkOrderView: View {
                             Text("Select a Part from Inventory...").font(.subheadline).foregroundColor(.primary)
                             Spacer()
                             Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundColor(.gray)
-                        }
-                        .padding(.vertical, 8)
+                        }.padding(.vertical, 8)
                     }
                 }
             }
         }
     }
-    
+
     private var photoDocumentationSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeaderView(title: "PHOTO DOCUMENTATION")
@@ -326,9 +355,8 @@ struct AddEditWorkOrderView: View {
                             RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .systemGray5)).frame(width: 110, height: 110)
                             Image(systemName: "plus").font(.system(size: 32, weight: .semibold)).foregroundColor(.blue)
                         }
-                    }
-                    .padding(.leading, 1)
-                    
+                    }.padding(.leading, 1)
+
                     ForEach(photos, id: \.self) { photoUrlString in
                         ZStack(alignment: .topTrailing) {
                             RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .systemGray6)).frame(width: 110, height: 110)
@@ -344,16 +372,14 @@ struct AddEditWorkOrderView: View {
                             }
                             Button(action: { photos.removeAll { $0 == photoUrlString } }) {
                                 Image(systemName: "minus.circle.fill").foregroundColor(.red).background(Circle().fill(Color.white)).font(.system(size: 22))
-                            }
-                            .offset(x: 10, y: -10)
+                            }.offset(x: 10, y: -10)
                         }
                     }
-                }
-                .padding(.top, 10).padding(.horizontal, 16)
+                }.padding(.top, 10).padding(.horizontal, 16)
             }
         }
     }
-    
+
     private var priorityAndNotesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeaderView(title: "PRIORITY LEVEL")
@@ -363,55 +389,54 @@ struct AddEditWorkOrderView: View {
                     Spacer()
                     Picker("Priority", selection: $priority) {
                         ForEach(WorkOrderPriority.allCases, id: \.self) { p in Text(p.rawValue).tag(p) }
-                    }
-                    .pickerStyle(.menu).tint(.primary)
+                    }.pickerStyle(.menu).tint(.primary)
                 }
             }
-            
-            SectionHeaderView(title: "INTERNAL NOTES")
-                .padding(.top, 16)
+
+            SectionHeaderView(title: "INTERNAL NOTES").padding(.top, 16)
             CardView {
-                TextField("Additional details only visible to mechanics...", text: $internalNotes, axis: .vertical)
-                    .font(.subheadline).lineLimit(4...8)
+                TextField("Additional details only visible to mechanics...", text: $internalNotes, axis: .vertical).font(.subheadline).lineLimit(4...8)
             }
         }
     }
-    
-    // MARK: - Fetch & Update Logic
-    
+
+    // MARK: - Fetch & Auto-Fill Logic
     private func fetchVehicles() async {
         do {
-            // Using the local struct so your global VehicleDTO stays safe!
             let fetched: [WorkOrderVehicleFetch] = try await SupabaseManager.shared.client
                 .from("vehicles")
                 .select("vehicle_id, vehicle_name, vin, number_plate, vehicle_type")
                 .execute()
                 .value
-            
+
             await MainActor.run {
                 self.availableVehicles = fetched
-                
-                // If coming from a notification, auto-fill everything!
-                if let vId = preSelectedVehicleId {
+
+                // 🔥 Auto-Fill Process (Runs when triggered from a Notification)
+                if let vId = preSelectedVehicleId, let autoVehicle = fetched.first(where: { $0.id == vId }) {
+                    // Set category to unlock models
+                    self.selectedCategory = autoVehicle.vehicle_type
+                    // Set model to unlock plates
+                    self.selectedModel = autoVehicle.vehicle_name
+                    // Select the specific license plate
                     self.selectedVehicleId = vId
+                    // Finally, visually update the info card
                     updateVehicleDetails(for: vId)
                 }
+
                 if let summary = prefilledSummary, !summary.isEmpty {
                     self.issueTitle = summary
                 }
             }
-        } catch {
-            print("🚨 Error fetching vehicles: \(error)")
-        }
+        } catch { print("🚨 Error fetching vehicles: \(error)") }
     }
-    
+
     private func updateVehicleDetails(for id: UUID?) {
         if let selected = availableVehicles.first(where: { $0.id == id }) {
             self.vehicleName = selected.vehicle_name
             self.vin = selected.vin ?? ""
             self.numberPlate = selected.number_plate ?? ""
-            
-            // DYNAMIC IMAGE LOGIC
+
             if let dbType = selected.vehicle_type,
                let matchedType = VehicleType.allCases.first(where: { $0.rawValue.lowercased() == dbType.lowercased() }) {
                 self.vehicleType = matchedType
@@ -425,21 +450,17 @@ struct AddEditWorkOrderView: View {
             self.vehicleType = .car
         }
     }
-    
-    // MARK: - ViewModel Saving Logic
+
+    // MARK: - Save Logic
     private func saveWorkOrderToSupabase() {
         guard !isSaving else { return }
         guard let finalVehicleId = selectedVehicleId else { return }
-        
+
         isSaving = true
-        
+
         Task {
             do {
                 let newWorkOrderId = UUID()
-                
-                print("--- PRE-SAVE DEBUG ---")
-                print("Maintenance ID: \(String(describing: self.maintenancePersonnelId))")
-                
                 let newOrder = WorkOrder(
                     workOrderId: newWorkOrderId,
                     vehicleId: finalVehicleId,
@@ -458,7 +479,7 @@ struct AddEditWorkOrderView: View {
                     createdAt: Date(),
                     updatedAt: Date()
                 )
-                
+
                 let workOrderTasks = tasks.map { taskName in
                     WorkOrderTask(
                         taskId: UUID(),
@@ -468,7 +489,7 @@ struct AddEditWorkOrderView: View {
                         createdAt: Date()
                     )
                 }
-                
+
                 let workOrderParts = parts.map { uiPart in
                     WorkOrderPart(
                         workOrderId: newWorkOrderId,
@@ -477,13 +498,11 @@ struct AddEditWorkOrderView: View {
                         costAtTime: nil
                     )
                 }
-                
-                // 2. Push to Supabase
+
                 try await viewModel.upsertWorkOrder(newOrder)
                 try await viewModel.insertTasks(workOrderTasks)
                 try await viewModel.upsertParts(workOrderParts)
-                
-                // 3. Update the manager's issue status
+
                 if let issueIdToUpdate = self.sourceIssueId {
                     struct IssueUpdate: Encodable { let status: String }
                     try await SupabaseManager.shared.client
@@ -492,22 +511,20 @@ struct AddEditWorkOrderView: View {
                         .eq("issue_id", value: issueIdToUpdate.uuidString)
                         .execute()
                 }
-                
-                // 4. Send Approval Notification back to the Manager
+
                 if let actualManagerId = self.managerId {
-                    // Fetch the logged in personnel's ID to set as sender
                     let session = try await SupabaseManager.shared.client.auth.session
                     let currentUserId = session.user.id
-                    
+
                     let approvalNotification = NotificationInsertDTO(
                         recipient_id: actualManagerId,
-                        sender_id: currentUserId, 
+                        sender_id: currentUserId,
                         title: "Approval Required",
                         message: "Work Order '\(issueTitle)' requires your approval.",
                         type: NotificationType.maintenance.rawValue,
                         related_entity_id: newWorkOrderId
                     )
-                    
+
                     try await SupabaseManager.shared.client
                         .from("notifications")
                         .insert(approvalNotification)
@@ -517,17 +534,14 @@ struct AddEditWorkOrderView: View {
                     isSaving = false
                     dismiss()
                 }
-                
+
             } catch {
                 print("🚨 Error saving work order: \(error)")
-                await MainActor.run {
-                    isSaving = false
-                }
+                await MainActor.run { isSaving = false }
             }
         }
     }
 }
-
 
 
 #Preview {

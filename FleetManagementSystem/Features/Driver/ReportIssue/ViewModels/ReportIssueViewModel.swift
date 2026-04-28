@@ -64,6 +64,46 @@ class ReportIssueViewModel: ObservableObject {
                 .insert(reports)
                 .execute()
 
+            // Fetch managers to notify them
+            struct ManagerResponse: Decodable { let user_id: UUID }
+            print("Fetching managers...")
+            let managersRes = try await SupabaseManager.shared.client
+                .from("users")
+                .select("user_id")
+                .eq("role", value: "fleet_manager")
+                .execute()
+
+            let managers = try JSONDecoder().decode([ManagerResponse].self, from: managersRes.data)
+            print("Found \(managers.count) managers.")
+
+            let vehicleName = vehicle?.name ?? vehicle?.registrationNumber ?? "a vehicle"
+            let title = "New Issue Reported"
+            let message = issues.count > 1
+                ? "\(issues.count) issues reported for \(vehicleName)."
+                : "Issue reported for \(vehicleName): \(issues.first?.category ?? "")."
+
+            let notifications = managers.map { manager -> NotificationInsertDTO in
+                return NotificationInsertDTO(
+                    recipient_id: manager.user_id,
+                    sender_id: user.id,
+                    title: title,
+                    message: message,
+                    type: NotificationType.alert.rawValue,
+                    related_entity_id: vehicleId
+                )
+            }
+
+            if !notifications.isEmpty {
+                print("Attempting to insert \(notifications.count) notifications...")
+                try await SupabaseManager.shared.client
+                    .from("notifications")
+                    .insert(notifications)
+                    .execute()
+                print("Notifications successfully sent to managers!")
+            } else {
+                print("No managers found. Skipping notification insertion.")
+            }
+
             self.submitSuccess = true
 
         } catch {

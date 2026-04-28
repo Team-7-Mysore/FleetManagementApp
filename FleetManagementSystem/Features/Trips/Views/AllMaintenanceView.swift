@@ -10,6 +10,7 @@ import SwiftUI
 struct AllMaintenanceView: View {
     @StateObject private var vm = TripListViewModel()
     @State private var selectedFilter: MaintenanceFilter = .all
+    @State private var selectedWorkOrder: WorkOrder? = nil
 
     enum MaintenanceFilter: String, CaseIterable {
         case all = "All"
@@ -69,10 +70,15 @@ struct AllMaintenanceView: View {
                     emptyState
                 } else {
                     ForEach(filteredWorkOrders) { workOrder in
-                        MaintenanceVehicleCard(workOrder: workOrder)
-                            .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
+                        Button(action: {
+                            selectedWorkOrder = workOrder
+                        }) {
+                            MaintenanceVehicleCard(workOrder: workOrder)
+                        }
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                     }
                 }
             } header: {
@@ -100,9 +106,15 @@ struct AllMaintenanceView: View {
         .task {
             guard vm.workOrders.isEmpty else { return }
             await vm.fetchTrips()
+            await vm.setupRealtimeListeners()
         }
         .refreshable {
             await vm.fetchTrips()
+        }
+        .sheet(item: $selectedWorkOrder) { workOrder in
+            NavigationStack {
+                WorkOrderDetailView(workOrder: workOrder, isManagerApprovalMode: true)
+            }
         }
     }
 

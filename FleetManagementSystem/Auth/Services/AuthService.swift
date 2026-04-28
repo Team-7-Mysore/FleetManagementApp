@@ -1,14 +1,31 @@
 import Foundation
 import Supabase
 
+struct PendingAuthContext {
+    let profile: UserProfile
+    let email: String
+}
+
 final class AuthService {
     private let client: SupabaseClient
-    
-    init(client: SupabaseClient = SupabaseManager.shared.client) {
-        self.client = client
+    private let session: URLSession
+
+    private enum MFAEndpoint {
+        static let sendOTP = URL(string: "https://qisdvwaldlghndrudbvr.supabase.co/functions/v1/send-mfa-otp")!
+        static let verifyOTP = URL(string: "https://qisdvwaldlghndrudbvr.supabase.co/functions/v1/verify-mfa-otp")!
+    }
+
+    private struct MFAResponse: Decodable {
+        let success: Bool?
+        let error: String?
     }
     
-    func signIn(email: String, password: String) async throws -> UserProfile {
+    init(client: SupabaseClient = SupabaseManager.shared.client, session: URLSession = .shared) {
+        self.client = client
+        self.session = session
+    }
+    
+    func signIn(email: String, password: String) async throws -> PendingAuthContext {
         let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         
         
@@ -18,12 +35,46 @@ final class AuthService {
         
         let profile = try await fetchProfile(userId: response.user.id)
         print("✅ AuthService: Profile fetched successfully")
-        return profile
+        return PendingAuthContext(profile: profile, email: normalizedEmail)
+    }
+
+    func sendMFAOTP(email: String) async throws {
+        try await callMFAEndpoint(url: MFAEndpoint.sendOTP, payload: ["email": email])
+    }
+
+    func verifyMFAOTP(email: String, otp: String) async throws {
+        try await callMFAEndpoint(url: MFAEndpoint.verifyOTP, payload: ["email": email, "otp": otp])
     }
 
     
     func signOut() async throws {
         try await client.auth.signOut()
+    }
+
+    private func callMFAEndpoint(url: URL, payload: [String: String]) async throws {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if let currentSession = try? await client.auth.session {
+            request.setValue("Bearer \(currentSession.accessToken)", forHTTPHeaderField: "Authorization")
+        }
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+
+        let decodedResponse = try? JSONDecoder().decode(MFAResponse.self, from: data)
+
+        guard 200..<300 ~= httpResponse.statusCode, decodedResponse?.error == nil else {
+            let message = decodedResponse?.error ?? "Unable to complete MFA request."
+            throw NSError(domain: "MFA", code: httpResponse.statusCode, userInfo: [
+                NSLocalizedDescriptionKey: message
+            ])
+        }
     }
     
     private func fetchProfile(userId: UUID) async throws -> UserProfile {

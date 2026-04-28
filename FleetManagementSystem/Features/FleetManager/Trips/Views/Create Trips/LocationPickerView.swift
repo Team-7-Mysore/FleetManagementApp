@@ -80,6 +80,7 @@ struct LocationPickerView: View {
                     confirmBar
                 }
             }
+            .hideKeyboardOnTap()
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

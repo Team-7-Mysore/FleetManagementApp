@@ -1,16 +1,33 @@
-
 //
 //  StaffListViewModel.swift
 //  FleetManagementSystem
 //
 //  Fetches staff (driver + maintenance) from public.users,
-//  exposes search, status filter, and role filter.
+//  exposes search, status filter, role filter, and sort order.
 //
 
 import Foundation
 import Combine
 internal import PostgREST
 import Supabase
+
+// MARK: - Sort Order
+
+enum StaffSortOrder: String, CaseIterable, Identifiable {
+    case newest      = "Newest First"
+    case nameAsc     = "A → Z"
+    case nameDesc    = "Z → A"
+
+    var id: String { rawValue }
+
+    var icon: String {
+        switch self {
+        case .newest:   return "clock.arrow.trianglehead.counterclockwise.rotate.90"
+        case .nameAsc:  return "arrow.up.circle"
+        case .nameDesc: return "arrow.down.circle"
+        }
+    }
+}
 
 @MainActor
 final class StaffListViewModel: ObservableObject {
@@ -20,13 +37,14 @@ final class StaffListViewModel: ObservableObject {
     @Published var errorMessage:  String?     = nil
 
     // Filters
-    @Published var searchText:    String         = ""
-    @Published var selectedStatus: AccountStatus? = nil
-    @Published var selectedRole:   UserRole?      = nil
+    @Published var searchText:     String           = ""
+    @Published var selectedStatus: AccountStatus?   = nil
+    @Published var selectedRole:   UserRole?        = nil
+    @Published var selectedSort:   StaffSortOrder   = .newest
 
-    // ——— Derived filtered list ———
+    // ——— Derived filtered + sorted list ———
     var filteredStaff: [StaffUser] {
-        allStaff.filter { user in
+        let filtered = allStaff.filter { user in
             // Search
             let matchesSearch: Bool = {
                 guard !searchText.trimmingCharacters(in: .whitespaces).isEmpty else { return true }
@@ -51,10 +69,19 @@ final class StaffListViewModel: ObservableObject {
 
             return matchesSearch && matchesStatus && matchesRole
         }
+
+        // Sort
+        switch selectedSort {
+        case .newest:   return filtered  // already ordered by created_at desc from Supabase
+        case .nameAsc:  return filtered.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .nameDesc: return filtered.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedDescending }
+        }
     }
 
     var activeFilterCount: Int {
-        (selectedStatus != nil ? 1 : 0) + (selectedRole != nil ? 1 : 0)
+        (selectedStatus != nil ? 1 : 0)
+        + (selectedRole != nil ? 1 : 0)
+        + (selectedSort != .newest ? 1 : 0)
     }
 
     // ——— Fetch from Supabase ———
@@ -68,7 +95,7 @@ final class StaffListViewModel: ObservableObject {
                     .from("users")
                     .select()
                     .in("role", values: ["driver", "maintenance"])
-                    .order("name")
+                    .order("created_at", ascending: false)
                     .execute()
                     .value
 
@@ -84,6 +111,7 @@ final class StaffListViewModel: ObservableObject {
     func clearFilters() {
         selectedStatus = nil
         selectedRole   = nil
+        selectedSort   = .newest
         searchText     = ""
     }
 }

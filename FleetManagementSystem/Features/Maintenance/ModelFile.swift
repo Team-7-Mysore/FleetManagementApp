@@ -219,18 +219,40 @@ struct WorkOrderVehicle: Codable {
     let vin: String?
     let numberPlate: String?
     let vehicleName: String?
-    
-    // NEW: Add this line so Swift knows about the type!
     let vehicleType: VehicleType?
-    
+
     enum CodingKeys: String, CodingKey {
         case vehicleId = "vehicle_id"
         case vin
         case numberPlate = "number_plate"
         case vehicleName = "vehicle_name"
-        
-        // NEW: Map it to the database column
         case vehicleType = "vehicle_type"
+    }
+
+    init(
+        vehicleId: UUID,
+        vin: String?,
+        numberPlate: String?,
+        vehicleName: String?,
+        vehicleType: VehicleType?
+    ) {
+        self.vehicleId = vehicleId
+        self.vin = vin
+        self.numberPlate = numberPlate
+        self.vehicleName = vehicleName
+        self.vehicleType = vehicleType
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        vehicleId = try container.decode(UUID.self, forKey: .vehicleId)
+        vin = try container.decodeIfPresent(String.self, forKey: .vin)
+        numberPlate = try container.decodeIfPresent(String.self, forKey: .numberPlate)
+        vehicleName = try container.decodeIfPresent(String.self, forKey: .vehicleName)
+
+        let rawVehicleType = try container.decodeIfPresent(String.self, forKey: .vehicleType)
+        vehicleType = VehicleType(rawValue: rawVehicleType ?? "")
+            ?? VehicleType(rawValue: rawVehicleType?.capitalized ?? "")
     }
 }
 
@@ -344,5 +366,57 @@ struct ParticipantUserIdWithRoom: Codable {
     enum CodingKeys: String, CodingKey {
         case chatRoomId = "chat_room_id"
         case userId = "user_id"
+    }
+}
+
+// MARK: - Driver Report Models
+enum DriverReportCategory: String, Codable, CaseIterable {
+    case mechanical = "mechanical"
+    case electrical = "electrical"
+    case tyreWheel = "tyre/wheel"
+    case fluidLeak = "fluid leak"
+    case bodyDamage = "body damage"
+    case safety = "safety"
+    case other = "other"
+}
+
+enum DriverReportSeverity: String, Codable, CaseIterable {
+    case low = "low"
+    case medium = "medium"
+    case critical = "critical"
+}
+
+enum DriverReportStatus: String, Codable, CaseIterable {
+    case reported = "reported"
+    case acknowledged = "acknowledged"
+    case convertedToWorkOrder = "converted_to_work_order"
+    case resolved = "resolved"
+}
+
+struct DriverReport: Identifiable, Codable {
+    let id: UUID
+    var driverId: UUID?
+    var vehicleId: UUID?
+    var tripId: UUID?
+    var category: DriverReportCategory
+    var severity: DriverReportSeverity
+    var description: String
+    var status: DriverReportStatus
+    let createdAt: Date?
+    
+    // Joined data
+    var vehicle: WorkOrderVehicle?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case driverId = "driver_id"
+        case vehicleId = "vehicle_id"
+        case tripId = "trip_id"
+        case category
+        case severity
+        case description
+        case status
+        case createdAt = "created_at"
+        case vehicle = "vehicles"
     }
 }

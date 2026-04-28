@@ -8,6 +8,14 @@ enum NotificationType: String, Codable, CaseIterable {
     case message        = "Message"
     case alert          = "Alert"
     case general        = "General"
+    case driverReport   = "Driver Report"
+    case unknown        = "Unknown"
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let rawValue = try container.decode(String.self)
+        self = NotificationType(rawValue: rawValue) ?? .unknown
+    }
     
     var systemImage: String {
         switch self {
@@ -16,7 +24,9 @@ enum NotificationType: String, Codable, CaseIterable {
         case .maintenance:  return "exclamationmark.transmission"
         case .message:      return "envelope.fill"
         case .alert:        return "exclamationmark.triangle.fill"
-        case .general:      return "bell.fill"
+        case .general:      return "bell"
+        case .driverReport: return "person.text.rectangle.fill"
+        case .unknown:      return "bell.circle"
         }
     }
 }

@@ -103,16 +103,6 @@ struct InventoryView: View {
                             Image(systemName: "bell")
                                 .font(.system(size: 18, weight: .medium))
                                 .foregroundColor(Color(hex:"#A3352A"))
-                            
-                            if viewModel.notifications.count > 0 {
-                                Text("\(viewModel.notifications.count)")
-                                    .font(.caption2)
-                                    .foregroundColor(.white)
-                                    .padding(4)
-                                    .background(Color.red)
-                                    .clipShape(Circle())
-                                    .offset(x: 8, y: -8)
-                            }
                         }
                     }
                     
