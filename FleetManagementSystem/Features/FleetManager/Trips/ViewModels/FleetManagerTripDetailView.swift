@@ -32,6 +32,11 @@ struct FleetManagerTripDetailView: View {
                                     .tint(.red)
                             }
                             
+                            if !vm.routeCoordinates.isEmpty {
+                                MapPolyline(coordinates: vm.routeCoordinates)
+                                    .stroke(Color.TechBlue, lineWidth: 4)
+                            }
+                            
                             if let driverLoc = vm.driverLocation {
                                 Annotation("Driver", coordinate: driverLoc) {
                                     ZStack {
@@ -437,6 +442,10 @@ struct EditTripSheet: View {
     @State private var originCoordinate: CLLocationCoordinate2D?
     @State private var destinationCoordinate: CLLocationCoordinate2D?
     @State private var status: String
+    @State private var pickupDate: Date
+    @State private var expectedEndDate: Date
+    @State private var selectedVehicleID: UUID?
+    @State private var selectedDriverID: UUID?
     @State private var isUpdating = false
     @State private var errorMessage: String?
     @State private var successMessage: String?
@@ -457,6 +466,20 @@ struct EditTripSheet: View {
         if let lat = trip.destination_latitude, let lon = trip.destination_longitude {
             _destinationCoordinate = State(initialValue: CLLocationCoordinate2D(latitude: lat, longitude: lon))
         }
+        
+        // Initialize driver and vehicle
+        _selectedVehicleID = State(initialValue: trip.vehicle_id)
+        _selectedDriverID = State(initialValue: trip.driver_id)
+        
+        // Dates
+        let pTime = vm.fullTrip?.pickup_time ?? trip.pickup_time
+        let eTime = vm.fullTrip?.end_time
+        
+        let pDate = pTime.flatMap { vm.parseDatabaseTimestamp($0) } ?? Date()
+        let eDate = eTime.flatMap { vm.parseDatabaseTimestamp($0) } ?? Calendar.current.date(byAdding: .hour, value: 4, to: pDate) ?? pDate
+        
+        _pickupDate = State(initialValue: pDate)
+        _expectedEndDate = State(initialValue: eDate)
     }
     
     var body: some View {
@@ -533,26 +556,38 @@ struct EditTripSheet: View {
                     .buttonStyle(.plain)
                 }
                 
-                if let vehicle = vm.vehicle {
-                    Section("Assigned Vehicle") {
-                        HStack {
-                            Text("Vehicle")
-                                .foregroundColor(.secondary)
-                            Spacer()
-                            Text(vehicle.name)
-                                .foregroundColor(.primary)
+                Section("Schedule") {
+                    DatePicker("Pickup Time", selection: $pickupDate)
+                        .onChange(of: pickupDate) { _ in
+                            Task { await vm.loadAssignmentOptions(pickupDate: pickupDate, expectedEndDate: expectedEndDate) }
                         }
-                    }
+                    DatePicker("Expected End", selection: $expectedEndDate)
+                        .onChange(of: expectedEndDate) { _ in
+                            Task { await vm.loadAssignmentOptions(pickupDate: pickupDate, expectedEndDate: expectedEndDate) }
+                        }
                 }
                 
-                if let driver = vm.driver {
-                    Section("Assigned Driver") {
+                Section("Assignment") {
+                    if vm.isLoadingAssignments {
                         HStack {
-                            Text("Driver")
+                            ProgressView()
+                            Text("Checking availability...")
+                                .font(.caption)
                                 .foregroundColor(.secondary)
-                            Spacer()
-                            Text(driver.name)
-                                .foregroundColor(.primary)
+                        }
+                    }
+                    
+                    Picker("Vehicle", selection: $selectedVehicleID) {
+                        Text("Select Vehicle").tag(nil as UUID?)
+                        ForEach(vm.availableVehicles) { v in
+                            Text(v.displayName).tag(v.id as UUID?)
+                        }
+                    }
+                    
+                    Picker("Driver", selection: $selectedDriverID) {
+                        Text("Select Driver").tag(nil as UUID?)
+                        ForEach(vm.availableDrivers) { d in
+                            Text(d.name).tag(d.id as UUID?)
                         }
                     }
                 }
@@ -572,6 +607,9 @@ struct EditTripSheet: View {
                             .font(.caption)
                     }
                 }
+            }
+            .task {
+                await vm.loadAssignmentOptions(pickupDate: pickupDate, expectedEndDate: expectedEndDate)
             }
             .hideKeyboardOnTap()
             .navigationTitle("Edit Trip")
@@ -624,7 +662,20 @@ struct EditTripSheet: View {
         errorMessage = nil
         successMessage = nil
         
+        guard let vehicleID = selectedVehicleID, let driverID = selectedDriverID else {
+            errorMessage = "Please select both a vehicle and a driver."
+            isUpdating = false
+            return
+        }
+        
         do {
+            let isoFormatter = ISO8601DateFormatter()
+            isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            isoFormatter.timeZone = TimeZone(identifier: "UTC")
+            
+            let pickupISO = isoFormatter.string(from: pickupDate)
+            let endISO = isoFormatter.string(from: expectedEndDate)
+            
             struct TripUpdate: Encodable {
                 let trip_name: String
                 let origin: String
@@ -636,6 +687,11 @@ struct EditTripSheet: View {
                 let origin_longitude: Double?
                 let destination_latitude: Double?
                 let destination_longitude: Double?
+                let vehicle_id: UUID
+                let driver_id: UUID
+                let pickup_time: String
+                let end_time: String
+                let start_time: String
             }
             
             let updateData = TripUpdate(
@@ -648,7 +704,12 @@ struct EditTripSheet: View {
                 origin_latitude: originCoordinate?.latitude,
                 origin_longitude: originCoordinate?.longitude,
                 destination_latitude: destinationCoordinate?.latitude,
-                destination_longitude: destinationCoordinate?.longitude
+                destination_longitude: destinationCoordinate?.longitude,
+                vehicle_id: vehicleID,
+                driver_id: driverID,
+                pickup_time: pickupISO,
+                end_time: endISO,
+                start_time: pickupISO
             )
             
             try await SupabaseManager.shared.client

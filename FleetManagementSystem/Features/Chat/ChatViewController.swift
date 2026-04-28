@@ -4,15 +4,19 @@ import InputBarAccessoryView
 import Combine
 
 class ChatViewController: MessagesViewController {
-    
+
     var chatRoomId: UUID
     var currentUser: Sender
     var otherUser: Sender
     var viewModel: ChatViewModel
-    
+
     private var messages: [MessageKitMessage] = []
     private var cancellables = Set<AnyCancellable>()
     private let accentColor: UIColor
+
+    // Disable MessageKit's inputAccessoryView — SwiftUI handles the input bar
+    override var inputAccessoryView: UIView? { return nil }
+    override var canBecomeFirstResponder: Bool { return false }
 
     init(chatRoomId: UUID, currentUser: Sender, otherUser: Sender, viewModel: ChatViewModel, accentColor: UIColor) {
         self.chatRoomId = chatRoomId
@@ -22,41 +26,39 @@ class ChatViewController: MessagesViewController {
         self.accentColor = accentColor
         super.init(nibName: nil, bundle: nil)
     }
-    
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-    
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        
+
         setupCollectionView()
-        setupInputBar()
-        
-        // ✅ Keyboard handling — let MessageKit manage input bar position
-        maintainPositionOnKeyboardFrameChanged = true
-        scrollsToLastItemOnKeyboardBeginsEditing = true
+
+        // Disable MessageKit's keyboard handling — SwiftUI manages the input bar
+        maintainPositionOnKeyboardFrameChanged = false
+        scrollsToLastItemOnKeyboardBeginsEditing = false
         additionalBottomInset = 0
-        messagesCollectionView.keyboardDismissMode = .interactive
-        
+
+        // Hide the built-in MessageKit input bar
+        messageInputBar.isHidden = true
+
         // Hide avatars for iMessage feel
         if let layout = messagesCollectionView.collectionViewLayout as? MessagesCollectionViewFlowLayout {
             layout.textMessageSizeCalculator.outgoingAvatarSize = .zero
             layout.textMessageSizeCalculator.incomingAvatarSize = .zero
         }
-        
-        // ✅ Dismiss keyboard on tap outside input bar
+
+        // Dismiss keyboard on tap
         let tapGesture = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         tapGesture.cancelsTouchesInView = false
         messagesCollectionView.addGestureRecognizer(tapGesture)
-        
-        // Input bar styling
-        messageInputBar.backgroundView.backgroundColor = .systemBackground
-        
+
         setupViewModelObservation()
         loadMessages()
     }
-    
+
     private func setupViewModelObservation() {
         viewModel.$messages
             .receive(on: DispatchQueue.main)
@@ -65,7 +67,7 @@ class ChatViewController: MessagesViewController {
             }
             .store(in: &cancellables)
     }
-    
+
     private func updateMessages(_ newMessages: [ChatMessage]) {
         self.messages = newMessages.map { msg in
             let isCurrent = msg.senderId.uuidString == currentUser.senderId
@@ -74,27 +76,18 @@ class ChatViewController: MessagesViewController {
         messagesCollectionView.reloadData()
         messagesCollectionView.scrollToLastItem(animated: true)
     }
-    
+
     @objc private func dismissKeyboard() {
         view.endEditing(true)
     }
-    
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-    }
-    
+
     private func setupCollectionView() {
         messagesCollectionView.messagesDataSource = self
         messagesCollectionView.messagesLayoutDelegate = self
         messagesCollectionView.messagesDisplayDelegate = self
         messagesCollectionView.messageCellDelegate = self
     }
-    
-    private func setupInputBar() {
-        messageInputBar.delegate = self
-        messageInputBar.sendButton.setTitleColor(accentColor, for: .normal)
-    }
-    
+
     private func loadMessages() {
         Task {
             await viewModel.fetchMessages(chatRoomId: chatRoomId)
@@ -103,9 +96,8 @@ class ChatViewController: MessagesViewController {
 }
 
 // MARK: - MessagesDataSource
-
 extension ChatViewController: MessagesDataSource {
-    
+
     var currentSender: SenderType {
         return currentUser
     }
@@ -120,19 +112,18 @@ extension ChatViewController: MessagesDataSource {
     }
 }
 
-
 // MARK: - MessagesDisplayDelegate
 extension ChatViewController: MessagesDisplayDelegate {
     func backgroundColor(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> UIColor {
-        return isFromCurrentSender(message: message) 
+        return isFromCurrentSender(message: message)
             ? accentColor
             : UIColor.systemGray5
     }
-    
+
     func textColor(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> UIColor {
         return isFromCurrentSender(message: message) ? .white : .label
     }
-    
+
     func messageStyle(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> MessageStyle {
         let corner: MessageStyle.TailCorner = isFromCurrentSender(message: message) ? .bottomRight : .bottomLeft
         return .bubbleTail(corner, .curved)
@@ -141,19 +132,3 @@ extension ChatViewController: MessagesDisplayDelegate {
 
 // MARK: - MessagesLayoutDelegate & MessageCellDelegate
 extension ChatViewController: MessagesLayoutDelegate, MessageCellDelegate {}
-
-// MARK: - InputBarAccessoryViewDelegate
-extension ChatViewController: InputBarAccessoryViewDelegate {
-    func inputBar(_ inputBar: InputBarAccessoryView, didPressSendButtonWith text: String) {
-        let content = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !content.isEmpty else { return }
-        
-        inputBar.inputTextView.text = ""
-        
-        Task {
-            let senderUUID = UUID(uuidString: currentUser.senderId) ?? UUID()
-            await viewModel.sendMessage(chatRoomId: chatRoomId, senderId: senderUUID, content: content)
-            loadMessages()
-        }
-    }
-}

@@ -8,12 +8,19 @@ import Foundation
 final class TripDetailViewModel: ObservableObject {
     
     @Published var trip: Trip
+    @Published var fullTrip: TripDetail?
     @Published var vehicle: Vehicle?
     @Published var driver: DriverInfo?
     @Published var driverLocation: CLLocationCoordinate2D?
     @Published var geofences: [Geofence] = []
+    @Published var routeCoordinates: [CLLocationCoordinate2D] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
+    
+    // Assignment options for editing
+    @Published var availableVehicles: [VehicleAssignmentOption] = []
+    @Published var availableDrivers: [DriverAssignmentOption] = []
+    @Published var isLoadingAssignments = false
     
     // Route Deviation tracking (Session-based)
     @Published var isRouteDeviated = false
@@ -21,7 +28,6 @@ final class TripDetailViewModel: ObservableObject {
     @Published var isCurrentDeviationApproved = false
     
     private let geofenceService = GeofenceService()
-    private var routeCoordinates: [CLLocationCoordinate2D] = []
     private var trackedVehicleId: UUID?
     private var trackedFleetManagerId: UUID?
     private var hasSentDeviationNotification = false
@@ -38,6 +44,126 @@ final class TripDetailViewModel: ObservableObject {
         // Note: Realtime channels are usually cleaned up automatically, 
         // but we should ideally call unsubscribe. However, in @MainActor 
         // deinit, we can't easily call async methods.
+    }
+    
+    /// Loads available vehicles and drivers for the trip's time window.
+    func loadAssignmentOptions(pickupDate: Date, expectedEndDate: Date) async {
+        guard expectedEndDate > pickupDate else {
+            errorMessage = "Expected end time must be after pickup time."
+            return
+        }
+
+        isLoadingAssignments = true
+        errorMessage = nil
+
+        do {
+            // Fetch all vehicles
+            let vehicles: [VehicleAssignmentOption] = try await SupabaseManager.shared.client
+                .from("vehicles")
+                .select("vehicle_id, number_plate, vehicle_name, vehicle_type, status")
+                .execute()
+                .value
+
+            // Fetch all trips to check for conflicts
+            let trips: [AssignmentTripRecord] = try await SupabaseManager.shared.client
+                .from("trips")
+                .select("trip_id, vehicle_id, driver_id, status, start_time, end_time, pickup_time")
+                .execute()
+                .value
+
+            // Filter out conflicting trips, EXCLUDING the current trip we are editing
+            let conflictingTrips = trips.filter { t in
+                t.trip_id != trip.id && // Don't conflict with itself
+                blocksAvailability(status: t.status) && overlaps(
+                    existingStart: parseDatabaseTimestamp(t.start_time) ?? parseDatabaseTimestamp(t.pickup_time),
+                    existingEnd: parseDatabaseTimestamp(t.end_time),
+                    requestedStart: pickupDate,
+                    requestedEnd: expectedEndDate
+                )
+            }
+
+            let busyVehicleIDs = Set(conflictingTrips.compactMap(\.vehicle_id))
+            
+            self.availableVehicles = vehicles
+                .filter { v in
+                    let s = v.status?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    return s != "maintenance" && s != "inactive"
+                }
+                .filter { !busyVehicleIDs.contains($0.vehicle_id) || $0.vehicle_id == trip.vehicle_id }
+                .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
+
+            // Fetch all drivers
+            let drivers: [TripDetailDriverRecord] = try await SupabaseManager.shared.client
+                .from("drivers")
+                .select("driver_id, user_id, license_no, license_expiry")
+                .execute()
+                .value
+
+            // Fetch all users for names
+            let users: [TripDetailUserRecord] = try await SupabaseManager.shared.client
+                .from("users")
+                .select("user_id, name, phone_no")
+                .execute()
+                .value
+
+            let busyDriverIDs = Set(conflictingTrips.compactMap(\.driver_id))
+            let usersByID = Dictionary(uniqueKeysWithValues: users.map { ($0.user_id, $0) })
+
+            self.availableDrivers = drivers
+                .filter { d in
+                    guard let expiryDate = parseDatabaseDate(d.license_expiry) else { return false }
+                    return expiryDate >= Calendar.current.startOfDay(for: pickupDate)
+                }
+                .filter { !busyDriverIDs.contains($0.driver_id) || $0.driver_id == trip.driver_id }
+                .map { d in
+                    let user = usersByID[d.user_id ?? UUID()]
+                    return DriverAssignmentOption(
+                        id: d.driver_id,
+                        userID: d.user_id,
+                        name: user?.name ?? "Driver \(d.driver_id.uuidString.prefix(4))",
+                        licenseNumber: d.license_no,
+                        licenseExpiry: d.license_expiry,
+                        locationHint: nil
+                    )
+                }
+                .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+
+        } catch {
+            print("❌ Error loading assignment options: \(error)")
+            errorMessage = "Failed to load available vehicles/drivers"
+        }
+
+        isLoadingAssignments = false
+    }
+
+    private func blocksAvailability(status: String?) -> Bool {
+        guard let s = status?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
+        return ["assigned", "scheduled", "pending", "in_progress", "in progress", "in_transit", "in transit", "planned", "active"].contains(s)
+    }
+
+    private func overlaps(existingStart: Date?, existingEnd: Date?, requestedStart: Date, requestedEnd: Date) -> Bool {
+        guard let start = existingStart else { return false }
+        let end = existingEnd ?? Calendar.current.date(byAdding: .hour, value: 4, to: start) ?? start
+        let bufferedEnd = end.addingTimeInterval(1800) // 30 min buffer
+        return start < requestedEnd && bufferedEnd > requestedStart
+    }
+
+    func parseDatabaseTimestamp(_ value: String?) -> Date? {
+        guard let v = value?.trimmingCharacters(in: .whitespacesAndNewlines), !v.isEmpty else { return nil }
+        let iso = ISO8601DateFormatter()
+        iso.timeZone = TimeZone(identifier: "UTC")
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = iso.date(from: v) { return d }
+        iso.formatOptions = [.withInternetDateTime]
+        return iso.date(from: v)
+    }
+
+    private func parseDatabaseDate(_ value: String?) -> Date? {
+        guard let v = value else { return nil }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = "yyyy-MM-dd"
+        return f.date(from: v)
     }
     
     /// Starts a polling loop that refreshes the vehicle location every 2 seconds.
@@ -321,6 +447,7 @@ final class TripDetailViewModel: ObservableObject {
                 .execute()
                 .value
             
+            self.fullTrip = fullTrip
             trackedVehicleId = fullTrip.vehicle_id ?? trip.vehicle_id
             trackedFleetManagerId = fullTrip.fleet_manager_id ?? trip.fleet_manager_id
             print("🧭 Trip details loaded for trip \(tripIdString). passed vehicle_id=\(trip.vehicle_id?.uuidString.lowercased() ?? "nil"), full vehicle_id=\(fullTrip.vehicle_id?.uuidString.lowercased() ?? "nil"), tracked vehicle_id=\(trackedVehicleId?.uuidString.lowercased() ?? "nil")")
