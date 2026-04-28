@@ -330,8 +330,10 @@ final class TripDetailViewModel: ObservableObject {
             // Fetch vehicle details if vehicle_id exists
             if let vehicleId = fullTrip.vehicle_id {
                 await fetchVehicle(vehicleId: vehicleId)
-                await fetchGeofences(vehicleId: vehicleId)
             }
+            
+            // Fetch geofences (both assigned to vehicle and those at origin/destination)
+            await fetchGeofences(vehicleId: fullTrip.vehicle_id)
             
             // Fetch driver details if driver_id exists
             if let driverId = fullTrip.driver_id {
@@ -346,13 +348,40 @@ final class TripDetailViewModel: ObservableObject {
         }
     }
 
-    private func fetchGeofences(vehicleId: UUID) async {
+    private func fetchGeofences(vehicleId: UUID?) async {
         do {
-            let fetchedGeofences = try await geofenceService.fetchGeofencesForVehicle(vehicleId)
-            self.geofences = fetchedGeofences
-            print("🗺️ Geofences loaded for vehicle \(vehicleId.uuidString): \(fetchedGeofences.count)")
+            var allRelevantGeofences: [Geofence] = []
+            
+            // 1. Fetch geofences assigned to the vehicle
+            if let vId = vehicleId {
+                let vehicleGeofences = try await geofenceService.fetchGeofencesForVehicle(vId)
+                allRelevantGeofences.append(contentsOf: vehicleGeofences)
+            }
+            
+            // 2. Fetch geofences at origin and destination
+            // We search within a small radius (e.g., 100m) to catch geofences that might be the source/destination
+            if let oLat = trip.origin_latitude, let oLng = trip.origin_longitude {
+                let nearOrigin = try await geofenceService.findOverlappingGeofences(latitude: oLat, longitude: oLng, radius: 100, excluding: nil)
+                for g in nearOrigin {
+                    if !allRelevantGeofences.contains(where: { $0.id == g.id }) {
+                        allRelevantGeofences.append(g)
+                    }
+                }
+            }
+            
+            if let dLat = trip.destination_latitude, let dLng = trip.destination_longitude {
+                let nearDest = try await geofenceService.findOverlappingGeofences(latitude: dLat, longitude: dLng, radius: 100, excluding: nil)
+                for g in nearDest {
+                    if !allRelevantGeofences.contains(where: { $0.id == g.id }) {
+                        allRelevantGeofences.append(g)
+                    }
+                }
+            }
+            
+            self.geofences = allRelevantGeofences
+            print("🗺️ Geofences loaded (Vehicle + Route): \(self.geofences.count)")
         } catch {
-            print("❌ Error fetching geofences for vehicle \(vehicleId.uuidString): \(error)")
+            print("❌ Error fetching geofences: \(error)")
         }
     }
     
