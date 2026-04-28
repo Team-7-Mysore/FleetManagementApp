@@ -126,6 +126,10 @@ class ReportIssueViewModel: ObservableObject {
 
     // MARK: - Helpers
     private func mapCategory(_ uiCategory: String) -> String {
-        return uiCategory.lowercased()
+        let lower = uiCategory.lowercased()
+        if lower == "bodywork" {
+            return "body damage"
+        }
+        return lower
     }
 }
