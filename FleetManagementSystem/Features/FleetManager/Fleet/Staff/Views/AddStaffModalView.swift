@@ -7,8 +7,8 @@
 
 import SwiftUI
 import PhotosUI
- 
-// MARK: - PHPicker wrapper
+
+// MARK: - PHPicker wrapper (Gallery)
 
 struct LicenceImagePicker: UIViewControllerRepresentable {
 
@@ -45,6 +45,44 @@ struct LicenceImagePicker: UIViewControllerRepresentable {
     }
 }
 
+// MARK: - Camera wrapper
+
+struct LicenceCameraPicker: UIViewControllerRepresentable {
+
+    @Binding var selectedImage: UIImage?
+    @Environment(\.dismiss) private var dismiss
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
+
+    class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let parent: LicenceCameraPicker
+        init(_ parent: LicenceCameraPicker) { self.parent = parent }
+
+        func imagePickerController(_ picker: UIImagePickerController,
+                                   didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            picker.dismiss(animated: true)
+            if let image = info[.originalImage] as? UIImage {
+                DispatchQueue.main.async {
+                    self.parent.selectedImage = image
+                }
+            }
+        }
+
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+            picker.dismiss(animated: true)
+        }
+    }
+}
+
 // MARK: - Main View
 
 struct AddStaffModalView: View {
@@ -58,6 +96,8 @@ struct AddStaffModalView: View {
     @State private var emailText:     String = ""
     @State private var phoneText:     String = ""
     @State private var showImagePicker: Bool = false
+    @State private var showCameraPicker: Bool = false
+    @State private var showLicenceSourcePicker: Bool = false
     @State private var showFullImage: Bool = false
 
     @State private var showValidationAlert: Bool = false
@@ -69,7 +109,7 @@ struct AddStaffModalView: View {
         model.email     = emailText
         model.phoneNo   = phoneText
     }
-    
+
     private func validateFields() -> Bool {
         // Check for empty required fields
         if firstNameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -183,12 +223,12 @@ struct AddStaffModalView: View {
                             Image(systemName: "photo.badge.checkmark")
                                 .font(.title2)
                                 .foregroundColor(.blue)
-                            
+
                             VStack(alignment: .leading, spacing: 2) {
                                 Text("Document Uploaded")
                                     .font(.subheadline)
                                     .fontWeight(.medium)
-                                
+
                                 if let data = image.jpegData(compressionQuality: 0.8) {
                                     let sizeKB = Double(data.count) / 1024.0
                                     let sizeString = sizeKB > 1024 ? String(format: "%.1f MB", sizeKB / 1024) : String(format: "%.0f KB", sizeKB)
@@ -198,16 +238,16 @@ struct AddStaffModalView: View {
                                 }
                             }
                             Spacer()
-                            
+
                             Button("View") {
                                 showFullImage = true
                             }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
-                            
+
                             Menu {
                                 Button {
-                                    showImagePicker = true
+                                    showLicenceSourcePicker = true
                                 } label: {
                                     Label("Re-upload", systemImage: "arrow.triangle.2.circlepath")
                                 }
@@ -228,7 +268,7 @@ struct AddStaffModalView: View {
                         TextField("Licence Number", text: $model.licenceNumber)
                             .autocapitalization(.allCharacters)
                             .disableAutocorrection(true)
-                        
+
                         TextField("Expiry Date (e.g. DD/MM/YYYY)", text: $model.licenceExpiryDate)
                             .keyboardType(.numbersAndPunctuation)
                     }
@@ -238,7 +278,7 @@ struct AddStaffModalView: View {
                     Section(header: Text("Driver's Licence").foregroundColor(.primary),
                             footer: Text("A licence image is required for drivers.")) {
                         Button {
-                            showImagePicker = true
+                            showLicenceSourcePicker = true
                         } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: "doc.badge.plus")
@@ -280,8 +320,22 @@ struct AddStaffModalView: View {
             emailText     = model.email
             phoneText     = model.phoneNo
         }
+        .alert("Upload Licence", isPresented: $showLicenceSourcePicker) {
+            Button("Take Photo from Camera") {
+                showCameraPicker = true
+            }
+            Button("Take Photo from Gallery") {
+                showImagePicker = true
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Choose how you'd like to upload the licence image.")
+        }
         .sheet(isPresented: $showImagePicker) {
             LicenceImagePicker(selectedImage: $model.licenceImage)
+        }
+        .sheet(isPresented: $showCameraPicker) {
+            LicenceCameraPicker(selectedImage: $model.licenceImage)
         }
         .sheet(isPresented: $showFullImage) {
             if let image = model.licenceImage {
@@ -322,4 +376,3 @@ struct AddStaffModalView: View {
         )
     }
 }
-

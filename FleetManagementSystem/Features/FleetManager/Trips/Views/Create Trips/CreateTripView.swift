@@ -158,6 +158,11 @@ struct CreateTripView: View {
                             Circle().fill(.white).frame(width: 7, height: 7)
                         }
                     }
+                    
+                    // Always show 3km geofence for source
+                    MapCircle(center: o, radius: 3000)
+                        .foregroundStyle(Color.green.opacity(0.1))
+                        .stroke(Color.green, lineWidth: 1.5)
                 }
 
                 ForEach(resolvedViaCoordinates.indices, id: \.self) { i in
@@ -182,16 +187,16 @@ struct CreateTripView: View {
                                 .foregroundColor(.white)
                         }
                     }
+                    
+                    // Destination geofence circle - always visible if destination set
+                    // If enableDeliveryZone is false, we show a preview circle
+                    MapCircle(center: d, radius: deliveryZoneRadius)
+                        .foregroundStyle(Color.TechBlue.opacity(enableDeliveryZone ? 0.12 : 0.05))
+                        .stroke(Color.TechBlue.opacity(enableDeliveryZone ? 1.0 : 0.3), lineWidth: enableDeliveryZone ? 2 : 1)
                 }
 
-                // Delivery zone circle overlay — centered on destination and via points
+                // Additional via point circles if enabled
                 if enableDeliveryZone {
-                    if let zc = destinationCoordinate {
-                        MapCircle(center: zc, radius: deliveryZoneRadius)
-                            .foregroundStyle(Color.TechBlue.opacity(0.12))
-                            .stroke(Color.TechBlue, lineWidth: 2)
-                    }
-                    
                     ForEach(resolvedViaCoordinates.indices, id: \.self) { i in
                         MapCircle(center: resolvedViaCoordinates[i], radius: deliveryZoneRadius)
                             .foregroundStyle(Color.TechBlue.opacity(0.12))
@@ -664,7 +669,28 @@ struct CreateTripView: View {
 
         guard vm.errorMessage == nil else { return }
 
-        // 2. Optionally create delivery zone geofences — completely separate from trips table
+        // 2. Always create source geofence (3km)
+        if let originCoord = originCoordinate, let vehicleID = selectedVehicleID {
+            let autoName = origin.components(separatedBy: ",").first?
+                .trimmingCharacters(in: .whitespaces) ?? "Source Depot"
+            
+            await geofenceVM.createGeofence(
+                name: "\(autoName) (Source)",
+                latitude: originCoord.latitude,
+                longitude: originCoord.longitude,
+                radius: 3000,
+                type: .depot
+            )
+            
+            if geofenceVM.errorMessage == nil,
+               let newGeofence = geofenceVM.geofences.last(where: {
+                   $0.latitude == originCoord.latitude && $0.longitude == originCoord.longitude
+               }) {
+                await geofenceVM.assignVehicles([vehicleID], to: newGeofence.id)
+            }
+        }
+
+        // 3. Optionally create delivery zone geofences — completely separate from trips table
         if enableDeliveryZone {
             // Create geofence for destination
             if let coord = destinationCoordinate {

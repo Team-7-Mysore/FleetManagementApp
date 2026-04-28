@@ -100,7 +100,7 @@ struct AllTripsView: View {
                         .foregroundColor(.primary)
                 }
             }
-            
+
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Picker("Status", selection: $selectedFilter) {
@@ -126,6 +126,7 @@ struct AllTripsView: View {
         .task {
             guard vm.trips.isEmpty else { return }
             await vm.fetchTrips()
+            await vm.setupRealtimeListeners()
         }
         .refreshable {
             await vm.fetchTrips()

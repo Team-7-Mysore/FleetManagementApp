@@ -21,6 +21,7 @@ struct ActiveTripView: View {
     @StateObject private var locationManager = LocationManager()
     @State private var distance: Double = 0
     @State private var eta: Double = 0
+    @State private var geofences: [Geofence] = []
 
     // Route persistence — tracks the routes table row for this trip
     @State private var savedRouteId: UUID?
@@ -74,6 +75,15 @@ struct ActiveTripView: View {
                 if let route = route {
                     MapPolyline(route.polyline)
                         .stroke(.blue, lineWidth: 5)
+                }
+
+                ForEach(geofences) { geofence in
+                    MapCircle(
+                        center: CLLocationCoordinate2D(latitude: geofence.latitude, longitude: geofence.longitude),
+                        radius: geofence.radius
+                    )
+                    .foregroundStyle(geofence.type.color.opacity(0.12))
+                    .stroke(geofence.type.color, lineWidth: 2)
                 }
             }
             .mapControls {
@@ -199,8 +209,22 @@ struct ActiveTripView: View {
             startTimer()
             createRoute()
             locationManager.requestLocation()
+            
+            Task {
+                await fetchGeofences()
+            }
         }
         .onDisappear { stopTimer() }
+    }
+
+    private func fetchGeofences() async {
+        let geofenceService = GeofenceService()
+        do {
+            self.geofences = try await geofenceService.fetchGeofencesForVehicle(trip.vehicleId)
+            print("🗺️ ActiveTripView: Geofences loaded: \(geofences.count)")
+        } catch {
+            print("❌ ActiveTripView: Failed to load geofences: \(error)")
+        }
     }
 
     private func tripInfoItem(value: String, label: String) -> some View {

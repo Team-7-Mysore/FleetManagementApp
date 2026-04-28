@@ -11,6 +11,7 @@ final class TripDetailViewModel: ObservableObject {
     @Published var vehicle: Vehicle?
     @Published var driver: DriverInfo?
     @Published var driverLocation: CLLocationCoordinate2D?
+    @Published var geofences: [Geofence] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
     
@@ -19,6 +20,7 @@ final class TripDetailViewModel: ObservableObject {
     @Published var deviationRadius: Double = 500.0 // Default 500 meters, adjustable in session
     @Published var isCurrentDeviationApproved = false
     
+    private let geofenceService = GeofenceService()
     private var routeCoordinates: [CLLocationCoordinate2D] = []
     private var trackedVehicleId: UUID?
     private var trackedFleetManagerId: UUID?
@@ -44,7 +46,7 @@ final class TripDetailViewModel: ObservableObject {
         locationPollingTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refreshVehicleLocation()
-                try? await Task.sleep(nanoseconds: 900_000_000_000) // 2 seconds
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
             }
         }
     }
@@ -328,6 +330,7 @@ final class TripDetailViewModel: ObservableObject {
             // Fetch vehicle details if vehicle_id exists
             if let vehicleId = fullTrip.vehicle_id {
                 await fetchVehicle(vehicleId: vehicleId)
+                await fetchGeofences(vehicleId: vehicleId)
             }
             
             // Fetch driver details if driver_id exists
@@ -340,6 +343,16 @@ final class TripDetailViewModel: ObservableObject {
             print("❌ Error loading trip details: \(error)")
             errorMessage = "Failed to load trip details"
             isLoading = false
+        }
+    }
+
+    private func fetchGeofences(vehicleId: UUID) async {
+        do {
+            let fetchedGeofences = try await geofenceService.fetchGeofencesForVehicle(vehicleId)
+            self.geofences = fetchedGeofences
+            print("🗺️ Geofences loaded for vehicle \(vehicleId.uuidString): \(fetchedGeofences.count)")
+        } catch {
+            print("❌ Error fetching geofences for vehicle \(vehicleId.uuidString): \(error)")
         }
     }
     

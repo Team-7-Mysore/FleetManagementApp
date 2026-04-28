@@ -46,6 +46,16 @@ struct FleetManagerTripDetailView: View {
                                     }
                                 }
                             }
+
+                            // Geofences
+                            ForEach(vm.geofences) { geofence in
+                                MapCircle(
+                                    center: CLLocationCoordinate2D(latitude: geofence.latitude, longitude: geofence.longitude),
+                                    radius: geofence.radius
+                                )
+                                .foregroundStyle(geofence.type.color.opacity(0.12))
+                                .stroke(geofence.type.color, lineWidth: 2)
+                            }
                         }
                         .frame(height: 320)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
