@@ -16,6 +16,7 @@ class ChatViewModel: ObservableObject {
     @Published var users: [AppUser] = []
     @Published var filteredUsers: [AppUser] = []
     @Published var messages: [ChatMessage] = []
+    @Published var participantLastRead: [UUID: Date] = [:]
     @Published var currentMessage: String = ""
     @Published var searchText: String = "" {
         didSet { applyFilter() }
@@ -32,16 +33,23 @@ class ChatViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var roomsRealtimeChannel: RealtimeChannelV2?
     private var roomMessagesChannel: RealtimeChannelV2?
+    private var participantsRealtimeChannel: RealtimeChannelV2?
     private var roomsRealtimeTask: Task<Void, Never>?
     private var roomMessagesTask: Task<Void, Never>?
+    private var participantsRealtimeTask: Task<Void, Never>?
     private var activeChatRoomId: UUID?
     private var currentUserId: UUID?
+    private var lastReadUpdateAt: [UUID: Date] = [:]
     
     // In-memory cache for messages: [RoomID: [Messages]]
     private var messageCache: [UUID: [ChatMessage]] = [:]
     
     init() {
         // Debounce search if needed, but for now direct apply
+    }
+
+    func setCurrentUserId(_ userId: UUID) {
+        currentUserId = userId
     }
 
     // MARK: - Realtime Setup
@@ -130,6 +138,9 @@ class ChatViewModel: ObservableObject {
                 }
             }
         }
+
+        await refreshParticipants(chatRoomId: chatRoomId)
+        await startChatParticipantsRealtime(chatRoomId: chatRoomId)
     }
 
     func stopChatRoomRealtime(chatRoomId: UUID) async {
@@ -140,7 +151,51 @@ class ChatViewModel: ObservableObject {
             await channel.unsubscribe()
             roomMessagesChannel = nil
         }
+        participantsRealtimeTask?.cancel()
+        participantsRealtimeTask = nil
+        if let channel = participantsRealtimeChannel {
+            await channel.unsubscribe()
+            participantsRealtimeChannel = nil
+        }
         activeChatRoomId = nil
+    }
+
+    private func startChatParticipantsRealtime(chatRoomId: UUID) async {
+        if let channel = participantsRealtimeChannel {
+            await channel.unsubscribe()
+            participantsRealtimeChannel = nil
+        }
+
+        let channel = supabase.realtimeV2.channel("chat-room-participants-\(chatRoomId.uuidString)")
+        let changes = channel.postgresChange(
+            AnyAction.self,
+            schema: "public",
+            table: "chat_participants"
+        )
+
+        participantsRealtimeChannel = channel
+
+        do {
+            try await channel.subscribeWithError()
+        } catch {
+            print("❌ Chat participants realtime subscribe failed: \(error)")
+            participantsRealtimeChannel = nil
+            return
+        }
+
+        let decoder = Self.makeChatDecoder()
+        participantsRealtimeTask?.cancel()
+        participantsRealtimeTask = Task { [weak self] in
+            guard let self = self else { return }
+            for await action in changes {
+                if Task.isCancelled { break }
+                guard let participant = self.decodeChatParticipant(from: action, decoder: decoder) else { continue }
+                guard participant.chatRoomId == chatRoomId else { continue }
+                await MainActor.run {
+                    self.participantLastRead[participant.userId] = participant.lastReadAt
+                }
+            }
+        }
     }
 
     private func handleRoomsMessage(_ message: ChatMessage) {
@@ -172,6 +227,12 @@ class ChatViewModel: ObservableObject {
 
         if activeChatRoomId == message.chatRoomId {
             messages = cached
+            if let userId = currentUserId, message.senderId != userId {
+                let readAt = message.createdAt ?? Date()
+                Task {
+                    await markChatRead(chatRoomId: message.chatRoomId, userId: userId, readAt: readAt)
+                }
+            }
         }
 
         updateChatPreview(chatRoomId: message.chatRoomId, message: message)
@@ -211,6 +272,17 @@ class ChatViewModel: ObservableObject {
             return try? action.decodeRecord(as: ChatMessage.self, decoder: decoder)
         case .update(let action):
             return try? action.decodeRecord(as: ChatMessage.self, decoder: decoder)
+        default:
+            return nil
+        }
+    }
+
+    private func decodeChatParticipant(from action: AnyAction, decoder: JSONDecoder) -> ChatParticipantReadRecord? {
+        switch action {
+        case .insert(let action):
+            return try? action.decodeRecord(as: ChatParticipantReadRecord.self, decoder: decoder)
+        case .update(let action):
+            return try? action.decodeRecord(as: ChatParticipantReadRecord.self, decoder: decoder)
         default:
             return nil
         }
@@ -382,14 +454,16 @@ class ChatViewModel: ObservableObject {
         let dateString = isoFormatter.string(from: fortyEightHoursAgo)
         
         do {
-            let fetchedMessages: [ChatMessage] = try await supabase
+            let response = try await supabase
                 .from("chat_messages")
                 .select()
                 .eq("chat_room_id", value: chatRoomId)
                 .gte("created_at", value: dateString)
                 .order("created_at", ascending: true)
                 .execute()
-                .value
+
+            let decoder = Self.makeChatDecoder()
+            let fetchedMessages = try decoder.decode([ChatMessage].self, from: response.data)
             
             // UPDATE CACHE & UI
             self.messageCache[chatRoomId] = fetchedMessages
@@ -399,6 +473,53 @@ class ChatViewModel: ObservableObject {
             print("❌ Database Error fetching messages: \(error.message)")
         } catch {
             print("❌ General Error fetching messages: \(error)")
+        }
+    }
+
+    func refreshParticipants(chatRoomId: UUID) async {
+        do {
+            let response = try await supabase
+                .from("chat_participants")
+                .select("chat_room_id, user_id, last_read_at")
+                .eq("chat_room_id", value: chatRoomId)
+                .execute()
+
+            let decoder = Self.makeChatDecoder()
+            let records = try decoder.decode([ChatParticipantReadRecord].self, from: response.data)
+            var map: [UUID: Date] = [:]
+            for record in records {
+                if let lastReadAt = record.lastReadAt {
+                    map[record.userId] = lastReadAt
+                }
+            }
+            participantLastRead.merge(map) { _, new in new }
+        } catch {
+            print("❌ Failed to refresh chat participants: \(error)")
+        }
+    }
+
+    func markChatRead(chatRoomId: UUID, userId: UUID, readAt: Date) async {
+        let currentRead = participantLastRead[userId] ?? .distantPast
+        if readAt <= currentRead { return }
+
+        let now = Date()
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let dateString = formatter.string(from: readAt)
+
+        do {
+            _ = try await supabase
+                .from("chat_participants")
+                .update(["last_read_at": dateString])
+                .eq("chat_room_id", value: chatRoomId)
+                .eq("user_id", value: userId)
+                .execute()
+
+            participantLastRead[userId] = readAt
+            lastReadUpdateAt[chatRoomId] = now
+        } catch {
+            print("❌ Failed to update read receipt: \(error)")
         }
     }
 
@@ -576,5 +697,17 @@ class ChatViewModel: ObservableObject {
 
         room.participantIds = participantIds
         return room
+    }
+}
+
+private struct ChatParticipantReadRecord: Codable {
+    let chatRoomId: UUID
+    let userId: UUID
+    let lastReadAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case chatRoomId = "chat_room_id"
+        case userId = "user_id"
+        case lastReadAt = "last_read_at"
     }
 }
