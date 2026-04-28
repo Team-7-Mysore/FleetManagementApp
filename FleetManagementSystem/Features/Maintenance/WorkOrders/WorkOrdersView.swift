@@ -141,7 +141,6 @@ struct WorkOrdersView: View {
                                 .font(.system(size: 18, weight: .medium))
                                 .foregroundColor(Color(hex:"#A3352A"))
 
-                            // 👇 ADDED OVERLAY BADGE HERE
                             if unreadNotificationCount > 0 {
                                 Text("\(unreadNotificationCount)")
                                     .font(.system(size: 10, weight: .bold))

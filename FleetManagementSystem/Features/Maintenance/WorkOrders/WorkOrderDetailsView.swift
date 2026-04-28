@@ -85,6 +85,10 @@ struct WorkOrderDetailView: View {
         workOrder.isApproved ? "Start Work Order" : "Waiting for Approval"
     }
 
+    private var areAllTasksCompleted: Bool {
+        tasks.isEmpty || tasks.allSatisfy { $0.isCompleted }
+    }
+
     // MARK: - Body
     var body: some View {
         ZStack {
@@ -196,13 +200,22 @@ struct WorkOrderDetailView: View {
                                         .foregroundColor(task.isCompleted ? .blue : Color(uiColor: .systemGray4))
                                         .font(.title3)
                                 }
-
+                                
                                 Text(task.description)
                                     .font(.subheadline)
                                     .foregroundColor(task.isCompleted ? .secondary : .primary)
                                     .strikethrough(task.isCompleted)
-
+                                
                                 Spacer()
+                    
+                                Button(action: {
+                                    tasks.removeAll { $0.taskId == task.taskId }
+                                    scheduleAutosave()
+                                }) {
+                                    Image(systemName: "trash")
+                                        .foregroundColor(.red.opacity(0.8))
+                                        .font(.subheadline)
+                                }
                             }
                             .padding(.vertical, 4)
                             Divider()
@@ -369,9 +382,6 @@ struct WorkOrderDetailView: View {
                 // If approved but not yet completed, Manager sees NOTHING here.
 
             } else {
-                // ==========================================
-                // 2. MECHANIC VIEW
-                // ==========================================
                 if workOrder.status == .pending {
                     // Start Work Order
                     Button {
@@ -400,37 +410,46 @@ struct WorkOrderDetailView: View {
 
                 } else if workOrder.status == .inProgress || workOrder.status == .completed {
                     // Complete Work Order / View Report
-                    Button {
-                        cancelPendingSave()
-                        if workOrder.status == .completed {
-                            showingCompletionReport = true
-                        } else {
-                            showingCompletionAlert = true
-                        }
-                    } label: {
-                        HStack {
-                            if isSaving {
-                                ProgressView()
-                                    .progressViewStyle(.circular)
-                                    .tint(.white)
+                    VStack(spacing: 8) {
+                        Button {
+                            cancelPendingSave()
+                            if workOrder.status == .completed {
+                                showingCompletionReport = true
                             } else {
-                                Text(workOrder.status == .completed ? "View Report" : "Complete Work Order")
-                                    .font(.headline)
+                                showingCompletionAlert = true
                             }
+                        } label: {
+                            HStack {
+                                if isSaving {
+                                    ProgressView()
+                                        .progressViewStyle(.circular)
+                                        .tint(.white)
+                                } else {
+                                    Text(workOrder.status == .completed ? "View Report" : "Complete Work Order")
+                                        .font(.headline)
+                                }
+                            }
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color(red: 163/255, green: 53/255, blue: 42/255))
+                            .cornerRadius(12)
                         }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color(red: 163/255, green: 53/255, blue: 42/255))
-                        .cornerRadius(12)
+                        
+                        .disabled(isSaving || (workOrder.status != .completed && !areAllTasksCompleted))
+                        .opacity((workOrder.status != .completed && !areAllTasksCompleted) ? 0.5 : 1.0)
+                        .padding(.top, 10)
+                        
+                        if workOrder.status != .completed && !areAllTasksCompleted {
+                            Text("⚠️ Please complete all maintenance tasks to finish.")
+                                .font(.caption)
+                                .foregroundColor(.red)
+                        }
                     }
-                    .disabled(isSaving)
-                    .padding(.top, 10)
                 }
             }
         }
 
-    // 🚨 EXPLICITLY ONLY SHOWING THE CROSS BUTTON FOR EVERYONE
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigationBarLeading) {

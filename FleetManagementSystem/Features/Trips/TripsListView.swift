@@ -2,21 +2,30 @@ import SwiftUI
 import Supabase
 
 struct TripsListView: View {
-
+    
     let profile: UserProfile?
     let onSignOut: () async -> Void
-    @State private var navigateToNotifications = false // State for navigation
-
+    @State private var navigateToNotifications = false
+    
     @StateObject private var vm = TripListViewModel()
     @State private var showingProfile = false
     @State private var selectedWorkOrder: WorkOrder? = nil
     @State private var unreadNotificationCount = 0
-
+    
     init(profile: UserProfile? = nil, onSignOut: @escaping () async -> Void = {}) {
         self.profile = profile
         self.onSignOut = onSignOut
     }
-
+    
+    // MARK: - Computed Properties for Separation
+    private var pendingApprovals: [WorkOrder] {
+        vm.vehiclesInMaintenance.filter { $0.status == .pending }
+    }
+    
+    private var activeMaintenance: [WorkOrder] {
+        vm.vehiclesInMaintenance.filter { $0.status == .inProgress }
+    }
+    
     var body: some View {
         NavigationStack {
             ZStack(alignment: .bottomTrailing) {
@@ -24,18 +33,23 @@ struct TripsListView: View {
                     VStack(spacing: 20) {
                         // Fleet Overview Cards
                         fleetOverviewSection
-
+                        
                         // Ongoing Trips Section
                         ongoingTripsSection
-
-                        // Vehicles in Maintenance Section
-                        if !vm.vehiclesInMaintenance.isEmpty {
+                        
+                        // 👇 NEW: Pending Approvals Section
+                        if !pendingApprovals.isEmpty {
+                            pendingApprovalsSection
+                        }
+                        
+                        // Vehicles in Maintenance Section (Now only shows .inProgress)
+                        if !activeMaintenance.isEmpty {
                             maintenanceSection
                         }
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
-                    .padding(.bottom, 100)
+                    .padding(.bottom, 30)
                 }
                 .background(Color(.systemGroupedBackground))
                 .navigationTitle("Dashboard")
@@ -49,8 +63,7 @@ struct TripsListView: View {
                                 Image(systemName: "bell")
                                     .font(.system(size: 18, weight: .medium))
                                     .foregroundColor(Color.black)
-
-                                // 👇 ADDED OVERLAY BADGE
+                                
                                 if unreadNotificationCount > 0 {
                                     Text("\(unreadNotificationCount)")
                                         .font(.system(size: 10, weight: .bold))
@@ -58,7 +71,7 @@ struct TripsListView: View {
                                         .frame(minWidth: 16, minHeight: 16)
                                         .background(Color.red)
                                         .clipShape(Circle())
-                                        .offset(x: 8, y: -6)
+                                        .offset(x: 6, y: -2)
                                 }
                             }
                         }
@@ -71,7 +84,6 @@ struct TripsListView: View {
                         }
                     }
                 }
-                // Inside TripsListView.swift
                 .task {
                     if vm.trips.isEmpty {
                         await vm.fetchTrips()
@@ -88,34 +100,34 @@ struct TripsListView: View {
                         .presentationDetents([.large])
                         .presentationDragIndicator(.visible)
                 }
-                // FIXED: Opens Notifications as a pushed navigation view
                 .navigationDestination(isPresented: $navigateToNotifications) {
                     FleetManagerNotificationsView(userId: profile?.userId)
                 }
                 .sheet(item: $selectedWorkOrder) { workOrder in
                     NavigationStack {
+                        // This already has manager approval mode enabled!
                         WorkOrderDetailView(workOrder: workOrder, isManagerApprovalMode: true)
                     }
                 }
-
+                
                 floatingActionButton
             }
         }
     }
-
+    
     // MARK: - Functions
     private func fetchUnreadCount() async {
         do {
             let session = try await SupabaseManager.shared.client.auth.session
             let currentUserId = session.user.id
-
+            
             let response = try await SupabaseManager.shared.client
                 .from("notifications")
                 .select("id", head: true, count: .exact)
                 .eq("recipient_id", value: currentUserId.uuidString)
                 .eq("is_read", value: false)
                 .execute()
-
+            
             await MainActor.run {
                 unreadNotificationCount = response.count ?? 0
             }
@@ -123,14 +135,14 @@ struct TripsListView: View {
             print("Error fetching notifications: \(error)")
         }
     }
-
+    
     // MARK: - Fleet Overview Section
     private var fleetOverviewSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Fleet Overview")
                 .font(.title3.weight(.semibold))
                 .foregroundColor(.primary)
-
+            
             HStack(spacing: 12) {
                 overviewCard(
                     title: "Available Drivers",
@@ -138,7 +150,7 @@ struct TripsListView: View {
                     icon: "person.2.fill",
                     color: Color(hex: "#4A90E2")
                 )
-
+                
                 overviewCard(
                     title: "Available Vehicles",
                     value: "\(vm.availableVehicleCount)",
@@ -148,21 +160,21 @@ struct TripsListView: View {
             }
         }
     }
-
+    
     private func overviewCard(title: String, value: String, icon: String, color: Color) -> some View {
         VStack(spacing: 8) {
             HStack(alignment: .center, spacing: 6) {
                 Image(systemName: icon)
                     .font(.system(size: 16))
                     .foregroundColor(color)
-
+                
                 Text(title)
                     .font(.caption)
                     .foregroundColor(.secondary)
-
+                
                 Spacer()
             }
-
+            
             Text(value)
                 .font(.system(size: 28, weight: .bold, design: .rounded))
                 .foregroundColor(.primary)
@@ -175,7 +187,7 @@ struct TripsListView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
     }
-
+    
     // MARK: - Ongoing Trips Section
     private var ongoingTripsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -183,14 +195,14 @@ struct TripsListView: View {
                 Text("Ongoing Trips")
                     .font(.title3.weight(.semibold))
                     .foregroundColor(.primary)
-
+                
                 Spacer()
-
+                
                 NavigationLink("View All", destination: AllTripsView())
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(.TechBlue)
             }
-
+            
             if vm.isLoading {
                 loadingState
             } else if vm.filteredTrips.isEmpty {
@@ -202,7 +214,35 @@ struct TripsListView: View {
             }
         }
     }
-
+    
+    // MARK: - NEW: Pending Approvals Section
+    private var pendingApprovalsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Pending Approvals")
+                    .font(.title3.weight(.semibold))
+                    .foregroundColor(.primary)
+                
+                Spacer()
+                
+                // You can build an AllPendingApprovalsView later if needed
+                // NavigationLink("View All", destination: AllPendingApprovalsView())
+                //     .font(.subheadline.weight(.semibold))
+                //     .foregroundColor(.TechBlue)
+            }
+            
+            ForEach(Array(pendingApprovals.prefix(3))) { workOrder in
+                Button(action: {
+                    // This sets the state, opening the sheet with manager mode
+                    selectedWorkOrder = workOrder
+                }) {
+                    MaintenanceVehicleCard(workOrder: workOrder)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+    
     // MARK: - Maintenance Section
     private var maintenanceSection: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -210,16 +250,16 @@ struct TripsListView: View {
                 Text("Vehicles in Maintenance")
                     .font(.title3.weight(.semibold))
                     .foregroundColor(.primary)
-
+                
                 Spacer()
-
+                
                 NavigationLink("View All", destination: AllMaintenanceView())
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(.TechBlue)
             }
-
-
-            ForEach(Array(vm.vehiclesInMaintenance.prefix(3))) { workOrder in
+            
+            // 👇 Now uses activeMaintenance to exclude the pending ones shown above
+            ForEach(Array(activeMaintenance.prefix(3))) { workOrder in
                 Button(action: {
                     selectedWorkOrder = workOrder
                 }) {
@@ -229,7 +269,7 @@ struct TripsListView: View {
             }
         }
     }
-
+    
     private var loadingState: some View {
         HStack(spacing: 12) {
             ProgressView()
@@ -240,17 +280,17 @@ struct TripsListView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 40)
     }
-
+    
     private var emptyTripsState: some View {
         VStack(spacing: 12) {
             Image(systemName: "shippingbox")
                 .font(.system(size: 48))
                 .foregroundColor(.secondary)
-
+            
             Text("No Ongoing Trips")
                 .font(.headline)
                 .foregroundColor(.primary)
-
+            
             Text("Active trips will appear here")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
@@ -260,7 +300,7 @@ struct TripsListView: View {
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
-
+    
     private var floatingActionButton: some View {
         NavigationLink(destination: CreateTripView(fleetManagerId: profile?.userId)) {
             Image(systemName: "plus")
@@ -280,14 +320,13 @@ struct TripsListView: View {
         .padding(.trailing, 20)
         .padding(.bottom, 24)
     }
-
 }
 
 
 // MARK: - Enhanced Trip Card
 struct EnhancedTripCard: View {
     let trip: Trip
-
+    
     var body: some View {
         NavigationLink(destination: FleetManagerTripDetailView(trip: trip)) {
             VStack(alignment: .leading, spacing: 8) {
@@ -296,12 +335,12 @@ struct EnhancedTripCard: View {
                     Text(trip.tripNameText)
                         .font(.headline.weight(.bold))
                         .foregroundColor(.primary)
-
+                    
                     Spacer()
-
+                    
                     statusBadge
                 }
-
+                
                 // Bottom row - Route details
                 HStack(spacing: 6) {
                     Text(trip.originText)
@@ -311,12 +350,12 @@ struct EnhancedTripCard: View {
                         .lineLimit(nil)
                         .multilineTextAlignment(.leading)
                         .layoutPriority(1)
-
+                    
                     Image(systemName: "arrow.right")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 2)
-
+                    
                     Text(trip.destinationText)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .font(.subheadline)
@@ -334,7 +373,7 @@ struct EnhancedTripCard: View {
         }
         .buttonStyle(.plain)
     }
-
+    
     private var statusBadge: some View {
         Text(trip.normalisedStatus.displayTitle)
             .font(.caption2.weight(.bold))
@@ -344,7 +383,7 @@ struct EnhancedTripCard: View {
             .background(statusColor)
             .clipShape(Capsule())
     }
-
+    
     private var statusColor: Color {
         switch trip.normalisedStatus {
         case .inTransit:
@@ -366,9 +405,9 @@ struct EnhancedTripCard: View {
 
 // MARK: - Maintenance Vehicle Card
 struct MaintenanceVehicleCard: View {
-
+    
     let workOrder: WorkOrder
-
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Top row - Vehicle name and status badge
@@ -376,12 +415,12 @@ struct MaintenanceVehicleCard: View {
                 Text(workOrder.vehicle?.vehicleName ?? workOrder.vehicle?.numberPlate ?? "Fleet Vehicle")
                     .font(.headline.weight(.bold))
                     .foregroundColor(.primary)
-
+                
                 Spacer()
-
+                
                 statusBadge
             }
-
+            
             // Bottom row - Issue title
             Text(workOrder.issueTitle)
                 .font(.subheadline)
@@ -395,7 +434,7 @@ struct MaintenanceVehicleCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
     }
-
+    
     private var statusBadge: some View {
         Text(workOrder.status.rawValue)
             .font(.caption2.weight(.bold))
@@ -405,7 +444,7 @@ struct MaintenanceVehicleCard: View {
             .background(statusColor)
             .clipShape(Capsule())
     }
-
+    
     private var statusColor: Color {
         switch workOrder.status {
         case .pending:
@@ -418,9 +457,7 @@ struct MaintenanceVehicleCard: View {
             return Color.red
         }
     }
-
 }
-
 
 // MARK: - Hex Color Extension
 extension Color {
@@ -428,8 +465,7 @@ extension Color {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
         var int: UInt64 = 0
         Scanner(string: hex).scanHexInt64(&int)
-
-
+        
         let a, r, g, b: UInt64
         switch hex.count {
         case 6:
@@ -439,8 +475,7 @@ extension Color {
         default:
             (a, r, g, b) = (255, 0, 0, 0)
         }
-
-
+        
         self.init(
             .sRGB,
             red: Double(r) / 255,
