@@ -4,11 +4,21 @@ import UniformTypeIdentifiers
 import AVFoundation
 import Photos
 
+// MARK: - Performance Helpers
+private enum DetailViewCache {
+    static let formatter: DateFormatter = {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        return df
+    }()
+}
+
 struct VehicleDetailView: View {
     let vehicle: Vehicle
     @Environment(\.dismiss) var dismiss
     @StateObject private var vm: VehicleDetailViewModel
     
+    @State private var showSourcePopover = false
     @State private var isEditing = false
     @State private var draftVehicle: Vehicle?
     @State private var isSaving = false
@@ -17,8 +27,6 @@ struct VehicleDetailView: View {
     @State private var isImportingDocument = false
     @State private var activeDocumentType: String?
     @State private var showStaffSelection = false
-    
-    // State for the Image Selection Pop-up
     @State private var showImageSourceDialog = false
     @State private var showReportsSheet = false
     
@@ -32,7 +40,7 @@ struct VehicleDetailView: View {
             if vm.isLoading {
                 HStack {
                     Spacer()
-                    ProgressView("Loading Vehicle Details...")
+                    ProgressView()
                     Spacer()
                 }
                 .listRowBackground(Color.clear)
@@ -46,61 +54,7 @@ struct VehicleDetailView: View {
                 }
                 .listRowBackground(Color.clear)
                 
-                // MARK: - Vehicle Identification
-                Section(header: Text("Vehicle Identification")) {
-                    InfoRow(title: "Name", value: currentVehicle.name, isEditing: isEditing, text: binding(\.name))
-                    
-                    // Plate with auto-capitalization
-                    InfoRow(title: "Plate", value: currentVehicle.registrationNumber, isEditing: isEditing, text: binding(\.registrationNumber))
-                        .textCase(.uppercase)
-                }
-                
-                // MARK: - Basic Info
-                Section(header: Text("Basic Info")) {
-                    InfoRow(title: "Brand", value: currentVehicle.brand ?? "—", isEditing: isEditing, text: binding(\.brand))
-                    InfoRow(title: "Model", value: currentVehicle.model ?? "—", isEditing: isEditing, text: binding(\.model))
-                    InfoRow(title: "Year", value: currentVehicle.modelYear ?? "—", isEditing: isEditing, text: binding(\.modelYear))
-                    InfoRow(title: "Fuel", value: currentVehicle.fuelType ?? "—", isEditing: isEditing, text: binding(\.fuelType))
-                }
-                
-                // MARK: - Registration Details
-                Section(header: Text("Registration Details")) {
-                    if isEditing {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("VIN")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(Color(.systemGray2))
-                            
-                            TextField("Enter 17-digit VIN", text: binding(\.vin))
-                                .textInputAutocapitalization(.characters)
-                                .disableAutocorrection(true)
-                                .onChange(of: draftVehicle?.vin) { _, newValue in
-                                    if let val = newValue, val.count > 17 {
-                                        draftVehicle?.vin = String(val.prefix(17))
-                                    }
-                                }
-                            
-                            if let vin = draftVehicle?.vin, !vin.isEmpty {
-                                HStack(spacing: 4) {
-                                    Image(systemName: vin.count == 17 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                                        .font(.system(size: 12))
-                                    Text(vin.count == 17 ? "Valid VIN" : "Incomplete VIN")
-                                        .font(.system(size: 12, weight: .medium))
-                                }
-                                .foregroundColor(vin.count == 17 ? .green : .red)
-                            }
-                        }
-                    } else {
-                        InfoRow(title: "VIN", value: currentVehicle.vin.isEmpty ? "—" : currentVehicle.vin, isEditing: false, text: nil)
-                    }
-                    
-                    InfoRow(title: "RC Number", value: currentVehicle.rcNumber.isEmpty ? "—" : currentVehicle.rcNumber, isEditing: isEditing, text: binding(\.rcNumber))
-                    InfoRow(title: "Reg. Date", value: currentVehicle.registrationDate.isEmpty ? "—" : currentVehicle.registrationDate, isEditing: isEditing, text: binding(\.registrationDate))
-                    InfoRow(title: "RC Expiry", value: currentVehicle.rcExpiryDate.isEmpty ? "—" : currentVehicle.rcExpiryDate, isEditing: isEditing, text: binding(\.rcExpiryDate))
-                    InfoRow(title: "PUC Expiry", value: currentVehicle.pucExpiryDate.isEmpty ? "—" : currentVehicle.pucExpiryDate, isEditing: isEditing, text: binding(\.pucExpiryDate))
-                }
-                
-                // MARK: - Documents
+                // MARK: - Required Documents
                 Section(header: Text("Required Documents")) {
                     let requiredTypes = ["RC", "INSURANCE", "PUC"]
                     ForEach(requiredTypes, id: \.self) { type in
@@ -108,7 +62,32 @@ struct VehicleDetailView: View {
                     }
                 }
                 
-                // MARK: - Maintenance & Actions
+                // MARK: - Vehicle Identification
+                Section(header: Text("Vehicle Identification")) {
+                    InfoRow(title: "Name", value: currentVehicle.name, isEditing: isEditing, text: binding(\.name))
+                    InfoRow(title: "Plate", value: currentVehicle.registrationNumber, isEditing: false, text: nil)
+                        .textCase(.uppercase)
+                }
+                
+                // MARK: - Basic Info (Locked Specs)
+                Section(header: Text("Basic Info")) {
+                    InfoRow(title: "Brand", value: currentVehicle.brand ?? "—", isEditing: false, text: nil)
+                    InfoRow(title: "Model", value: currentVehicle.model ?? "—", isEditing: false, text: nil)
+                    InfoRow(title: "Year", value: currentVehicle.modelYear ?? "—", isEditing: false, text: nil)
+                    InfoRow(title: "Fuel", value: currentVehicle.fuelType ?? "—", isEditing: false, text: nil)
+                }
+                
+                // MARK: - Registration Details
+                Section(header: Text("Registration Details")) {
+                    InfoRow(title: "VIN", value: currentVehicle.vin.isEmpty ? "—" : currentVehicle.vin, isEditing: false, text: nil)
+                    
+                    // Note: RC Number removed as requested
+                    InfoRow(title: "Reg. Date", value: currentVehicle.registrationDate.isEmpty ? "—" : currentVehicle.registrationDate, isEditing: isEditing, text: binding(\.registrationDate))
+                    InfoRow(title: "RC Expiry", value: currentVehicle.rcExpiryDate.isEmpty ? "—" : currentVehicle.rcExpiryDate, isEditing: isEditing, text: binding(\.rcExpiryDate))
+                    InfoRow(title: "PUC Expiry", value: currentVehicle.pucExpiryDate.isEmpty ? "—" : currentVehicle.pucExpiryDate, isEditing: isEditing, text: binding(\.pucExpiryDate))
+                }
+                
+                // MARK: - Actions & Reports
                 Section(header: Text("Actions")) {
                     Button {
                         showStaffSelection = true
@@ -131,28 +110,18 @@ struct VehicleDetailView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 if isEditing {
-                    Button("Cancel") {
-                        isEditing = false
-                        draftVehicle = nil
-                    }
+                    Button("Cancel") { isEditing = false; draftVehicle = nil }
                 } else {
                     Button("Close") { dismiss() }
                 }
             }
-            
             ToolbarItem(placement: .navigationBarTrailing) {
                 if isEditing {
-                    Button("Save") {
-                        Task { await saveChanges() }
-                    }
-                    .fontWeight(.bold)
-                    // Disable save if VIN is not exactly 17 digits
-                    .disabled(isSaving || (draftVehicle?.vin.count ?? 0) != 17)
+                    Button("Save") { Task { await saveChanges() } }
+                        .fontWeight(.bold)
+                        .disabled(isSaving)
                 } else {
-                    Button("Edit") {
-                        draftVehicle = vm.vehicle
-                        isEditing = true
-                    }
+                    Button("Edit") { draftVehicle = vm.vehicle; isEditing = true }
                 }
             }
         }
@@ -167,15 +136,6 @@ struct VehicleDetailView: View {
         .sheet(isPresented: $showStaffSelection) {
             if let v = vm.vehicle { MaintenanceStaffPickerView(vehicle: v) }
         }
-        .sheet(isPresented: $showImagePicker) {
-            ImagePicker(sourceType: sourceType) { image in
-                Task {
-                    await vm.uploadImage(image: image, type: "VEHICLE")
-                    if let newURL = vm.vehicle?.imageURL { draftVehicle?.imageURL = newURL }
-                }
-            }
-        }
-        // ✅ CORRECTED: fileImporter closure is attached properly
         .fileImporter(
             isPresented: $isImportingDocument,
             allowedContentTypes: [.item],
@@ -185,9 +145,25 @@ struct VehicleDetailView: View {
                 Task { await vm.uploadDocument(fileURL: url, type: type) }
             }
         }
-        // ✅ CORRECTED: sheet is placed after the fileImporter completion block
         .sheet(isPresented: $showReportsSheet) {
             VehicleReportsListView(reports: vm.maintenanceReports)
+        }
+        .sheet(isPresented: $showImagePicker) {
+            ImagePicker(sourceType: sourceType) { image in
+                Task {
+                    if let type = activeDocumentType {
+                        await vm.uploadImage(image: image, type: type)
+                        if type == "RC" {
+                            await vm.processVehicleOCR(from: image)
+                            if isEditing { draftVehicle = vm.vehicle }
+                        }
+                        activeDocumentType = nil
+                    } else {
+                        await vm.uploadImage(image: image, type: "VEHICLE")
+                        if let newURL = vm.vehicle?.imageURL { draftVehicle?.imageURL = newURL }
+                    }
+                }
+            }
         }
     }
     
@@ -197,11 +173,13 @@ struct VehicleDetailView: View {
         ZStack(alignment: .bottomTrailing) {
             Group {
                 if let urlString = vehicle.imageURL, let url = URL(string: urlString) {
-                    AsyncImage(url: url) { image in
-                        image.resizable().scaledToFill()
-                    } placeholder: {
-                        Rectangle().fill(Color(.systemGray5))
-                            .overlay(Image(systemName: vehicle.imageSystemName).font(.largeTitle).foregroundColor(.gray))
+                    AsyncImage(url: url, transaction: .init(animation: .easeInOut)) { phase in
+                        if let image = phase.image {
+                            image.resizable().scaledToFill()
+                        } else {
+                            Rectangle().fill(Color(.systemGray5))
+                                .overlay(Image(systemName: vehicle.imageSystemName).font(.largeTitle).foregroundColor(.gray))
+                        }
                     }
                 } else {
                     Rectangle().fill(Color(.systemGray5))
@@ -211,9 +189,7 @@ struct VehicleDetailView: View {
             .frame(height: 200)
             .clipped()
             .contentShape(Rectangle())
-            .onTapGesture {
-                if isEditing { showImageSourceDialog = true }
-            }
+            .onTapGesture { if isEditing { showImageSourceDialog = true } }
             
             if isEditing {
                 Image(systemName: "camera.circle.fill")
@@ -225,18 +201,8 @@ struct VehicleDetailView: View {
             }
         }
         .confirmationDialog("Change Vehicle Photo", isPresented: $showImageSourceDialog) {
-            Button("Take Photo") {
-                handleCameraAccess {
-                    sourceType = .camera
-                    showImagePicker = true
-                }
-            }
-            Button("Choose from Library") {
-                handlePhotoLibraryAccess {
-                    sourceType = .photoLibrary
-                    showImagePicker = true
-                }
-            }
+            Button("Take Photo") { handleCameraAccess { sourceType = .camera; showImagePicker = true } }
+            Button("Choose from Library") { handlePhotoLibraryAccess { sourceType = .photoLibrary; showImagePicker = true } }
             Button("Cancel", role: .cancel) { }
         }
     }
@@ -245,32 +211,87 @@ struct VehicleDetailView: View {
     private func documentRowLogic(for type: String) -> some View {
         let doc = vm.documents.first(where: { $0.type.uppercased() == type })
         
-        if isEditing {
-            Button {
-                activeDocumentType = type
-                isImportingDocument = true
-            } label: {
-                HStack {
-                    Text(type)
-                    Spacer()
-                    Text(doc == nil ? "Upload" : "Replace")
-                        .font(.subheadline)
-                        .foregroundColor(.blue)
+        let expiryDateStr: String? = {
+            switch type.uppercased() {
+            case "RC": return vm.vehicle?.rcExpiryDate
+            case "INSURANCE": return "2027-01-01"
+            case "PUC": return vm.vehicle?.pucExpiryDate
+            default: return nil
+            }
+        }()
+        
+        let isExpired: Bool = {
+            guard let dateStr = expiryDateStr, !dateStr.isEmpty,
+                  let date = DetailViewCache.formatter.date(from: dateStr) else { return false }
+            return date < Date()
+        }()
+
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(type).font(.system(size: 16, weight: .bold))
+                if let fileName = doc?.fileName {
+                    Text(fileName).font(.caption).foregroundColor(.secondary).lineLimit(1)
                 }
             }
-        } else if let doc = doc {
-            if let url = URL(string: doc.fileURL) {
-                Link(destination: url) {
-                    Label(type, systemImage: "doc.text.fill")
+            
+            Spacer()
+            
+            HStack(spacing: 8) {
+                if !isEditing && doc != nil {
+                    Text(isExpired ? "Expired" : "Valid")
+                        .font(.system(size: 10, weight: .bold))
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(isExpired ? Color.red.opacity(0.1) : Color.green.opacity(0.1))
+                        .foregroundColor(isExpired ? .red : .green)
+                        .clipShape(Capsule())
                 }
-            }
-        } else {
-            HStack {
-                Text(type)
-                Spacer()
-                Text("Missing").font(.caption).foregroundColor(.secondary)
+                
+                if isEditing {
+                    Button(doc == nil ? "Upload" : "Replace") {
+                        activeDocumentType = type
+                        showSourcePopover = true
+                    }
+                    .font(.subheadline)
+                    .buttonStyle(.borderless)
+                    .popover(isPresented: Binding(
+                        get: { showSourcePopover && activeDocumentType == type },
+                        set: { if !$0 { showSourcePopover = false } }
+                    )) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            popoverButton(title: "Camera", icon: "camera") { sourceType = .camera; showImagePicker = true }
+                            Divider()
+                            popoverButton(title: "Gallery", icon: "photo.on.rectangle") { sourceType = .photoLibrary; showImagePicker = true }
+                            Divider()
+                            popoverButton(title: "Files", icon: "folder") { isImportingDocument = true }
+                        }
+                        .presentationCompactAdaptation(.popover)
+                        .frame(width: 200).padding(.vertical, 8)
+                    }
+                } else if doc != nil {
+                    Image(systemName: "chevron.right").font(.system(size: 14, weight: .semibold)).foregroundColor(.secondary)
+                }
             }
         }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if !isEditing, let fileURL = doc?.fileURL, let url = URL(string: fileURL) {
+                UIApplication.shared.open(url)
+            }
+        }
+    }
+    
+    private func popoverButton(title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button { showSourcePopover = false; action() } label: {
+            HStack {
+                Image(systemName: icon)
+                Text(title)
+                Spacer()
+            }
+            .padding()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
     }
     
     private func saveChanges() async {
@@ -284,7 +305,6 @@ struct VehicleDetailView: View {
         isSaving = false
     }
     
-    // MARK: - Helpers
     private func binding(_ keyPath: WritableKeyPath<Vehicle, String>) -> Binding<String> {
         Binding(get: { draftVehicle?[keyPath: keyPath] ?? "" }, set: { draftVehicle?[keyPath: keyPath] = $0 })
     }
@@ -316,7 +336,7 @@ struct VehicleDetailView: View {
     }
 }
 
-// MARK: - Row Component
+// MARK: - Internal Components
 struct InfoRow: View {
     let title: String
     let value: String
@@ -333,14 +353,12 @@ struct InfoRow: View {
                     .foregroundColor(.blue)
                     .autocorrectionDisabled()
             } else {
-                Text(value)
-                    .foregroundColor(.secondary)
+                Text(value).foregroundColor(.secondary)
             }
         }
     }
 }
 
-// MARK: - Dedicated Reports List View
 struct VehicleReportsListView: View {
     let reports: [WorkOrderReportRecord]
     @Environment(\.dismiss) private var dismiss
@@ -349,34 +367,19 @@ struct VehicleReportsListView: View {
         NavigationView {
             List {
                 if reports.isEmpty {
-                    Text("No completed maintenance reports yet.")
-                        .foregroundColor(.secondary)
-                        .font(.subheadline)
-                        .padding()
+                    Text("No completed maintenance reports yet.").foregroundColor(.secondary).font(.subheadline).padding()
                 } else {
                     ForEach(reports) { report in
                         if let url = URL(string: report.reportUrl) {
                             Link(destination: url) {
                                 HStack(spacing: 16) {
-                                    Image(systemName: "doc.viewfinder.fill")
-                                        .foregroundColor(.red)
-                                        .font(.title)
-                                    
+                                    Image(systemName: "doc.viewfinder.fill").foregroundColor(.red).font(.title)
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Text(report.reportName ?? "Completion Report")
-                                            .font(.headline)
-                                            .foregroundColor(.primary)
-                                        
-                                        Text("Work Order #WO-\(report.workOrderId.uuidString.prefix(6).uppercased())")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
+                                        Text(report.reportName ?? "Completion Report").font(.headline).foregroundColor(.primary)
+                                        Text("Work Order #WO-\(report.workOrderId.uuidString.prefix(6).uppercased())").font(.caption).foregroundColor(.secondary)
                                     }
-                                    
                                     Spacer()
-                                    
-                                    Image(systemName: "chevron.right")
-                                        .foregroundColor(.gray)
-                                        .font(.caption)
+                                    Image(systemName: "chevron.right").foregroundColor(.gray).font(.caption)
                                 }
                                 .padding(.vertical, 8)
                             }
@@ -388,10 +391,7 @@ struct VehicleReportsListView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                    .fontWeight(.bold)
+                    Button("Done") { dismiss() }.fontWeight(.bold)
                 }
             }
         }

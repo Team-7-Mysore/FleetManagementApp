@@ -61,12 +61,58 @@ class VehicleDetailViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var documentsErrorMessage: String?
     @Published var maintenanceReports: [WorkOrderReportRecord] = []
-    
-    // MARK: - NEW INITIALIZER FOR OPTIMISTIC LOADING
+    @Published var autofilledFields: Set<String> = []
+ 
     init(initialVehicle: Vehicle? = nil) {
         self.vehicle = initialVehicle
     }
 
+
+
+    func processVehicleOCR(from image: UIImage) async {
+        let rawText = await VehicleOCRService.shared.recognizeText(from: image)
+        let result = extractVehicleData(from: rawText)
+
+        await MainActor.run {
+            guard var currentVehicle = self.vehicle else { return }
+            self.autofilledFields.removeAll()
+
+            if let plate = result.plate {
+                currentVehicle.registrationNumber = plate
+                self.autofilledFields.insert("licensePlate")
+            }
+            if let brand = result.manufacturer {
+                currentVehicle.brand = brand
+                let modelName = result.model ?? ""
+                currentVehicle.model = modelName
+                currentVehicle.name = "\(brand) \(modelName)".trimmingCharacters(in: .whitespaces)
+                self.autofilledFields.insert("vehicleName")
+                self.autofilledFields.insert("brand")
+                self.autofilledFields.insert("model")
+            }
+            if let year = result.modelYear {
+                currentVehicle.modelYear = year
+                self.autofilledFields.insert("modelYear")
+            }
+            self.vehicle = currentVehicle
+        }
+    }
+
+    private func extractVehicleData(from text: String) -> (plate: String?, vin: String?, manufacturer: String?, model: String?, modelYear: String?) {
+        let raw = text.uppercased()
+        let normalized = raw.replacingOccurrences(of: "O", with: "0").replacingOccurrences(of: "I", with: "1")
+        let plateRegex = "[A-Z]{2}[0-9]{2}[A-Z]{1,2}[0-9]{4}"
+        let yearRegex = "\\b(19|20)\\d{2}\\b"
+        
+        let plate = normalized.range(of: plateRegex, options: .regularExpression).map { String(normalized[$0]) }
+        let year = raw.range(of: yearRegex, options: .regularExpression).map { String(raw[$0]) }
+        let brands = ["MARUTI", "HYUNDAI", "TATA", "HONDA", "TOYOTA", "MAHINDRA"]
+        let manufacturer = brands.first(where: { raw.contains($0) })
+        let models = ["SWIFT", "DZIRE", "BALENO", "CRETA", "NEXON", "THAR"]
+        let model = models.first(where: { raw.contains($0) })
+
+        return (plate, nil, manufacturer, model, year)
+    }
     func fetchVehicle(vehicleId: UUID) async {
         // Only show loading if we don't have the vehicle yet
         if self.vehicle == nil {
