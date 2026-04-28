@@ -140,6 +140,17 @@ struct WorkOrdersView: View {
                             Image(systemName: "bell")
                                 .font(.system(size: 18, weight: .medium))
                                 .foregroundColor(Color(hex:"#A3352A"))
+
+                            // 👇 ADDED OVERLAY BADGE HERE
+                            if unreadNotificationCount > 0 {
+                                Text("\(unreadNotificationCount)")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .frame(minWidth: 16, minHeight: 16)
+                                    .background(Color.red)
+                                    .clipShape(Circle())
+                                    .offset(x: 6, y: -2)
+                            }
                         }
                     }
                 }
@@ -148,7 +159,7 @@ struct WorkOrdersView: View {
                     Button {
                         showingProfile = true
                     } label: {
-                        Image(systemName:"person.circle")
+                        Image(systemName:"person.circle.fill")
                             .font(.title3)
                             .foregroundColor(Color(hex:"#A3352A"))
                     }
