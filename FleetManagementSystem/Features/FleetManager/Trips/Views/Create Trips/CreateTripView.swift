@@ -20,10 +20,16 @@ struct CreateTripView: View {
     @State private var destinationCoordinate: CLLocationCoordinate2D?
     @State private var viaPoints: [String] = []
     @State private var viaCoordinates: [CLLocationCoordinate2D?] = []
-    @State private var pickupDate = Date()
-    @State private var expectedEndDate = Calendar.current.date(byAdding: .hour, value: 4, to: Date()) ?? Date()
+    @State private var pickupDate: Date?
+    @State private var expectedEndDate: Date?
+    @State private var pickupDateDraft = Date()
+    @State private var expectedEndDateDraft = Date()
     @State private var selectedVehicleID: UUID?
     @State private var selectedDriverID: UUID?
+    @State private var showVehicleOptions = false
+    @State private var showDriverOptions = false
+    @State private var showPickupPicker = false
+    @State private var showEndPicker = false
 
     // Delivery zone (geofence) — optional, never touches trips table
     @State private var enableDeliveryZone = false
@@ -111,15 +117,19 @@ struct CreateTripView: View {
             .onChange(of: origin)      { _, _ in clearAssignments(); triggerRoute() }
             .onChange(of: destination) { _, _ in clearAssignments(); triggerRoute() }
             .onChange(of: pickupDate) { _, newPickup in
-                updateProjectedEndTime(newPickup: newPickup)
-                autoRefreshAssignments()
+                if let newPickup {
+                    updateProjectedEndTime(newPickup: newPickup)
+                    autoRefreshAssignments()
+                }
             }
             .onChange(of: vm.calculatedETA) { _, _ in
                 updateProjectedEndTime()
                 autoRefreshAssignments()
             }
-            .onChange(of: expectedEndDate) { _, _ in 
-                autoRefreshAssignments()
+            .onChange(of: expectedEndDate) { _, newValue in
+                if newValue != nil {
+                    autoRefreshAssignments()
+                }
             }
             .onChange(of: vm.isCalculatingRoute) { _, isCalculating in
                 if !isCalculating,
@@ -429,18 +439,84 @@ struct CreateTripView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader("Schedule", icon: "calendar")
             VStack(spacing: 0) {
-                DatePicker("Pickup (IST)", selection: $pickupDate, in: Date()..., displayedComponents: [.date, .hourAndMinute])
-                    .environment(\.timeZone, Self.istTimeZone)
-                    .padding(.horizontal, 16).padding(.vertical, 12)
+                Button {
+                    pickupDateDraft = pickupDate ?? Date()
+                    showPickupPicker = true
+                } label: {
+                    scheduleRow(title: "Pickup (IST)", value: pickupDate)
+                }
+                .buttonStyle(.plain)
                 Divider().padding(.leading, 16)
-                DatePicker("End (IST)", selection: $expectedEndDate, in: pickupDate..., displayedComponents: [.date, .hourAndMinute])
-                    .environment(\.timeZone, Self.istTimeZone)
-                    .padding(.horizontal, 16).padding(.vertical, 12)
+                Button {
+                    expectedEndDateDraft = expectedEndDate ?? pickupDateDraft
+                    showEndPicker = true
+                } label: {
+                    scheduleRow(title: "End (IST)", value: expectedEndDate)
+                }
+                .buttonStyle(.plain)
+                .disabled(pickupDate == nil)
             }
             .background(Color(.secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 14))
         }
         .padding(.horizontal)
+        .sheet(isPresented: $showPickupPicker) {
+            NavigationStack {
+                VStack {
+                    DatePicker(
+                        "Pickup (IST)",
+                        selection: $pickupDateDraft,
+                        in: Date()...,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .environment(\.timeZone, Self.istTimeZone)
+                    .datePickerStyle(.graphical)
+                    .padding()
+                }
+                .navigationTitle("Pickup (IST)")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showPickupPicker = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            pickupDate = pickupDateDraft
+                            updateProjectedEndTime(newPickup: pickupDateDraft)
+                            showPickupPicker = false
+                        }
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showEndPicker) {
+            NavigationStack {
+                VStack {
+                    DatePicker(
+                        "End (IST)",
+                        selection: $expectedEndDateDraft,
+                        in: (pickupDate ?? Date())...,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .environment(\.timeZone, Self.istTimeZone)
+                    .datePickerStyle(.graphical)
+                    .padding()
+                }
+                .navigationTitle("End (IST)")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { showEndPicker = false }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            expectedEndDate = expectedEndDateDraft
+                            showEndPicker = false
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - Assignment Section
@@ -453,6 +529,10 @@ struct CreateTripView: View {
                 selectedVehicleID = nil
                 selectedDriverID = nil
                 Task {
+                    guard let pickupDate, let expectedEndDate else {
+                        vm.errorMessage = "Select pickup and end times."
+                        return
+                    }
                     await vm.loadAssignmentOptions(
                         pickupLocation: origin,
                         destination: destination,
@@ -477,38 +557,88 @@ struct CreateTripView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14))
             }
             .buttonStyle(.plain)
-            .disabled(vm.isLoadingAssignments || origin.isEmpty || destination.isEmpty)
+            .disabled(vm.isLoadingAssignments || origin.isEmpty || destination.isEmpty || pickupDate == nil || expectedEndDate == nil)
 
             if !vm.availableVehicles.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Vehicles").font(.caption).foregroundStyle(.secondary).padding(.leading, 4)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
+                    DisclosureGroup(isExpanded: $showVehicleOptions) {
+                        VStack(spacing: 10) {
                             ForEach(vm.availableVehicles) { v in
                                 assignmentCard(title: v.displayName, subtitle: v.subtitle, icon: "car.fill",
-                                               isSelected: selectedVehicleID == v.id) { selectedVehicleID = v.id }
+                                               isSelected: selectedVehicleID == v.id) {
+                                    var transaction = Transaction()
+                                    transaction.animation = nil
+                                    withTransaction(transaction) {
+                                        selectedVehicleID = v.id
+                                        showVehicleOptions = false
+                                    }
+                                }
+                                .animation(nil, value: selectedVehicleID)
                             }
                         }
-                        .padding(.horizontal, 4)
+                        .padding(.top, 8)
+                        .transaction { $0.animation = nil }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(selectedVehicleID.flatMap { id in
+                                vm.availableVehicles.first(where: { $0.id == id })?.displayName
+                            } ?? "Select Vehicle")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Image(systemName: "chevron.down")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .rotationEffect(.degrees(showVehicleOptions ? 180 : 0))
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 12)
+                        .background(Color(.secondarySystemGroupedBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
+                    .animation(.easeInOut(duration: 0.2), value: showVehicleOptions)
                 }
             }
 
             if !vm.availableDrivers.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Drivers").font(.caption).foregroundStyle(.secondary).padding(.leading, 4)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
+                    DisclosureGroup(isExpanded: $showDriverOptions) {
+                        VStack(spacing: 10) {
                             ForEach(vm.availableDrivers) { d in
                                 assignmentCard(title: d.name, subtitle: d.subtitle, icon: "",
                                                isSelected: selectedDriverID == d.id,
                                                isRecommended: d.isRecommended) {
-                                    selectedDriverID = d.id
+                                    var transaction = Transaction()
+                                    transaction.animation = nil
+                                    withTransaction(transaction) {
+                                        selectedDriverID = d.id
+                                        showDriverOptions = false
+                                    }
                                 }
+                                .animation(nil, value: selectedDriverID)
                             }
                         }
-                        .padding(.horizontal, 4)
+                        .padding(.top, 8)
+                        .transaction { $0.animation = nil }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(selectedDriverID.flatMap { id in
+                                vm.availableDrivers.first(where: { $0.id == id })?.name
+                            } ?? "Select Driver")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(.primary)
+                            Spacer()
+                            Image(systemName: "chevron.down")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .rotationEffect(.degrees(showDriverOptions ? 180 : 0))
+                        }
+                        .padding(.horizontal, 16).padding(.vertical, 12)
+                        .background(Color(.secondarySystemGroupedBackground))
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
                     }
+                    .animation(.easeInOut(duration: 0.2), value: showDriverOptions)
                 }
             }
 
@@ -667,6 +797,10 @@ struct CreateTripView: View {
     // MARK: - Save All
 
     private func saveAll() async {
+        guard let pickupDate, let expectedEndDate else {
+            vm.errorMessage = "Select pickup and end times."
+            return
+        }
         // 1. Create the trip (trips table only)
         await vm.createTrip(
             tripName: tripName,
@@ -761,9 +895,11 @@ struct CreateTripView: View {
         !tripName.isEmpty &&
         !clientContact.isEmpty &&
         clientContact.count == 10 &&
-        !origin.isEmpty && 
-        !destination.isEmpty && 
-        selectedVehicleID != nil && 
+        !origin.isEmpty &&
+        !destination.isEmpty &&
+        pickupDate != nil &&
+        expectedEndDate != nil &&
+        selectedVehicleID != nil &&
         selectedDriverID != nil
     }
 
@@ -784,14 +920,6 @@ struct CreateTripView: View {
                 }
         }
         .padding(.horizontal, 16).padding(.vertical, 14)
-        .toolbar {
-            if focusedField == field {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { focusedField = nil }.font(.subheadline.weight(.semibold))
-                }
-            }
-        }
     }
 
     private func triggerRoute() {
@@ -849,7 +977,7 @@ struct CreateTripView: View {
     }
 
     private func updateProjectedEndTime(newPickup: Date? = nil) {
-        let referencePickup = newPickup ?? pickupDate
+        guard let referencePickup = newPickup ?? pickupDate else { return }
         
         if let etaSeconds = vm.calculatedETA {
             // Buffer of 15 minutes for loading/unloading/parking
@@ -861,7 +989,7 @@ struct CreateTripView: View {
             }
         } else {
             // If no ETA yet, just ensure End Time is at least 1 hour after Pickup
-            if expectedEndDate <= referencePickup {
+            if expectedEndDate == nil || expectedEndDate! <= referencePickup {
                 withAnimation {
                     expectedEndDate = Calendar.current.date(byAdding: .hour, value: 1, to: referencePickup) ?? referencePickup
                 }
@@ -875,7 +1003,8 @@ struct CreateTripView: View {
         selectedDriverID = nil
         
         // Only auto-refresh if we have a full route
-        guard !origin.isEmpty, !destination.isEmpty else { return }
+        guard !origin.isEmpty, !destination.isEmpty,
+              let pickupDate, let expectedEndDate else { return }
         
         Task {
             await vm.loadAssignmentOptions(
@@ -885,6 +1014,25 @@ struct CreateTripView: View {
                 expectedEndDate: expectedEndDate
             )
         }
+    }
+
+    private func scheduleRow(title: String, value: Date?) -> some View {
+        HStack {
+            Text(title).font(.subheadline)
+            Spacer()
+            Text(value.map(formatISTDateTime) ?? "--")
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(value == nil ? .secondary : .primary)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+    }
+
+    private func formatISTDateTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.timeZone = Self.istTimeZone
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
 }
 
