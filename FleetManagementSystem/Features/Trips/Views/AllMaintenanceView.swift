@@ -106,7 +106,6 @@ struct AllMaintenanceView: View {
         .task {
             guard vm.workOrders.isEmpty else { return }
             await vm.fetchTrips()
-            await vm.setupRealtimeListeners()
         }
         .refreshable {
             await vm.fetchTrips()
