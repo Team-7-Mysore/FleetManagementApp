@@ -455,6 +455,7 @@ struct CreateTripView: View {
                 Task {
                     await vm.loadAssignmentOptions(
                         pickupLocation: origin,
+                        destination: destination,
                         pickupDate: pickupDate,
                         expectedEndDate: expectedEndDate
                     )
@@ -476,7 +477,7 @@ struct CreateTripView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14))
             }
             .buttonStyle(.plain)
-            .disabled(vm.isLoadingAssignments || origin.isEmpty)
+            .disabled(vm.isLoadingAssignments || origin.isEmpty || destination.isEmpty)
 
             if !vm.availableVehicles.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -499,8 +500,11 @@ struct CreateTripView: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) {
                             ForEach(vm.availableDrivers) { d in
-                                assignmentCard(title: d.name, subtitle: "", icon: "",
-                                               isSelected: selectedDriverID == d.id) { selectedDriverID = d.id }
+                                assignmentCard(title: d.name, subtitle: d.subtitle, icon: "",
+                                               isSelected: selectedDriverID == d.id,
+                                               isRecommended: d.isRecommended) {
+                                    selectedDriverID = d.id
+                                }
                             }
                         }
                         .padding(.horizontal, 4)
@@ -516,7 +520,7 @@ struct CreateTripView: View {
         .padding(.horizontal)
     }
 
-    private func assignmentCard(title: String, subtitle: String, icon: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+    private func assignmentCard(title: String, subtitle: String, icon: String, isSelected: Bool, isRecommended: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
@@ -526,6 +530,17 @@ struct CreateTripView: View {
                     }
                     Text(title).font(.subheadline.weight(.semibold))
                         .foregroundColor(isSelected ? .white : .primary).lineLimit(1)
+                    Spacer(minLength: 6)
+                    if isRecommended {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.seal.fill")
+                                .font(.caption.weight(.semibold))
+                            Text("Recommended")
+                                .font(.caption2.weight(.semibold))
+                        }
+                        .foregroundColor(isSelected ? .white : .TechBlue)
+                        .accessibilityLabel("Recommended")
+                    }
                 }
                 if !subtitle.isEmpty {
                     Text(subtitle).font(.caption)
@@ -859,12 +874,13 @@ struct CreateTripView: View {
         selectedVehicleID = nil
         selectedDriverID = nil
         
-        // Only auto-refresh if we actually have a pickup location
-        guard !origin.isEmpty else { return }
+        // Only auto-refresh if we have a full route
+        guard !origin.isEmpty, !destination.isEmpty else { return }
         
         Task {
             await vm.loadAssignmentOptions(
                 pickupLocation: origin,
+                destination: destination,
                 pickupDate: pickupDate,
                 expectedEndDate: expectedEndDate
             )

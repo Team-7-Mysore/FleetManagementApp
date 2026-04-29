@@ -32,13 +32,11 @@ struct DriverAssignmentOption: Identifiable, Hashable {
     let licenseNumber: String
     let licenseExpiry: String
     let locationHint: String?
+    let routeExperienceCount: Int
+    let isRecommended: Bool
 
     var subtitle: String {
-        var components = ["License \(licenseNumber)"]
-        if let locationHint, !locationHint.isEmpty {
-            components.append(locationHint)
-        }
-        return components.joined(separator: " • ")
+        "License \(licenseNumber)"
     }
 }
 
@@ -46,6 +44,7 @@ struct AssignmentTripRecord: Decodable {
     let trip_id: UUID
     let vehicle_id: UUID?
     let driver_id: UUID?
+    let route_id: UUID?
     let status: String?
     let start_time: String?
     let end_time: String?
