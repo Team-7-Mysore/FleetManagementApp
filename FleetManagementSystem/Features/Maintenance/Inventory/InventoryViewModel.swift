@@ -48,6 +48,7 @@ final class InventoryViewModel: ObservableObject {
     @Published var showLowStockBanner: Bool = true
     @Published var deleteErrorMessage: AlertItem?
     @Published var notifications: [NotificationItem] = []
+    @Published var hasLoadedData: Bool = false
 
 
     private let placeholderInventoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
@@ -69,7 +70,8 @@ final class InventoryViewModel: ObservableObject {
         !lowStockItems.isEmpty
     }
     
-    func fetchInventory() async {
+    func fetchInventory(forceRefresh: Bool = false) async {
+        if !forceRefresh && hasLoadedData { return }
         do {
             let fetchedItems: [InventoryItem] = try await SupabaseManager.shared.client
                 .from("inventory")
@@ -91,6 +93,7 @@ final class InventoryViewModel: ObservableObject {
             print("Fetched items:", sanitizedItems.count)
 
             self.items = sanitizedItems
+            self.hasLoadedData = true
             self.filterItems()
         } catch {
             print("ERROR:", error)
@@ -307,20 +310,45 @@ final class InventoryViewModel: ObservableObject {
 
     func syncLowStockNotifications() async {
         await fetchNotifications()
-        
-        for item in items {
-            if item.quantity <= 10 {
-                let didCreateNotification = await createNotification(for: item)
 
-                if didCreateNotification {
+        let currentLowStockIds = Set(items.filter { $0.quantity <= 10 }.map { $0.inventoryId })
+        let existingNotificationIds = Set(notifications.compactMap { $0.inventoryId })
+
+        let idsToAdd = currentLowStockIds.subtracting(existingNotificationIds)
+        let idsToRemove = existingNotificationIds.subtracting(currentLowStockIds)
+
+        if !idsToRemove.isEmpty {
+            do {
+                try await SupabaseManager.shared.client
+                    .from("notifications")
+                    .delete()
+                    .in("inventory_id", values: Array(idsToRemove).map { $0.uuidString })
+                    .execute()
+            } catch { print("Bulk delete notification error:", error) }
+        }
+
+        if !idsToAdd.isEmpty {
+            let itemsToAdd = items.filter { idsToAdd.contains($0.inventoryId) }
+            let newNotifications = itemsToAdd.map { item in
+                [
+                    "inventory_id": item.inventoryId.uuidString,
+                    "title": "Low Stock Alert",
+                    "message": "\(item.partName) is low in stock (Qty: \(item.quantity))"
+                ]
+            }
+            do {
+                try await SupabaseManager.shared.client
+                    .from("notifications")
+                    .insert(newNotifications)
+                    .execute()
+
+                for item in itemsToAdd {
                     NotificationManager.shared.sendLowStockNotification(
                         partName: item.partName,
                         quantity: item.quantity
                     )
                 }
-            } else {
-                await deleteNotification(for: item)
-            }
+            } catch { print("Bulk insert notification error:", error) }
         }
 
         await fetchNotifications()
