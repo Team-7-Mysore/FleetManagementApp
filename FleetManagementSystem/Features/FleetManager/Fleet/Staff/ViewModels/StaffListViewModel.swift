@@ -35,6 +35,7 @@ final class StaffListViewModel: ObservableObject {
     @Published var allStaff:      [StaffUser] = []
     @Published var isLoading:     Bool        = false
     @Published var errorMessage:  String?     = nil
+    @Published var hasLoadedData: Bool        = false
 
     // Filters
     @Published var searchText:     String           = ""
@@ -85,7 +86,8 @@ final class StaffListViewModel: ObservableObject {
     }
 
     // ——— Fetch from Supabase ———
-    func fetchStaff() {
+    func fetchStaff(forceRefresh: Bool = false) {
+        if !forceRefresh && hasLoadedData { return }
         isLoading    = true
         errorMessage = nil
 
@@ -100,6 +102,7 @@ final class StaffListViewModel: ObservableObject {
                     .value
 
                 self.allStaff  = staff
+                self.hasLoadedData = true
                 self.isLoading = false
             } catch {
                 self.errorMessage = error.localizedDescription

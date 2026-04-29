@@ -11,6 +11,7 @@ final class DriverTripViewModel: ObservableObject {
     @Published var selectedFilter: TripFilter = .upcoming
     @Published var upcomingFilterDate: Date?
     @Published var completedFilterDate: Date?
+    @Published private(set) var hasLoadedData = false
 
     private let user: User
     private var driverId: String?
@@ -28,8 +29,9 @@ final class DriverTripViewModel: ObservableObject {
         self.user = user
     }
 
-    func loadData() {
+    func loadData(forceRefresh: Bool = false) {
         guard !isLoading else { return }
+        if !forceRefresh && hasLoadedData { return }
         isLoading = true
         Task {
             defer { isLoading = false }
@@ -73,17 +75,18 @@ final class DriverTripViewModel: ObservableObject {
                 self.completedTrips = trips.filter { $0.status == .completed }
                     .sorted { ($0.endTime ?? .distantPast) > ($1.endTime ?? .distantPast) }
 
+                self.hasLoadedData = true
             } catch {
                 print("❌ DriverTripViewModel loadData error:", error)
             }
         }
     }
 
-    func startAutoRefresh(interval: TimeInterval = 5) {
+    func startAutoRefresh(interval: TimeInterval = 60) {
         guard refreshTimer == nil else { return }
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self?.loadData()
+                self?.loadData(forceRefresh: true)
             }
         }
         timer.tolerance = 1.0
