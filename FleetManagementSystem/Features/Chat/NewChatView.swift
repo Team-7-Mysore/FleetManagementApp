@@ -11,7 +11,7 @@ struct NewChatView: View {
     @State private var selectedRole: String = "All"
     
     var filteredUsers: [AppUser] {
-        var result = viewModel.users
+        var result = viewModel.filteredUsers
 
         // 🔍 Search
         if !searchText.isEmpty {

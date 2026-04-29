@@ -6,7 +6,15 @@ struct ChatListView: View {
     @State private var isShowingNewChat = false
     @State private var pendingChatRoom: ChatRoom? = nil
     @State private var queuedChatRoom: ChatRoom? = nil
-    private let accent = AppTheme.primaryGreen
+    
+    private var currentUserRole: AppUserRole {
+        let roleValue = viewModel.users.first(where: { $0.id == currentUserId })?.role
+        return roleValue.flatMap(AppUserRole.init(rawValue:)) ?? .driver
+    }
+    
+    private var accent: Color {
+        AppTheme.accentColor(for: currentUserRole)
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {

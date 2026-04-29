@@ -50,8 +50,8 @@ class ChatViewModel: ObservableObject {
                 .execute()
                 .value
 
-            self.users = fetchedUsers.filter { $0.id != currentUserId }
-            self.filteredUsers = self.users
+            self.users = fetchedUsers
+            self.filteredUsers = fetchedUsers.filter { $0.id != currentUserId }
         } catch {
             print("❌ Error fetching users: \(error)")
         }
