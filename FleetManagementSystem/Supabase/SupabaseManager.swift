@@ -6,6 +6,7 @@
 //
 
 
+import Foundation
 import Supabase
 
 final class SupabaseManager {
@@ -14,13 +15,23 @@ final class SupabaseManager {
     let client: SupabaseClient
     
     private init() {
+        let memoryCapacity = 50 * 1024 * 1024 // 50 MB
+        let diskCapacity = 100 * 1024 * 1024 // 100 MB
+        let cache = URLCache(memoryCapacity: memoryCapacity, diskCapacity: diskCapacity, diskPath: "supabase_cache")
+        URLCache.shared = cache
+        
+        let config = URLSessionConfiguration.default
+        config.urlCache = cache
+        config.requestCachePolicy = .useProtocolCachePolicy
+        
         client = SupabaseClient(
             supabaseURL: SupabaseConfig.url,
             supabaseKey: SupabaseConfig.anonKey,
             options: SupabaseClientOptions(
                 auth: .init(
                     emitLocalSessionAsInitialSession: true
-                )
+                ),
+                global: .init(session: URLSession(configuration: config))
             )
         )
     }

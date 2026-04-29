@@ -129,7 +129,7 @@ struct TripListView: View {
             }
         }
         .refreshable {
-            vm.loadData()
+            vm.loadData(forceRefresh: true)
         }
     }
 
