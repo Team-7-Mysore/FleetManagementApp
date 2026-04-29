@@ -10,7 +10,6 @@ struct TripsListView: View {
     @StateObject private var vm = TripListViewModel()
     @State private var showingProfile = false
     @State private var selectedWorkOrder: WorkOrder? = nil
-    @State private var unreadNotificationCount = 0
 
     init(profile: UserProfile? = nil, onSignOut: @escaping () async -> Void = {}) {
         self.profile = profile
@@ -64,8 +63,8 @@ struct TripsListView: View {
                                     .font(.system(size: 18, weight: .medium))
                                     .foregroundColor(Color.black)
 
-                                if unreadNotificationCount > 0 {
-                                    Text("\(unreadNotificationCount)")
+                                if vm.unreadNotificationCount > 0 {
+                                    Text("\(vm.unreadNotificationCount)")
                                         .font(.system(size: 10, weight: .bold))
                                         .foregroundColor(.white)
                                         .frame(minWidth: 16, minHeight: 16)
@@ -87,13 +86,10 @@ struct TripsListView: View {
                 .task {
                     if vm.trips.isEmpty {
                         await vm.fetchTrips()
-                        await fetchUnreadCount()
                     }
-                    await vm.setupRealtimeListeners()
                 }
                 .refreshable {
                     await vm.fetchTrips()
-                    await fetchUnreadCount()
                 }
                 .sheet(isPresented: $showingProfile) {
                     FleetManagerProfileView(profile: profile, onSignOut: onSignOut)
@@ -115,28 +111,6 @@ struct TripsListView: View {
         }
     }
 
-    // MARK: - Functions
-    private func fetchUnreadCount() async {
-        do {
-            let session = try await SupabaseManager.shared.client.auth.session
-            let currentUserId = session.user.id
-
-            let response = try await SupabaseManager.shared.client
-                .from("notifications")
-                .select("id", head: true, count: .exact)
-                .eq("recipient_id", value: currentUserId.uuidString)
-                .eq("is_read", value: false)
-                .execute()
-
-            await MainActor.run {
-                unreadNotificationCount = response.count ?? 0
-            }
-        } catch {
-            print("Error fetching notifications: \(error)")
-        }
-    }
-
-    // MARK: - Fleet Overview Section
     private var fleetOverviewSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Fleet Overview")

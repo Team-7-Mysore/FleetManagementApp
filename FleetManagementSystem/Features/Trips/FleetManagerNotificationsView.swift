@@ -20,9 +20,6 @@ struct FleetManagerNotificationsView: View {
     // User Context
     let userId: UUID?
 
-    // Real-time channel
-    @State private var realtimeChannel: RealtimeChannelV2?
-
     init(userId: UUID? = nil, onUnreadCountChanged: ((Int) -> Void)? = nil) {
         self.userId = userId
         self.onUnreadCountChanged = onUnreadCountChanged
@@ -45,10 +42,9 @@ struct FleetManagerNotificationsView: View {
                         .fontWeight(.semibold)
                 }
             } else {
-                List(selection: $selectedNotifications) {
+                List {
                     ForEach(notifications) { notification in
                         notificationRow(for: notification)
-                            .tag(notification.id)
                     }
                     .onDelete(perform: deleteFromSwipe)
                 }
@@ -58,8 +54,22 @@ struct FleetManagerNotificationsView: View {
         }
         .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.large)
+        .navigationBarBackButtonHidden(editMode == .active)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
+                if editMode == .active {
+                    Button {
+                        withAnimation {
+                            editMode = .inactive
+                        }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .fontWeight(.bold)
+                    }
+                }
+            }
+
+            ToolbarItem(placement: .topBarTrailing) {
                 if editMode == .active {
                     Button(selectedNotifications.count == notifications.count ? "Deselect All" : "Select All") {
                         if selectedNotifications.count == notifications.count {
@@ -68,16 +78,15 @@ struct FleetManagerNotificationsView: View {
                             selectedNotifications = Set(notifications.map { $0.id })
                         }
                     }
-                }
-            }
-
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(editMode == .active ? "Done" : "Select") {
-                    withAnimation {
-                        editMode = (editMode == .active) ? .inactive : .active
+                    .fontWeight(.bold)
+                } else {
+                    Button("Select") {
+                        withAnimation {
+                            editMode = .active
+                        }
                     }
+                    .fontWeight(.medium)
                 }
-                .fontWeight(editMode == .active ? .bold : .medium)
             }
 
             if editMode == .active {
@@ -114,15 +123,49 @@ struct FleetManagerNotificationsView: View {
         }
         .task {
             await fetchNotifications()
-            await setupRealtimeNotifications()
+            await RealtimeManager.shared.startNotificationsRealtime()
+            
+            // Listen for realtime updates
+            for await notification in NotificationCenter.default.notifications(named: .notificationsUpdated) {
+                guard let action = notification.object as? AnyAction else { continue }
+                
+                let currentUserId: UUID
+                if let id = userId { currentUserId = id }
+                else { 
+                    guard let id = try? await SupabaseManager.shared.client.auth.session.user.id else { continue }
+                    currentUserId = id
+                }
+                
+                await MainActor.run {
+                    let decoder = JSONDecoder()
+                    decoder.dateDecodingStrategy = .iso8601
+                    
+                    switch action {
+                    case .insert(let action):
+                        guard action.record["recipient_id"]?.stringValue == currentUserId.uuidString else { return }
+                        if let newNotif = try? action.decodeRecord(as: AppNotification.self, decoder: decoder) {
+                            if !notifications.contains(where: { $0.id == newNotif.id }) {
+                                notifications.insert(newNotif, at: 0)
+                                unreadCount = notifications.filter { !$0.isRead }.count
+                                onUnreadCountChanged?(unreadCount)
+                            }
+                        }
+                    case .update(let action):
+                        guard action.record["recipient_id"]?.stringValue == currentUserId.uuidString else { return }
+                        if let updatedNotif = try? action.decodeRecord(as: AppNotification.self, decoder: decoder) {
+                            if let index = notifications.firstIndex(where: { $0.id == updatedNotif.id }) {
+                                notifications[index] = updatedNotif
+                                unreadCount = notifications.filter { !$0.isRead }.count
+                                onUnreadCountChanged?(unreadCount)
+                            }
+                        }
+                    default: break
+                    }
+                }
+            }
         }
         .refreshable {
             await fetchNotifications()
-        }
-        .onDisappear {
-            if let channel = realtimeChannel {
-                Task { await SupabaseManager.shared.client.realtimeV2.removeChannel(channel) }
-            }
         }
         .onChange(of: editMode) { newValue in
             if newValue == .inactive {
@@ -211,9 +254,20 @@ struct FleetManagerNotificationsView: View {
                         .foregroundColor(.secondary)
                         .padding(.top, 2)
                 }
+                
+                if editMode == .inactive {
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.bold())
+                        .foregroundColor(.secondary)
+                }
             }
             .padding(.vertical, 4)
             .opacity(notification.isRead ? 0.6 : 1.0)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(selectedNotifications.contains(notification.id) ? Color.blue.opacity(0.1) : Color.clear)
+            )
         }
         .buttonStyle(PlainButtonStyle())
     }
@@ -241,7 +295,7 @@ struct FleetManagerNotificationsView: View {
             
             print("✅ Successfully deleted notification \(id) from Supabase")
         } catch {
-            print("🚨 Exception during delete notification \(id): \(error)")
+            print("🚨 Failed to delete notification: \(error)")
         }
     }
 
@@ -275,51 +329,6 @@ struct FleetManagerNotificationsView: View {
             print("🚨 Failed to fetch notifications: \(error)")
             await MainActor.run { self.isLoading = false }
         }
-    }
-
-    private func setupRealtimeNotifications() async {
-        guard realtimeChannel == nil else { return }
-        do {
-            let currentUserId: UUID
-            if let id = userId { currentUserId = id }
-            else { currentUserId = try await SupabaseManager.shared.client.auth.session.user.id }
-
-            let channel = SupabaseManager.shared.client.realtimeV2.channel("notifications-changes")
-            self.realtimeChannel = channel
-
-            let insertions = channel.postgresChange(AnyAction.self, schema: "public", table: "notifications")
-            try await channel.subscribeWithError()
-
-            Task {
-                let decoder = JSONDecoder()
-                decoder.dateDecodingStrategy = .iso8601
-                for await action in insertions {
-                    await MainActor.run {
-                        switch action {
-                        case .insert(let action):
-                            guard action.record["recipient_id"]?.stringValue == currentUserId.uuidString else { return }
-                            if let newNotif = try? action.decodeRecord(as: AppNotification.self, decoder: decoder) {
-                                if !notifications.contains(where: { $0.id == newNotif.id }) {
-                                    notifications.insert(newNotif, at: 0)
-                                    unreadCount = notifications.filter { !$0.isRead }.count
-                                    onUnreadCountChanged?(unreadCount)
-                                }
-                            }
-                        case .update(let action):
-                            guard action.record["recipient_id"]?.stringValue == currentUserId.uuidString else { return }
-                            if let updatedNotif = try? action.decodeRecord(as: AppNotification.self, decoder: decoder) {
-                                if let index = notifications.firstIndex(where: { $0.id == updatedNotif.id }) {
-                                    notifications[index] = updatedNotif
-                                    unreadCount = notifications.filter { !$0.isRead }.count
-                                    onUnreadCountChanged?(unreadCount)
-                                }
-                            }
-                        default: break
-                        }
-                    }
-                }
-            }
-        } catch { print("🚨 Realtime setup failed: \(error)") }
     }
 
     private func markNotificationAsReadInDB(notificationId: UUID) async {
