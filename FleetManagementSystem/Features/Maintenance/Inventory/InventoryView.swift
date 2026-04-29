@@ -88,8 +88,7 @@ struct InventoryView: View {
                 }
                 .listStyle(.plain)
                 .refreshable {
-                    await viewModel.fetchInventory()
-                    await viewModel.syncLowStockNotifications()
+                    await viewModel.refreshInventory()
                 }
             }
             .navigationTitle("Inventory")
@@ -268,7 +267,6 @@ struct InventoryView: View {
             }
             .task {
                 await viewModel.fetchInventory()
-                await viewModel.syncLowStockNotifications()
             }
         }
     }

@@ -9,8 +9,6 @@ struct PartDetailView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var totalUsed = 0
-    @State private var usageEntries: [InventoryViewModel.PartUsageEntry] = []
-    @State private var isLoadingUsage = false
     @State private var showUsageDetails = false
 
     @State private var editPartName: String = ""
@@ -226,10 +224,12 @@ struct PartDetailView: View {
             }
         }
         .task(id: currentItem.inventoryId) {
-            await loadPartUsage()
+            await loadPartUsageSummary()
         }
         .sheet(isPresented: $showUsageDetails) {
-            PartUsageDetailView(entries: usageEntries)
+            PartUsageDetailView(
+                entries: viewModel.activePartUsageInventoryId == currentItem.inventoryId ? viewModel.partUsage : []
+            )
         }
         .alert("Error", isPresented: Binding(
             get: { errorMessage != nil },
@@ -245,7 +245,7 @@ struct PartDetailView: View {
 
     private var totalUsedCard: some View {
         Button {
-            showUsageDetails = true
+            openUsageDetails()
         } label: {
             HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -253,7 +253,7 @@ struct PartDetailView: View {
                         .font(.footnote)
                         .foregroundColor(.secondary)
 
-                    if isLoadingUsage {
+                    if viewModel.isLoadingPartUsage && viewModel.activePartUsageInventoryId == currentItem.inventoryId {
                         ProgressView()
                             .progressViewStyle(.circular)
                     } else {
@@ -276,7 +276,7 @@ struct PartDetailView: View {
             .cornerRadius(12)
         }
         .buttonStyle(.plain)
-        .disabled(isLoadingUsage)
+        .disabled(viewModel.isLoadingPartUsage && viewModel.activePartUsageInventoryId == currentItem.inventoryId)
     }
 
     private func infoCard<Content: View>(title: String, value: String, isEditing: Bool, @ViewBuilder content: () -> Content) -> some View {
@@ -348,24 +348,32 @@ struct PartDetailView: View {
         isSaving = false
     }
 
-    private func loadPartUsage() async {
-        isLoadingUsage = true
+    private func loadPartUsageSummary() async {
         do {
-            let summary = try await viewModel.fetchPartUsage(for: currentItem.inventoryId)
-            totalUsed = summary.totalUsed
-            usageEntries = summary.entries
+            let usage = try await viewModel.fetchPartUsage(inventoryId: currentItem.inventoryId, useCache: true)
+            totalUsed = usage.reduce(0) { $0 + $1.quantityUsed }
         } catch {
             totalUsed = 0
-            usageEntries = []
             errorMessage = error.localizedDescription
         }
-        isLoadingUsage = false
+    }
+
+    private func openUsageDetails() {
+        Task {
+            do {
+                let usage = try await viewModel.fetchPartUsage(inventoryId: currentItem.inventoryId, useCache: true)
+                totalUsed = usage.reduce(0) { $0 + $1.quantityUsed }
+                showUsageDetails = true
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 }
 
 private struct PartUsageDetailView: View {
     @Environment(\.dismiss) private var dismiss
-    let entries: [InventoryViewModel.PartUsageEntry]
+    let entries: [InventoryViewModel.PartUsage]
 
     var body: some View {
         NavigationStack {

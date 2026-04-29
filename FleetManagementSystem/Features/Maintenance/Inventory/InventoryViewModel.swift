@@ -3,70 +3,31 @@ import Supabase
 import Combine
 import SwiftUI
 
-// Temporary initialized client assuming standard setup.
-// Replace with shared instance if your project centralizes this.
 @MainActor
 final class InventoryViewModel: ObservableObject {
-    struct PartUsageEntry: Identifiable {
-        let workOrderId: UUID
-        let vehicleId: UUID?
-        let vehicleName: String
-        let vehicleNumber: String?
-        let quantityUsed: Int
-        let workOrderReference: String
-        let usedAt: Date?
-
-        var id: UUID { workOrderId }
-    }
-
-    struct PartUsageSummary {
-        let totalUsed: Int
-        let entries: [PartUsageEntry]
-    }
-
     struct AlertItem: Identifiable {
         let id = UUID()
         let message: String
     }
-    
-    private struct DeletedInventoryRow: Decodable {
-        let inventoryId: UUID
-        
-        enum CodingKeys: String, CodingKey {
-            case inventoryId = "inventory_id"
-        }
-    }
 
-    private struct PartUsageWorkOrderPartRow: Decodable {
+    struct PartUsage: Identifiable, Equatable {
         let workOrderId: UUID
-        let quantityRequired: Int
+        let vehicleId: UUID
+        let vehicleName: String
+        let vehicleNumber: String?
+        let vehicleType: String?
+        let quantityUsed: Int
+        let costAtTime: Double
+        let workOrderReference: String
+        let usedAt: Date?
 
-        enum CodingKeys: String, CodingKey {
-            case workOrderId = "work_order_id"
-            case quantityRequired = "quantity_required"
-        }
+        var id: String { "\(workOrderId.uuidString)-\(vehicleId.uuidString)" }
     }
 
-    private struct PartUsageWorkOrderRow: Decodable {
-        let workOrderId: UUID
-        let vehicleId: UUID?
-        let updatedAt: Date?
-        let createdAt: Date?
-        let vehicle: WorkOrderVehicle?
-
-        enum CodingKeys: String, CodingKey {
-            case workOrderId = "work_order_id"
-            case vehicleId = "vehicle_id"
-            case updatedAt = "updated_at"
-            case createdAt = "created_at"
-            case vehicle = "vehicles"
-        }
-    }
-    
     enum InventoryDeletionError: LocalizedError {
         case placeholderID(UUID)
         case noRowDeleted(UUID)
-        
+
         var errorDescription: String? {
             switch self {
             case .placeholderID(let id):
@@ -76,134 +37,120 @@ final class InventoryViewModel: ObservableObject {
             }
         }
     }
-    
-    @Published var items: [InventoryItem] = []
+
+    @Published private(set) var items: [InventoryItem] = []
     @Published var filteredItems: [InventoryItem] = []
-    
     @Published var selectedVehicleFilter: String = "All" {
-        didSet { filterItems() }
+        didSet { applyFilters() }
     }
-    
     @Published var searchText: String = "" {
-        didSet { filterItems() }
+        didSet { applyFilters() }
     }
-    
     @Published var showLowStockBanner: Bool = true
     @Published var deleteErrorMessage: AlertItem?
     @Published var notifications: [NotificationItem] = []
-    
-    
+    @Published var partUsage: [PartUsage] = []
+    @Published var isLoadingPartUsage = false
+    @Published private(set) var activePartUsageInventoryId: UUID?
+
     private let placeholderInventoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
-    
-    private var deletedInventoryIDs = Set<UUID>()
-    
+    private let supabase = SupabaseManager.shared.client
+    private var inventoryCache: [UUID: InventoryItem] = [:]
+    private var inventoryOrder: [UUID] = []
+    private var partUsageCache: [UUID: [PartUsage]] = [:]
+    private var hasLoadedInitialInventory = false
+    private var inventoryRealtimeChannel: RealtimeChannelV2?
+    private var inventoryRealtimeTask: Task<Void, Never>?
+
     var lowStockItems: [InventoryItem] {
         items.filter { item in
             guard item.quantity <= 10 else { return false }
             if selectedVehicleFilter == "All" {
                 return true
             }
-            
             return (item.vehicleCategory ?? "") == selectedVehicleFilter
         }
     }
-    
+
     var hasLowStock: Bool {
         !lowStockItems.isEmpty
     }
-    
-    func fetchInventory() async {
+
+    func fetchInventory(forceRefresh: Bool = false) async {
+        await startInventoryRealtimeIfNeeded()
+
+        if forceRefresh {
+            clearInventoryCache()
+        } else if hasLoadedInitialInventory {
+            applyInventorySnapshot()
+            return
+        }
+
         do {
-            let fetchedItems: [InventoryItem] = try await SupabaseManager.shared.client
+            let fetchedItems: [InventoryItem] = try await supabase
                 .from("inventory")
                 .select()
                 .execute()
                 .value
-            
-            let invalidItems = fetchedItems.filter { $0.inventoryId == placeholderInventoryID }
-            if !invalidItems.isEmpty {
-                print("INVALID INVENTORY UUIDS:", invalidItems.map(\.inventoryId))
-            }
-            
-            let sanitizedItems = fetchedItems.filter { item in
-                item.inventoryId != placeholderInventoryID &&
-                !deletedInventoryIDs.contains(item.inventoryId)
-            }
-            
-            print("DECODED COUNT:", fetchedItems.count)
-            print("Fetched items:", sanitizedItems.count)
-            
-            self.items = sanitizedItems
-            self.filterItems()
+
+            let sanitizedItems = fetchedItems.filter { $0.inventoryId != placeholderInventoryID }
+            rebuildInventoryCache(with: sanitizedItems)
+            hasLoadedInitialInventory = true
+            applyInventorySnapshot()
+
+            await ensureNotificationsLoaded()
+            await syncLowStockNotifications()
         } catch {
-            print("ERROR:", error)
+            print("ERROR fetching inventory:", error)
         }
     }
-    
-    func filterItems() {
-        var result = items
-        
-        if selectedVehicleFilter != "All" {
-            result = result.filter {
-                ($0.vehicleCategory ?? "") == selectedVehicleFilter
-            }
-        }
-        
-        let trimmedSearch = searchText.trimmingCharacters(in: .whitespaces)
-        if !trimmedSearch.isEmpty {
-            let lowercasedSearch = trimmedSearch.lowercased()
-            result = result.filter { item in
-                let matchName = item.partName.lowercased().contains(lowercasedSearch)
-                let matchSKU = item.sku?.lowercased().contains(lowercasedSearch) ?? false
-                let matchCategory = item.vehicleCategory?.lowercased().contains(lowercasedSearch) ?? false
-                let matchDesc = item.categoryDescription?.lowercased().contains(lowercasedSearch) ?? false
-                return matchName || matchSKU || matchCategory || matchDesc
-            }
-        }
-        
-        self.filteredItems = result
-        print("All items:", items.map(\.partName))
-        print("Filtered items:", filteredItems.map(\.partName))
+
+    func refreshInventory() async {
+        await fetchInventory(forceRefresh: true)
     }
-    
+
+    func clearCache() {
+        clearInventoryCache()
+        partUsageCache.removeAll()
+        partUsage = []
+        activePartUsageInventoryId = nil
+        notifications = []
+        hasLoadedInitialInventory = false
+        applyInventorySnapshot()
+    }
+
     func checkForDuplicate(name: String, category: String?) async -> InventoryItem? {
-        return items.first { item in
+        items.first { item in
             item.partName.lowercased() == name.lowercased() &&
             (item.vehicleCategory ?? "").lowercased() == (category ?? "").lowercased()
         }
     }
-    
+
     func combineInventoryItem(id: UUID, additionalQuantity: Int) async throws {
-        guard let existingItem = items.first(where: { $0.inventoryId == id }) else { return }
-        
-        let newQuantity = existingItem.quantity + additionalQuantity
-        
+        guard let existingItem = inventoryCache[id] else { return }
+
         struct InventoryQuantityUpdate: Codable {
             let quantity: Int
             let updatedAt: String
-            
+
             enum CodingKeys: String, CodingKey {
                 case quantity
                 case updatedAt = "updated_at"
             }
         }
-        
+
         let updateData = InventoryQuantityUpdate(
-            quantity: newQuantity,
+            quantity: existingItem.quantity + additionalQuantity,
             updatedAt: ISO8601DateFormatter().string(from: Date())
         )
-        
-        _ = try await SupabaseManager.shared.client
+
+        _ = try await supabase
             .from("inventory")
             .update(updateData)
             .eq("inventory_id", value: id.uuidString)
             .execute()
-        
-        await fetchInventory()
-        await syncLowStockNotifications()
     }
-    
-    
+
     func addInventoryItem(partName: String, vehicleCategory: String?, categoryDescription: String?, supplier: String?, quantity: Int, costPerUnit: Double?, sku: String?, location: String?, imageUrl: String?) async throws {
         let insertItem = InventoryItemInsert(
             partName: partName,
@@ -216,64 +163,47 @@ final class InventoryViewModel: ObservableObject {
             location: location,
             imageUrl: imageUrl
         )
-        
-        _ = try await SupabaseManager.shared.client
+
+        _ = try await supabase
             .from("inventory")
             .insert(insertItem)
             .execute()
-        
-        await fetchInventory()
-        await syncLowStockNotifications()
     }
-    
-    
+
     func deleteInventoryItem(id: UUID) async throws {
-        print("Attempting delete id:", id.uuidString)
-        print("Deleting ID:", id.uuidString)
         deleteErrorMessage = nil
-        
+
         if id == placeholderInventoryID {
-            print("DELETE FAILED: placeholder UUID", id.uuidString)
             throw InventoryDeletionError.placeholderID(id)
         }
-        
+
         do {
-            let deletedRows: [DeletedInventoryRow] = try await SupabaseManager.shared.client
+            let deletedRows: [DeletedInventoryRow] = try await supabase
                 .from("inventory")
                 .delete()
                 .eq("inventory_id", value: id.uuidString)
                 .select("inventory_id")
                 .execute()
                 .value
-            
-            print("DELETE RESPONSE:", deletedRows)
-            print("DELETED ROWS:", deletedRows.map(\.inventoryId))
-            
+
             guard deletedRows.contains(where: { $0.inventoryId == id }) else {
-                print("DELETE FAILED FOR ID:", id.uuidString)
                 throw InventoryDeletionError.noRowDeleted(id)
             }
-            
-            deletedInventoryIDs.insert(id)
-            
-            withAnimation(.spring()) {
-                self.items.removeAll { $0.inventoryId == id }
-                self.filterItems()
-            }
-            
-            await fetchNotifications()
+
+            removeInventoryItem(id: id)
+            await deleteNotification(forInventoryID: id)
         } catch {
             if let pgError = error as? PostgrestError, pgError.code == "23503" {
                 deleteErrorMessage = AlertItem(message: "This part is used in a work order and cannot be deleted.")
             } else {
                 deleteErrorMessage = AlertItem(message: "Failed to delete part. Please try again.")
             }
-            
+
             print("ERROR deleting item \(id):", error)
             throw error
         }
     }
-    
+
     func updateInventoryItem(id: UUID, partName: String, vehicleCategory: String?, supplier: String?, quantity: Int, costPerUnit: Double?, location: String?) async throws {
         let updateData = InventoryItemUpdate(
             partName: partName,
@@ -284,154 +214,114 @@ final class InventoryViewModel: ObservableObject {
             location: location,
             updatedAt: Date()
         )
-        
-        _ = try await SupabaseManager.shared.client
+
+        _ = try await supabase
             .from("inventory")
             .update(updateData)
             .eq("inventory_id", value: id.uuidString)
             .execute()
-        
-        await fetchInventory()
-        await syncLowStockNotifications()
     }
 
-    func fetchPartUsage(for inventoryId: UUID) async throws -> PartUsageSummary {
-        let usageRows: [PartUsageWorkOrderPartRow] = try await SupabaseManager.shared.client
-            .from("work_order_parts")
-            .select("work_order_id, quantity_required")
-            .eq("inventory_id", value: inventoryId.uuidString)
-            .execute()
-            .value
-
-        let totalUsed = usageRows.reduce(0) { $0 + $1.quantityRequired }
-        guard !usageRows.isEmpty else {
-            return PartUsageSummary(totalUsed: 0, entries: [])
-        }
-
-        let workOrderIds = usageRows.map(\.workOrderId.uuidString)
-        let workOrderRows: [PartUsageWorkOrderRow] = try await SupabaseManager.shared.client
-            .from("work_orders")
-            .select("work_order_id, vehicle_id, created_at, updated_at, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type)")
-            .in("work_order_id", values: workOrderIds)
-            .execute()
-            .value
-
-        let workOrdersById = Dictionary(uniqueKeysWithValues: workOrderRows.map { ($0.workOrderId, $0) })
-        let entries = usageRows
-            .compactMap { usageRow -> PartUsageEntry? in
-                guard let workOrder = workOrdersById[usageRow.workOrderId] else { return nil }
-
-                let vehicleName = workOrder.vehicle?.vehicleName
-                    ?? workOrder.vehicle?.numberPlate
-                    ?? "Unknown Vehicle"
-
-                return PartUsageEntry(
-                    workOrderId: usageRow.workOrderId,
-                    vehicleId: workOrder.vehicleId,
-                    vehicleName: vehicleName,
-                    vehicleNumber: workOrder.vehicle?.numberPlate,
-                    quantityUsed: usageRow.quantityRequired,
-                    workOrderReference: "WO-\(usageRow.workOrderId.uuidString.prefix(6).uppercased())",
-                    usedAt: workOrder.updatedAt ?? workOrder.createdAt
-                )
-            }
-            .sorted {
-                switch ($0.usedAt, $1.usedAt) {
-                case let (lhs?, rhs?):
-                    return lhs > rhs
-                case (_?, nil):
-                    return true
-                case (nil, _?):
-                    return false
-                case (nil, nil):
-                    return $0.workOrderReference > $1.workOrderReference
-                }
-            }
-
-        return PartUsageSummary(totalUsed: totalUsed, entries: entries)
-    }
-    
-    
-    
     func fetchNotifications() async {
         do {
-            let data: [NotificationItem] = try await SupabaseManager.shared.client
+            let data: [NotificationItem] = try await supabase
                 .from("notifications")
                 .select()
                 .order("created_at", ascending: false)
                 .execute()
                 .value
-            
-            self.notifications = data
+
+            notifications = data
         } catch {
             print("Error fetching notifications:", error)
         }
     }
-    
-    func createNotification(for item: InventoryItem) async -> Bool {
-        if notifications.contains(where: { $0.inventoryId == item.inventoryId }) {
-            return false
-        }
-        
-        do {
-            let newNotification = [
-                "inventory_id": item.inventoryId.uuidString,
-                "title": "Low Stock Alert",
-                "message": "\(item.partName) is low in stock (Qty: \(item.quantity))"
-            ]
-            
-            try await SupabaseManager.shared.client
-                .from("notifications")
-                .insert(newNotification)
-                .execute()
-            
-            return true
-        } catch {
-            print("Insert notification error:", error)
-            return false
-        }
-    }
-    
-    func deleteNotification(for item: InventoryItem) async {
-        do {
-            try await SupabaseManager.shared.client
-                .from("notifications")
-                .delete()
-                .eq("inventory_id", value: item.inventoryId.uuidString)
-                .execute()
-        } catch {
-            print("Delete notification error:", error)
-        }
-    }
-    
+
     func syncLowStockNotifications() async {
-        await fetchNotifications()
-        
+        await ensureNotificationsLoaded()
         for item in items {
-            if item.quantity <= 10 {
-                let didCreateNotification = await createNotification(for: item)
-                
-                if didCreateNotification {
-                    NotificationManager.shared.sendLowStockNotification(
-                        partName: item.partName,
-                        quantity: item.quantity
-                    )
-                }
-            } else {
-                await deleteNotification(for: item)
+            await syncNotification(for: item, previousItem: nil)
+        }
+    }
+
+    func fetchPartUsage(inventoryId: UUID, useCache: Bool = true) async throws -> [PartUsage] {
+        activePartUsageInventoryId = inventoryId
+
+        if useCache, let cached = partUsageCache[inventoryId] {
+            partUsage = cached
+            return cached
+        }
+
+        isLoadingPartUsage = true
+        defer { isLoadingPartUsage = false }
+
+        print("🔎 fetchPartUsage inventory_id:", inventoryId.uuidString)
+
+        let rows: [PartUsageRow] = try await supabase
+            .from("work_order_parts")
+            .select("work_order_id, inventory_id, quantity_required, cost_at_time, work_orders(work_order_id, vehicle_id, created_at, updated_at, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type))")
+            .eq("inventory_id", value: inventoryId.uuidString)
+            .execute()
+            .value
+
+        print("🔎 work_order_parts rows fetched:", rows.count)
+        for row in rows {
+            print("🔎 usage row workOrderId=\(row.workOrderId.uuidString) inventoryId=\(row.inventoryId.uuidString) quantity=\(row.quantityRequired)")
+        }
+
+        let usage = rows.compactMap { row -> PartUsage? in
+            guard let workOrder = row.workOrder,
+                  let vehicle = workOrder.vehicle else {
+                return nil
+            }
+
+            let vehicleName = vehicle.vehicleName ?? vehicle.numberPlate ?? "Unknown Vehicle"
+            let vehicleId = workOrder.vehicleId ?? vehicle.vehicleId
+
+            return PartUsage(
+                workOrderId: row.workOrderId,
+                vehicleId: vehicleId,
+                vehicleName: vehicleName,
+                vehicleNumber: vehicle.numberPlate,
+                vehicleType: vehicle.vehicleType?.rawValue,
+                quantityUsed: row.quantityRequired,
+                costAtTime: row.costAtTime ?? 0,
+                workOrderReference: "WO-\(row.workOrderId.uuidString.prefix(6).uppercased())",
+                usedAt: workOrder.updatedAt ?? workOrder.createdAt
+            )
+        }
+        .sorted {
+            switch ($0.usedAt, $1.usedAt) {
+            case let (lhs?, rhs?):
+                return lhs > rhs
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            case (nil, nil):
+                return $0.workOrderReference > $1.workOrderReference
             }
         }
-        
-        await fetchNotifications()
+
+        partUsageCache[inventoryId] = usage
+        if activePartUsageInventoryId == inventoryId {
+            partUsage = usage
+        }
+        return usage
     }
-    
-    
-    // MARK: - Image Upload (Supabase Storage)
+
+    func cachedPartUsage(for inventoryId: UUID) -> [PartUsage]? {
+        partUsageCache[inventoryId]
+    }
+
+    func cachedTotalUsed(for inventoryId: UUID) -> Int {
+        partUsageCache[inventoryId]?.reduce(0) { $0 + $1.quantityUsed } ?? 0
+    }
+
     func uploadImage(data: Data, fileName: String) async throws -> String {
         let path = "part-images/\(fileName)"
-        
-        // Upload to Supabase Storage
-        _ = try await SupabaseManager.shared.client
+
+        _ = try await supabase
             .storage
             .from("inventory-images")
             .upload(
@@ -439,17 +329,302 @@ final class InventoryViewModel: ObservableObject {
                 file: data,
                 options: FileOptions(contentType: "image/jpeg")
             )
-        
-        // Get public URL (non-throwing)
-        let publicURL = try SupabaseManager.shared.client
+
+        let publicURL = try supabase
             .storage
             .from("inventory-images")
             .getPublicURL(path: path)
-        
+
         return publicURL.absoluteString
     }
 }
 
+private extension InventoryViewModel {
+    func startInventoryRealtimeIfNeeded() async {
+        guard inventoryRealtimeChannel == nil else { return }
+
+        let channel = supabase.realtimeV2.channel("inventory-realtime")
+        let changes = channel.postgresChange(AnyAction.self, schema: "public", table: "inventory")
+
+        do {
+            try await channel.subscribe()
+            inventoryRealtimeChannel = channel
+            inventoryRealtimeTask = Task { [weak self] in
+                guard let self else { return }
+                for await action in changes {
+                    await self.handleInventoryRealtime(action: action)
+                }
+            }
+        } catch {
+            print("🚨 Inventory realtime subscription failed:", error)
+        }
+    }
+
+    func handleInventoryRealtime(action: AnyAction) async {
+        switch action {
+        case .insert(let action):
+            if let item = try? action.decodeRecord(as: InventoryItem.self, decoder: Self.makeDecoder()) {
+                upsertInventoryItem(item, insertingAtFront: true)
+                await syncNotification(for: item, previousItem: nil)
+            }
+        case .update(let action):
+            if let item = try? action.decodeRecord(as: InventoryItem.self, decoder: Self.makeDecoder()) {
+                let previous = inventoryCache[item.inventoryId]
+                upsertInventoryItem(item, insertingAtFront: false)
+                await syncNotification(for: item, previousItem: previous)
+            }
+        case .delete(let action):
+            guard let rawID = action.oldRecord["inventory_id"]?.stringValue,
+                  let inventoryId = UUID(uuidString: rawID) else { return }
+            removeInventoryItem(id: inventoryId)
+            await deleteNotification(forInventoryID: inventoryId)
+        default:
+            break
+        }
+    }
+
+    func rebuildInventoryCache(with fetchedItems: [InventoryItem]) {
+        inventoryCache = Dictionary(uniqueKeysWithValues: fetchedItems.map { ($0.inventoryId, $0) })
+        inventoryOrder = fetchedItems.map(\.inventoryId)
+    }
+
+    func clearInventoryCache() {
+        inventoryCache.removeAll()
+        inventoryOrder.removeAll()
+        items = []
+        filteredItems = []
+    }
+
+    func upsertInventoryItem(_ item: InventoryItem, insertingAtFront: Bool) {
+        guard item.inventoryId != placeholderInventoryID else { return }
+
+        let exists = inventoryCache[item.inventoryId] != nil
+        inventoryCache[item.inventoryId] = item
+
+        if exists {
+            if !inventoryOrder.contains(item.inventoryId) {
+                inventoryOrder.insert(item.inventoryId, at: 0)
+            }
+        } else if insertingAtFront {
+            inventoryOrder.insert(item.inventoryId, at: 0)
+        } else {
+            inventoryOrder.append(item.inventoryId)
+        }
+
+        applyInventorySnapshot()
+    }
+
+    func removeInventoryItem(id: UUID) {
+        inventoryCache.removeValue(forKey: id)
+        inventoryOrder.removeAll { $0 == id }
+        partUsageCache.removeValue(forKey: id)
+
+        if activePartUsageInventoryId == id {
+            activePartUsageInventoryId = nil
+            partUsage = []
+        }
+
+        applyInventorySnapshot()
+    }
+
+    func applyInventorySnapshot() {
+        items = inventoryOrder.compactMap { inventoryCache[$0] }
+        applyFilters()
+    }
+
+    func applyFilters() {
+        var result = items
+
+        if selectedVehicleFilter != "All" {
+            result = result.filter { ($0.vehicleCategory ?? "") == selectedVehicleFilter }
+        }
+
+        let trimmedSearch = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedSearch.isEmpty {
+            let lowercasedSearch = trimmedSearch.lowercased()
+            result = result.filter { item in
+                let matchName = item.partName.lowercased().contains(lowercasedSearch)
+                let matchSKU = item.sku?.lowercased().contains(lowercasedSearch) ?? false
+                let matchCategory = item.vehicleCategory?.lowercased().contains(lowercasedSearch) ?? false
+                let matchDesc = item.categoryDescription?.lowercased().contains(lowercasedSearch) ?? false
+                return matchName || matchSKU || matchCategory || matchDesc
+            }
+        }
+
+        filteredItems = result
+    }
+
+    func ensureNotificationsLoaded() async {
+        if notifications.isEmpty {
+            await fetchNotifications()
+        }
+    }
+
+    func syncNotification(for item: InventoryItem, previousItem: InventoryItem?) async {
+        let wasLowStock = previousItem?.quantity ?? Int.max
+        let isLowStock = item.quantity <= 10
+        let existedNotification = notifications.first(where: { $0.inventoryId == item.inventoryId })
+
+        if isLowStock {
+            if let existing = existedNotification {
+                if existing.message != lowStockMessage(for: item) {
+                    await updateNotification(existing, for: item)
+                }
+            } else {
+                let didCreate = await createNotification(for: item)
+                if didCreate && wasLowStock > 10 {
+                    NotificationManager.shared.sendLowStockNotification(
+                        partName: item.partName,
+                        quantity: item.quantity
+                    )
+                }
+            }
+        } else if existedNotification != nil {
+            await deleteNotification(forInventoryID: item.inventoryId)
+        }
+    }
+
+    func createNotification(for item: InventoryItem) async -> Bool {
+        guard !notifications.contains(where: { $0.inventoryId == item.inventoryId }) else {
+            return false
+        }
+
+        do {
+            let payload = LowStockNotificationPayload(
+                inventory_id: item.inventoryId,
+                title: "Low Stock Alert",
+                message: lowStockMessage(for: item)
+            )
+
+            let created: [NotificationItem] = try await supabase
+                .from("notifications")
+                .insert(payload)
+                .select()
+                .execute()
+                .value
+
+            if let notification = created.first {
+                notifications.insert(notification, at: 0)
+            }
+            return true
+        } catch {
+            print("Insert notification error:", error)
+            return false
+        }
+    }
+
+    func updateNotification(_ notification: NotificationItem, for item: InventoryItem) async {
+        let payload = LowStockNotificationUpdatePayload(message: lowStockMessage(for: item))
+
+        do {
+            let updated: [NotificationItem] = try await supabase
+                .from("notifications")
+                .update(payload)
+                .eq("notification_id", value: notification.notificationId.uuidString)
+                .select()
+                .execute()
+                .value
+
+            if let updatedNotification = updated.first,
+               let index = notifications.firstIndex(where: { $0.notificationId == updatedNotification.notificationId }) {
+                notifications[index] = updatedNotification
+            }
+        } catch {
+            print("Update notification error:", error)
+        }
+    }
+
+    func deleteNotification(forInventoryID inventoryId: UUID) async {
+        do {
+            let deleted: [NotificationItem] = try await supabase
+                .from("notifications")
+                .delete()
+                .eq("inventory_id", value: inventoryId.uuidString)
+                .select()
+                .execute()
+                .value
+
+            let deletedIDs = Set(deleted.map(\.notificationId))
+            if deletedIDs.isEmpty {
+                notifications.removeAll { $0.inventoryId == inventoryId }
+            } else {
+                notifications.removeAll { deletedIDs.contains($0.notificationId) }
+            }
+        } catch {
+            print("Delete notification error:", error)
+        }
+    }
+
+    func lowStockMessage(for item: InventoryItem) -> String {
+        "\(item.partName) is low in stock (Qty: \(item.quantity))"
+    }
+
+    static func makeDecoder() -> JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let raw = try container.decode(String.self)
+            if let date = BackendDateParser.parse(raw) {
+                return date
+            }
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Invalid date: \(raw)"
+            )
+        }
+        return decoder
+    }
+}
+
+private struct DeletedInventoryRow: Decodable {
+    let inventoryId: UUID
+
+    enum CodingKeys: String, CodingKey {
+        case inventoryId = "inventory_id"
+    }
+}
+
+private struct PartUsageRow: Decodable {
+    let workOrderId: UUID
+    let inventoryId: UUID
+    let quantityRequired: Int
+    let costAtTime: Double?
+    let workOrder: PartUsageWorkOrder?
+
+    enum CodingKeys: String, CodingKey {
+        case workOrderId = "work_order_id"
+        case inventoryId = "inventory_id"
+        case quantityRequired = "quantity_required"
+        case costAtTime = "cost_at_time"
+        case workOrder = "work_orders"
+    }
+}
+
+private struct PartUsageWorkOrder: Decodable {
+    let workOrderId: UUID
+    let vehicleId: UUID?
+    let createdAt: Date?
+    let updatedAt: Date?
+    let vehicle: WorkOrderVehicle?
+
+    enum CodingKeys: String, CodingKey {
+        case workOrderId = "work_order_id"
+        case vehicleId = "vehicle_id"
+        case createdAt = "created_at"
+        case updatedAt = "updated_at"
+        case vehicle = "vehicles"
+    }
+}
+
+private struct LowStockNotificationPayload: Codable {
+    let inventory_id: UUID
+    let title: String
+    let message: String
+}
+
+private struct LowStockNotificationUpdatePayload: Codable {
+    let message: String
+}
 
 struct InventoryItemInsert: Codable {
     var partName: String
