@@ -6,6 +6,7 @@
 //
 
 
+import Foundation
 import Supabase
 
 final class SupabaseManager {
@@ -27,10 +28,10 @@ final class SupabaseManager {
             supabaseURL: SupabaseConfig.url,
             supabaseKey: SupabaseConfig.anonKey,
             options: SupabaseClientOptions(
-                global: .init(session: URLSession(configuration: config)),
                 auth: .init(
                     emitLocalSessionAsInitialSession: true
-                )
+                ),
+                global: .init(session: URLSession(configuration: config))
             )
         )
     }
