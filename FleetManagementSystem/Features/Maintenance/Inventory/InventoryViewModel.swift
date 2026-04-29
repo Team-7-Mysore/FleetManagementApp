@@ -52,12 +52,18 @@ final class InventoryViewModel: ObservableObject {
     @Published var partUsage: [PartUsage] = []
     @Published var isLoadingPartUsage = false
     @Published private(set) var activePartUsageInventoryId: UUID?
+    @Published var mostUsedPart: InventoryItem?
+    @Published var mostUsedQuantity: Int = 0
+    @Published private(set) var activeMostUsedCategory: String?
+    @Published var weeklyUsage: [UUID: Int] = [:]
 
     private let placeholderInventoryID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
     private let supabase = SupabaseManager.shared.client
     private var inventoryCache: [UUID: InventoryItem] = [:]
     private var inventoryOrder: [UUID] = []
     private var partUsageCache: [UUID: [PartUsage]] = [:]
+    private var mostUsedPartCache: [String: MostUsedPartCacheEntry] = [:]
+    private var weeklyUsageCacheByCategory: [String: [UUID: Int]] = [:]
     private var hasLoadedInitialInventory = false
     private var inventoryRealtimeChannel: RealtimeChannelV2?
     private var inventoryRealtimeTask: Task<Void, Never>?
@@ -112,8 +118,14 @@ final class InventoryViewModel: ObservableObject {
     func clearCache() {
         clearInventoryCache()
         partUsageCache.removeAll()
+        mostUsedPartCache.removeAll()
+        weeklyUsageCacheByCategory.removeAll()
         partUsage = []
         activePartUsageInventoryId = nil
+        mostUsedPart = nil
+        mostUsedQuantity = 0
+        activeMostUsedCategory = nil
+        weeklyUsage = [:]
         notifications = []
         hasLoadedInitialInventory = false
         applyInventorySnapshot()
@@ -205,6 +217,7 @@ final class InventoryViewModel: ObservableObject {
     }
 
     func updateInventoryItem(id: UUID, partName: String, vehicleCategory: String?, supplier: String?, quantity: Int, costPerUnit: Double?, location: String?) async throws {
+        let previousItem = inventoryCache[id]
         let updateData = InventoryItemUpdate(
             partName: partName,
             vehicleCategory: vehicleCategory,
@@ -215,11 +228,34 @@ final class InventoryViewModel: ObservableObject {
             updatedAt: Date()
         )
 
-        _ = try await supabase
+        let updatedRows: [InventoryItem] = try await supabase
             .from("inventory")
             .update(updateData)
             .eq("inventory_id", value: id.uuidString)
+            .select()
             .execute()
+            .value
+
+        if let updatedItem = updatedRows.first {
+            print("Updated item:", updatedItem)
+            await MainActor.run {
+                applyUpdatedInventoryItemLocally(updatedItem)
+            }
+            await syncNotification(for: updatedItem, previousItem: previousItem)
+        } else if var fallbackItem = previousItem {
+            fallbackItem.partName = partName
+            fallbackItem.vehicleCategory = vehicleCategory
+            fallbackItem.supplier = supplier
+            fallbackItem.quantity = quantity
+            fallbackItem.costPerUnit = costPerUnit
+            fallbackItem.location = location
+            fallbackItem.updatedAt = updateData.updatedAt
+            print("Updated item (fallback):", fallbackItem)
+            await MainActor.run {
+                applyUpdatedInventoryItemLocally(fallbackItem)
+            }
+            await syncNotification(for: fallbackItem, previousItem: previousItem)
+        }
     }
 
     func fetchNotifications() async {
@@ -257,16 +293,27 @@ final class InventoryViewModel: ObservableObject {
 
         print("🔎 fetchPartUsage inventory_id:", inventoryId.uuidString)
 
-        let rows: [PartUsageRow] = try await supabase
-            .from("work_order_parts")
-            .select("work_order_id, inventory_id, quantity_required, cost_at_time, work_orders(work_order_id, vehicle_id, created_at, updated_at, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type))")
-            .eq("inventory_id", value: inventoryId.uuidString)
-            .execute()
-            .value
+        let rows: [PartUsageRow]
+        do {
+            rows = try await supabase
+                .from("work_order_parts")
+                .select("work_order_id, inventory_id, quantity_required, cost_at_time, created_at, used_at, work_orders(work_order_id, vehicle_id, created_at, updated_at, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type))")
+                .eq("inventory_id", value: inventoryId.uuidString)
+                .execute()
+                .value
+        } catch {
+            print("⚠️ fetchPartUsage used_at query failed, retrying without used_at:", error)
+            rows = try await supabase
+                .from("work_order_parts")
+                .select("work_order_id, inventory_id, quantity_required, cost_at_time, created_at, work_orders(work_order_id, vehicle_id, created_at, updated_at, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type))")
+                .eq("inventory_id", value: inventoryId.uuidString)
+                .execute()
+                .value
+        }
 
         print("🔎 work_order_parts rows fetched:", rows.count)
         for row in rows {
-            print("🔎 usage row workOrderId=\(row.workOrderId.uuidString) inventoryId=\(row.inventoryId.uuidString) quantity=\(row.quantityRequired)")
+            print("🔎 usage row workOrderId=\(row.workOrderId.uuidString) inventoryId=\(row.inventoryId.uuidString) quantity=\(row.quantityRequired) usedAt=\(row.usedAt?.description ?? "nil") createdAt=\(row.createdAt?.description ?? "nil")")
         }
 
         let usage = rows.compactMap { row -> PartUsage? in
@@ -287,7 +334,7 @@ final class InventoryViewModel: ObservableObject {
                 quantityUsed: row.quantityRequired,
                 costAtTime: row.costAtTime ?? 0,
                 workOrderReference: "WO-\(row.workOrderId.uuidString.prefix(6).uppercased())",
-                usedAt: workOrder.updatedAt ?? workOrder.createdAt
+                usedAt: row.usageDate ?? workOrder.createdAt
             )
         }
         .sorted {
@@ -316,6 +363,98 @@ final class InventoryViewModel: ObservableObject {
 
     func cachedTotalUsed(for inventoryId: UUID) -> Int {
         partUsageCache[inventoryId]?.reduce(0) { $0 + $1.quantityUsed } ?? 0
+    }
+
+    func fetchMostUsedPart(for category: String, forceRefresh: Bool = false) async {
+        let normalizedCategory = category.trimmingCharacters(in: .whitespacesAndNewlines)
+        activeMostUsedCategory = normalizedCategory
+
+        if !forceRefresh, let cachedUsage = weeklyUsageCacheByCategory[normalizedCategory] {
+            weeklyUsage = cachedUsage
+            refreshMostUsedPart(for: normalizedCategory)
+            return
+        }
+
+        mostUsedPart = nil
+        mostUsedQuantity = 0
+        weeklyUsage = [:]
+
+        let sevenDaysAgo = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-7 * 24 * 60 * 60))
+        print("📊 fetchMostUsedPart category:", normalizedCategory)
+        print("📊 fetchMostUsedPart date filter:", sevenDaysAgo)
+
+        do {
+            let rowsWithDateFilter: [MostUsedPartUsageRow]
+            do {
+                rowsWithDateFilter = try await supabase
+                    .from("work_order_parts")
+                    .select("inventory_id, quantity_required, created_at, used_at, inventory:inventory!inner(*), work_orders(created_at)")
+                    .gte("used_at", value: sevenDaysAgo)
+                    .execute()
+                    .value
+            } catch {
+                print("⚠️ fetchMostUsedPart used_at query failed, retrying with created_at:", error)
+                rowsWithDateFilter = try await supabase
+                    .from("work_order_parts")
+                    .select("inventory_id, quantity_required, created_at, inventory:inventory!inner(*), work_orders(created_at)")
+                    .gte("created_at", value: sevenDaysAgo)
+                    .execute()
+                    .value
+            }
+
+            print("📊 fetchMostUsedPart rows with date filter:", rowsWithDateFilter.count)
+            for row in rowsWithDateFilter {
+                print("📊 weekly usage row inventoryId=\(row.inventoryId) usedAt=\(row.usedAt ?? "nil") createdAt=\(row.createdAt ?? "nil")")
+            }
+
+            let rows: [MostUsedPartUsageRow]
+            if rowsWithDateFilter.isEmpty {
+                let allRows: [MostUsedPartUsageRow]
+                do {
+                    allRows = try await supabase
+                        .from("work_order_parts")
+                        .select("inventory_id, quantity_required, created_at, used_at, inventory:inventory!inner(*), work_orders(created_at)")
+                        .execute()
+                        .value
+                } catch {
+                    print("⚠️ fallback allRows used_at query failed, retrying legacy shape:", error)
+                    allRows = try await supabase
+                        .from("work_order_parts")
+                        .select("inventory_id, quantity_required, created_at, inventory:inventory!inner(*), work_orders(created_at)")
+                        .execute()
+                        .value
+                }
+                print("📊 fetchMostUsedPart rows without date filter:", allRows.count)
+                rows = allRows.filter { row in
+                    guard let usageDate = row.usageDate else { return false }
+                    return usageDate >= Date().addingTimeInterval(-7 * 24 * 60 * 60)
+                }
+                print("📊 fetchMostUsedPart rows after fallback local date filter:", rows.count)
+            } else {
+                rows = rowsWithDateFilter
+            }
+
+            let filteredRows = rows.filter { row in
+                (row.inventory?.vehicleCategory ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased() == normalizedCategory.lowercased()
+            }
+            print("📊 fetchMostUsedPart rows after category filter (\(normalizedCategory)):", filteredRows.count)
+
+            let aggregatedUsage = filteredRows.reduce(into: [UUID: Int]()) { partial, row in
+                guard let inventoryUUID = row.inventoryUUID else { return }
+                partial[inventoryUUID, default: 0] += row.quantityRequired
+            }
+            weeklyUsage = aggregatedUsage
+            weeklyUsageCacheByCategory[normalizedCategory] = aggregatedUsage
+            print("📊 weeklyUsage dictionary:", aggregatedUsage)
+            refreshMostUsedPart(for: normalizedCategory)
+        } catch {
+            print("Error fetching most used weekly part for \(normalizedCategory):", error)
+            mostUsedPart = nil
+            mostUsedQuantity = 0
+            weeklyUsage = [:]
+        }
     }
 
     func uploadImage(data: Data, fileName: String) async throws -> String {
@@ -386,6 +525,8 @@ private extension InventoryViewModel {
     func rebuildInventoryCache(with fetchedItems: [InventoryItem]) {
         inventoryCache = Dictionary(uniqueKeysWithValues: fetchedItems.map { ($0.inventoryId, $0) })
         inventoryOrder = fetchedItems.map(\.inventoryId)
+        mostUsedPartCache.removeAll()
+        weeklyUsageCacheByCategory.removeAll()
     }
 
     func clearInventoryCache() {
@@ -414,14 +555,38 @@ private extension InventoryViewModel {
         applyInventorySnapshot()
     }
 
+    func applyUpdatedInventoryItemLocally(_ item: InventoryItem) {
+        inventoryCache[item.inventoryId] = item
+
+        if !inventoryOrder.contains(item.inventoryId) {
+            inventoryOrder.append(item.inventoryId)
+        }
+
+        mostUsedPartCache.removeAll()
+        if mostUsedPart?.inventoryId == item.inventoryId {
+            mostUsedPart = item
+        }
+
+        applyInventorySnapshot()
+    }
+
     func removeInventoryItem(id: UUID) {
         inventoryCache.removeValue(forKey: id)
         inventoryOrder.removeAll { $0 == id }
         partUsageCache.removeValue(forKey: id)
+        mostUsedPartCache = mostUsedPartCache.mapValues { entry in
+            guard entry.item?.inventoryId == id else { return entry }
+            return MostUsedPartCacheEntry(item: nil, quantity: 0)
+        }
 
         if activePartUsageInventoryId == id {
             activePartUsageInventoryId = nil
             partUsage = []
+        }
+
+        if mostUsedPart?.inventoryId == id {
+            mostUsedPart = nil
+            mostUsedQuantity = 0
         }
 
         applyInventorySnapshot()
@@ -430,6 +595,9 @@ private extension InventoryViewModel {
     func applyInventorySnapshot() {
         items = inventoryOrder.compactMap { inventoryCache[$0] }
         applyFilters()
+        if let activeMostUsedCategory {
+            refreshMostUsedPart(for: activeMostUsedCategory)
+        }
     }
 
     func applyFilters() {
@@ -559,6 +727,45 @@ private extension InventoryViewModel {
         "\(item.partName) is low in stock (Qty: \(item.quantity))"
     }
 
+    func refreshMostUsedPart(for category: String) {
+        let normalizedCategory = category.trimmingCharacters(in: .whitespacesAndNewlines)
+        let categoryItems = items.filter {
+            ($0.vehicleCategory ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .caseInsensitiveCompare(normalizedCategory) == .orderedSame
+        }
+
+        let debugItems = categoryItems.map { item in
+            "\(item.partName)=\(weeklyUsage[item.inventoryId] ?? 0)"
+        }
+        print("📊 filtered items with usage for \(normalizedCategory):", debugItems)
+
+        guard let topItem = categoryItems.max(by: { lhs, rhs in
+            let lhsUsage = weeklyUsage[lhs.inventoryId] ?? 0
+            let rhsUsage = weeklyUsage[rhs.inventoryId] ?? 0
+            if lhsUsage == rhsUsage {
+                return lhs.partName.localizedCaseInsensitiveCompare(rhs.partName) == .orderedDescending
+            }
+            return lhsUsage < rhsUsage
+        }) else {
+            mostUsedPart = nil
+            mostUsedQuantity = 0
+            mostUsedPartCache[normalizedCategory] = MostUsedPartCacheEntry(item: nil, quantity: 0)
+            return
+        }
+
+        let usage = weeklyUsage[topItem.inventoryId] ?? 0
+        if usage > 0 {
+            mostUsedPart = topItem
+            mostUsedQuantity = usage
+            mostUsedPartCache[normalizedCategory] = MostUsedPartCacheEntry(item: topItem, quantity: usage)
+        } else {
+            mostUsedPart = nil
+            mostUsedQuantity = 0
+            mostUsedPartCache[normalizedCategory] = MostUsedPartCacheEntry(item: nil, quantity: 0)
+        }
+    }
+
     static func makeDecoder() -> JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .custom { decoder in
@@ -589,6 +796,8 @@ private struct PartUsageRow: Decodable {
     let inventoryId: UUID
     let quantityRequired: Int
     let costAtTime: Double?
+    let createdAt: Date?
+    let usedAt: Date?
     let workOrder: PartUsageWorkOrder?
 
     enum CodingKeys: String, CodingKey {
@@ -596,7 +805,13 @@ private struct PartUsageRow: Decodable {
         case inventoryId = "inventory_id"
         case quantityRequired = "quantity_required"
         case costAtTime = "cost_at_time"
+        case createdAt = "created_at"
+        case usedAt = "used_at"
         case workOrder = "work_orders"
+    }
+
+    var usageDate: Date? {
+        usedAt ?? createdAt
     }
 }
 
@@ -613,6 +828,54 @@ private struct PartUsageWorkOrder: Decodable {
         case createdAt = "created_at"
         case updatedAt = "updated_at"
         case vehicle = "vehicles"
+    }
+}
+
+private struct MostUsedPartCacheEntry {
+    let item: InventoryItem?
+    let quantity: Int
+}
+
+private struct MostUsedPartUsageRow: Decodable {
+    let inventoryId: String
+    let quantityRequired: Int
+    let createdAt: String?
+    let usedAt: String?
+    let inventory: InventoryItem?
+    let workOrder: MostUsedPartWorkOrderDate?
+
+    enum CodingKeys: String, CodingKey {
+        case inventoryId = "inventory_id"
+        case quantityRequired = "quantity_required"
+        case createdAt = "created_at"
+        case usedAt = "used_at"
+        case inventory
+        case workOrder = "work_orders"
+    }
+
+    var usageDate: Date? {
+        if let usedAt, let date = BackendDateParser.parse(usedAt) {
+            return date
+        }
+        if let createdAt, let date = BackendDateParser.parse(createdAt) {
+            return date
+        }
+        if let workOrderCreatedAt = workOrder?.createdAt, let date = BackendDateParser.parse(workOrderCreatedAt) {
+            return date
+        }
+        return nil
+    }
+
+    var inventoryUUID: UUID? {
+        UUID(uuidString: inventoryId)
+    }
+}
+
+private struct MostUsedPartWorkOrderDate: Decodable {
+    let createdAt: String?
+
+    enum CodingKeys: String, CodingKey {
+        case createdAt = "created_at"
     }
 }
 

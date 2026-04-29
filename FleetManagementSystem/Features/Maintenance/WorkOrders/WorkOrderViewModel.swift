@@ -127,10 +127,27 @@ final class WorkOrderViewModel: ObservableObject {
 
     func upsertParts(_ parts: [WorkOrderPart]) async throws {
         guard !parts.isEmpty else { return }
-        try await SupabaseManager.shared.client
-            .from("work_order_parts")
-            .upsert(parts)
-            .execute()
+        do {
+            try await SupabaseManager.shared.client
+                .from("work_order_parts")
+                .upsert(parts)
+                .execute()
+        } catch {
+            print("⚠️ upsertParts with used_at failed, retrying legacy payload:", error)
+            let legacyPayloads = parts.map { part in
+                WorkOrderPartLegacyPayload(
+                    workOrderId: part.workOrderId,
+                    inventoryId: part.inventoryId,
+                    quantityRequired: part.quantityRequired,
+                    costAtTime: part.costAtTime
+                )
+            }
+
+            try await SupabaseManager.shared.client
+                .from("work_order_parts")
+                .upsert(legacyPayloads)
+                .execute()
+        }
     }
 
     func fetchAllInventory() async {
@@ -145,6 +162,20 @@ final class WorkOrderViewModel: ObservableObject {
         } catch {
             print("ERROR fetching inventory: \(error)")
         }
+    }
+}
+
+private struct WorkOrderPartLegacyPayload: Encodable {
+    let workOrderId: UUID
+    let inventoryId: UUID
+    let quantityRequired: Int
+    let costAtTime: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case workOrderId = "work_order_id"
+        case inventoryId = "inventory_id"
+        case quantityRequired = "quantity_required"
+        case costAtTime = "cost_at_time"
     }
 }
 
