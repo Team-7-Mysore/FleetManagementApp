@@ -1,6 +1,5 @@
 import UIKit
 import MessageKit
-import InputBarAccessoryView
 import Combine
 
 class ChatViewController: MessagesViewController {
@@ -42,6 +41,14 @@ class ChatViewController: MessagesViewController {
         fatalError("init(coder:) has not been implemented")
     }
 
+    override var inputAccessoryView: UIView? {
+        UIView()
+    }
+
+    override var canBecomeFirstResponder: Bool {
+        true
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         
@@ -56,9 +63,13 @@ class ChatViewController: MessagesViewController {
         messagesCollectionView.contentInsetAdjustmentBehavior = .always
         messagesCollectionView.contentInset = .zero
         messagesCollectionView.scrollIndicatorInsets = .zero
+        messagesCollectionView.contentInset.bottom = 0
+        messagesCollectionView.scrollIndicatorInsets.bottom = 0
         additionalSafeAreaInsets.bottom = 0
-        
-        setupInputBar()
+        messagesCollectionView.frame = view.bounds
+        messageInputBar.isHidden = true
+        messageInputBar.removeFromSuperview()
+        print("Subviews:", view.subviews)
         
         // ✅ Keyboard handling
         maintainPositionOnKeyboardFrameChanged = true
@@ -110,14 +121,13 @@ class ChatViewController: MessagesViewController {
             }
             .store(in: &cancellables)
 
-        /*
         viewModel.$participantLastRead
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.messagesCollectionView.reloadData()
+                // Filter messages for current room and update them to refresh ticks
+                self?.updateMessages(self?.viewModel.messages ?? [])
             }
             .store(in: &cancellables)
-        */
     }
 
     private func updateMessages(_ newMessages: [ChatMessage]) {
@@ -261,22 +271,5 @@ extension ChatViewController: MessagesDisplayDelegate {
 extension ChatViewController: MessagesLayoutDelegate, MessageCellDelegate {
     func cellTopLabelHeight(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> CGFloat {
         return isFirstMessageInDay(at: indexPath) ? 36 : 0
-    }
-}
-
-// MARK: - InputBarAccessoryViewDelegate
-extension ChatViewController: InputBarAccessoryViewDelegate {
-    func inputBar(_ inputBar: InputBarAccessoryView, didPressSendButtonWith text: String) {
-        Task {
-            await viewModel.sendMessage(
-                chatRoomId: chatRoomId,
-                senderId: UUID(uuidString: currentUser.senderId) ?? UUID(),
-                content: text
-            )
-            await MainActor.run {
-                inputBar.inputTextView.text = ""
-                inputBar.invalidatePlugins()
-            }
-        }
     }
 }

@@ -291,27 +291,35 @@ final class InventoryViewModel: ObservableObject {
 
         print("🔎 fetchPartUsage inventory_id:", inventoryId.uuidString)
 
-        let rows: [PartUsageRow]
-        do {
-            rows = try await supabase
-                .from("work_order_parts")
-                .select("work_order_id, inventory_id, quantity_required, cost_at_time, created_at, used_at, work_orders(work_order_id, vehicle_id, created_at, updated_at, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type))")
-                .eq("inventory_id", value: inventoryId.uuidString)
-                .execute()
-                .value
-        } catch {
-            print("⚠️ fetchPartUsage used_at query failed, retrying without used_at:", error)
-            rows = try await supabase
-                .from("work_order_parts")
-                .select("work_order_id, inventory_id, quantity_required, cost_at_time, created_at, work_orders(work_order_id, vehicle_id, created_at, updated_at, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type))")
-                .eq("inventory_id", value: inventoryId.uuidString)
-                .execute()
-                .value
-        }
+        let rows: [PartUsageRow] = try await supabase
+            .from("work_order_parts")
+            .select("""
+                work_order_id,
+                inventory_id,
+                quantity_required,
+                cost_at_time,
+                used_at,
+                work_orders:work_orders!inner(
+                    work_order_id,
+                    vehicle_id,
+                    created_at,
+                    updated_at,
+                    vehicles(
+                        vehicle_id,
+                        vin,
+                        number_plate,
+                        vehicle_name,
+                        vehicle_type
+                    )
+                )
+            """)
+            .eq("inventory_id", value: inventoryId.uuidString)
+            .execute()
+            .value
 
         print("🔎 work_order_parts rows fetched:", rows.count)
         for row in rows {
-            print("🔎 usage row workOrderId=\(row.workOrderId.uuidString) inventoryId=\(row.inventoryId.uuidString) quantity=\(row.quantityRequired) usedAt=\(row.usedAt?.description ?? "nil") createdAt=\(row.createdAt?.description ?? "nil")")
+            print("🔎 usage row workOrderId=\(row.workOrderId.uuidString) inventoryId=\(row.inventoryId.uuidString) quantity=\(row.quantityRequired) usedAt=\(row.usedAt?.description ?? "nil") usageDate=\(row.usageDate?.description ?? "nil")")
         }
 
         let usage = rows.compactMap { row -> PartUsage? in
@@ -741,7 +749,6 @@ private struct PartUsageRow: Decodable {
     let inventoryId: UUID
     let quantityRequired: Int
     let costAtTime: Double?
-    let createdAt: Date?
     let usedAt: Date?
     let workOrder: PartUsageWorkOrder?
 
@@ -750,13 +757,12 @@ private struct PartUsageRow: Decodable {
         case inventoryId = "inventory_id"
         case quantityRequired = "quantity_required"
         case costAtTime = "cost_at_time"
-        case createdAt = "created_at"
         case usedAt = "used_at"
         case workOrder = "work_orders"
     }
 
     var usageDate: Date? {
-        usedAt ?? createdAt
+        usedAt ?? workOrder?.createdAt
     }
 }
 

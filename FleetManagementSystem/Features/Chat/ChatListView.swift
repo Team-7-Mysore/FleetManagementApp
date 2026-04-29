@@ -225,8 +225,8 @@ struct DetailWrapper: View {
             currentUserId: currentUserId,
             globalAccent: accentColor
         )
-        .navigationTitle(otherUserInfo?.name ?? "Chat")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar) // HIDE TAB BAR IN DETAIL
+//        .navigationTitle(otherUserInfo?.name ?? "Chat")
+//        .navigationBarTitleDisplayMode(.inline)
+//        .toolbar(.hidden, for: .tabBar) // HIDE TAB BAR IN DETAIL
     }
 }
