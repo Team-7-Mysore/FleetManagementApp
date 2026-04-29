@@ -1,4 +1,6 @@
 import SwiftUI
+import PhotosUI
+import UniformTypeIdentifiers
 
 struct AddPartView: View {
     @Environment(\.dismiss) var dismiss
@@ -13,13 +15,29 @@ struct AddPartView: View {
     @State private var sku: String = ""
     @State private var location: String = ""
     
-    init(viewModel: InventoryViewModel, prefilledName: String? = nil, prefilledQuantity: Int? = nil) {
+    // Image Selection State
+    @State private var selectedItem: PhotosPickerItem?
+    @State private var selectedUIImage: UIImage?
+    @State private var isUploadingImage = false
+    
+    // Picker Visibility State
+    @State private var isShowingOptions = false
+    @State private var isShowingPhotosPicker = false
+    @State private var isShowingFileImporter = false
+    
+    init(viewModel: InventoryViewModel, prefilledName: String? = nil, prefilledQuantity: Int? = nil, prefilledCost: Double? = nil) {
         self.viewModel = viewModel
         self._partName = State(initialValue: prefilledName ?? "")
         if let pq = prefilledQuantity, pq > 0 {
             self._quantityText = State(initialValue: "\(pq)")
         } else {
             self._quantityText = State(initialValue: "1")
+        }
+        
+        if let cost = prefilledCost {
+            self._costPerUnitText = State(initialValue: String(format: "%.2f", cost))
+        } else {
+            self._costPerUnitText = State(initialValue: "")
         }
     }
     
@@ -35,24 +53,85 @@ struct AddPartView: View {
     var body: some View {
         Form {
                 Section {
-                    VStack(spacing: 12) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 20)
-                                .fill(Color(.systemGray6))
-                                .frame(width: 100, height: 100)
+                    HStack {
+                        Spacer()
+                        VStack(spacing: 12) {
+                            Button {
+                                isShowingOptions = true
+                            } label: {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 24)
+                                        .fill(Color(.systemGray5))
+                                        .frame(width: 140, height: 140)
+                                    
+                                    if let image = selectedUIImage {
+                                        Image(uiImage: image)
+                                            .resizable()
+                                            .scaledToFill()
+                                            .frame(width: 140, height: 140)
+                                            .clipShape(RoundedRectangle(cornerRadius: 24))
+                                    } else {
+                                        Image(systemName: "camera.fill")
+                                            .font(.system(size: 40))
+                                            .foregroundColor(.white)
+                                    }
+                                    
+                                    if isUploadingImage {
+                                        ZStack {
+                                            RoundedRectangle(cornerRadius: 24)
+                                                .fill(Color.black.opacity(0.3))
+                                            ProgressView()
+                                                .tint(.white)
+                                        }
+                                        .frame(width: 140, height: 140)
+                                    }
+                                }
+                                .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: 4)
+                            }
+                            .buttonStyle(.plain)
                             
-                            Image(systemName: "camera.fill")
-                                .font(.system(size: 32))
-                                .foregroundColor(.gray.opacity(0.6))
+                            Text(selectedUIImage == nil ? "Set Part Photo" : "Change Photo")
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.blue)
                         }
-                        
-                        Text("Upload Part Image")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(.secondary)
+                        Spacer()
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
+                    .padding(.vertical, 10)
                     .listRowBackground(Color.clear)
+                }
+                .confirmationDialog("Upload Photo", isPresented: $isShowingOptions) {
+                    Button("Choose from Gallery") { isShowingPhotosPicker = true }
+                    Button("Choose from Files") { isShowingFileImporter = true }
+                    Button("Cancel", role: .cancel) { }
+                }
+                .photosPicker(isPresented: $isShowingPhotosPicker, selection: $selectedItem, matching: .images)
+                .fileImporter(isPresented: $isShowingFileImporter, allowedContentTypes: [.image]) { result in
+                    switch result {
+                    case .success(let url):
+                        if url.startAccessingSecurityScopedResource() {
+                            defer { url.stopAccessingSecurityScopedResource() }
+                            if let data = try? Data(contentsOf: url),
+                               let image = UIImage(data: data) {
+                                withAnimation {
+                                    selectedUIImage = image
+                                }
+                            }
+                        }
+                    case .failure(let error):
+                        print("❌ File Import Error: \(error.localizedDescription)")
+                    }
+                }
+                .onChange(of: selectedItem) { newItem in
+                    Task {
+                        if let data = try? await newItem?.loadTransferable(type: Data.self),
+                           let image = UIImage(data: data) {
+                            await MainActor.run {
+                                withAnimation {
+                                    selectedUIImage = image
+                                }
+                            }
+                        }
+                    }
                 }
                 
                 Section("Basic Information") {
@@ -188,7 +267,17 @@ struct AddPartView: View {
         let catDesc = categoryDescription.trimmingCharacters(in: .whitespaces)
         let finalCatDesc = catDesc.isEmpty ? "" : catDesc
         
+        var uploadedImageUrl: String? = nil
+        
         do {
+            // Handle image upload if selected
+            if let image = selectedUIImage, let data = image.jpegData(compressionQuality: 0.8) {
+                isUploadingImage = true
+                let fileName = "\(UUID().uuidString).jpg"
+                uploadedImageUrl = try await viewModel.uploadImage(data: data, fileName: fileName)
+                isUploadingImage = false
+            }
+            
             try await viewModel.addInventoryItem(
                 partName: partName.trimmingCharacters(in: .whitespaces),
                 vehicleCategory: vehicleCategory,
@@ -198,12 +287,13 @@ struct AddPartView: View {
                 costPerUnit: cost,
                 sku: finalSKU,
                 location: location.trimmingCharacters(in: .whitespaces),
-                imageUrl: nil
+                imageUrl: uploadedImageUrl
             )
             isSaving = false
             dismiss()
         } catch {
             isSaving = false
+            isUploadingImage = false
             errorMessage = error.localizedDescription
         }
     }

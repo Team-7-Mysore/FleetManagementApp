@@ -12,13 +12,13 @@ struct MessageKitMessage: MessageKit.MessageType {
     let sentDate: Date
     let kind: MessageKind
 
-    init(chatMessage: ChatMessage, senderName: String) {
+    init(chatMessage: ChatMessage, senderName: String, customKind: MessageKind? = nil) {
         self.sender = Sender(
             senderId: chatMessage.senderId.uuidString,
             displayName: senderName
         )
         self.messageId = chatMessage.id.uuidString
         self.sentDate = chatMessage.createdAt ?? Date()
-        self.kind = .text(chatMessage.content ?? "")
+        self.kind = customKind ?? .text(chatMessage.content ?? "")
     }
 }

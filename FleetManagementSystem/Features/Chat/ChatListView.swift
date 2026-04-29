@@ -2,11 +2,20 @@ import SwiftUI
 
 struct ChatListView: View {
     let currentUserId: UUID
+    let accentColor: Color
     @StateObject private var viewModel = ChatViewModel()
     @State private var isShowingNewChat = false
     @State private var pendingChatRoom: ChatRoom? = nil
     @State private var queuedChatRoom: ChatRoom? = nil
-    private let accent = AppTheme.primaryGreen
+    
+    private var currentUserRole: AppUserRole {
+        let roleValue = viewModel.users.first(where: { $0.id == currentUserId })?.role
+        return roleValue.flatMap(AppUserRole.init(rawValue:)) ?? .driver
+    }
+    
+    private var accent: Color {
+        AppTheme.accentColor(for: currentUserRole)
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -23,10 +32,10 @@ struct ChatListView: View {
                         Section {
                             ForEach(filteredChats) { chat in
                                 NavigationLink {
-                                    DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel)
+                                    DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel, accentColor: accentColor)
                                 } label: {
                                     let otherUserName = getOtherUserName(for: chat)
-                                    ChatInboxRow(chat: chat, accent: accent, otherUserName: otherUserName)
+                                    ChatInboxRow(chat: chat, accent: accentColor, otherUserName: otherUserName)
                                 }
                             }
                         }
@@ -40,9 +49,9 @@ struct ChatListView: View {
                 .padding(.horizontal, 20)
         }
         .navigationTitle("Chat")
-        .tint(accent)
+        .tint(accentColor)
         .navigationDestination(item: $pendingChatRoom) { chat in
-            DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel)
+            DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel, accentColor: accentColor)
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -54,7 +63,7 @@ struct ChatListView: View {
                     } label: {
                         Image(systemName: "square.and.pencil")
                             .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(accent)
+                            .foregroundColor(accentColor)
                     }
                 }
             }
@@ -66,16 +75,20 @@ struct ChatListView: View {
                 queuedChatRoom = nil
             }
         }) {
-            NewChatView(viewModel: viewModel, currentUserId: currentUserId) { room in
+            NewChatView(viewModel: viewModel, currentUserId: currentUserId, currentUserRole: currentUserRole) { room in
                 print("🚀 Room received from NewChatView: \(room.id)")
                 queuedChatRoom = room
                 isShowingNewChat = false
             }
         }
-        .task {
-            await viewModel.fetchUsers(currentUserId: currentUserId)
-            await viewModel.fetchChatRooms(userId: currentUserId)
-            await viewModel.startChatRoomsRealtime(userId: currentUserId)
+        .onAppear {
+            Task {
+                if viewModel.users.isEmpty {
+                    await viewModel.fetchUsers(currentUserId: currentUserId)
+                }
+                await viewModel.fetchChatRooms(userId: currentUserId)
+                await viewModel.startChatRoomsRealtime(userId: currentUserId)
+            }
         }
         .refreshable {
             await viewModel.fetchUsers(currentUserId: currentUserId)
@@ -118,7 +131,7 @@ struct ChatListView: View {
             Button("Drivers") { viewModel.selectedRoleFilter = "Driver" }
         } label: {
             Image(systemName: "line.3.horizontal.decrease.circle")
-                .foregroundColor(accent)
+                .foregroundColor(accentColor)
         }
     }
 
@@ -203,13 +216,17 @@ struct DetailWrapper: View {
     let chat: ChatRoom
     let currentUserId: UUID
     let viewModel: ChatViewModel
+    let accentColor: Color
 
     var body: some View {
         ChatDetailView(
             viewModel: viewModel,
             chatRoom: chat,
             currentUserId: currentUserId,
-            globalAccent: AppTheme.primaryGreen
+            globalAccent: accentColor
         )
+//        .navigationTitle(otherUserInfo?.name ?? "Chat")
+//        .navigationBarTitleDisplayMode(.inline)
+//        .toolbar(.hidden, for: .tabBar) // HIDE TAB BAR IN DETAIL
     }
 }

@@ -467,24 +467,9 @@ struct WorkOrderDetailView: View {
                         if workOrder.status == .completed {
                             showingCompletionReport = true
                         } else {
-                            showingCompletionAlert = true
+                            Text(workOrder.status == .completed ? "View Report" : "Complete Work Order")
+                                .font(.headline)
                         }
-                    } label: {
-                        HStack {
-                            if isSaving {
-                                ProgressView()
-                                    .progressViewStyle(.circular)
-                                    .tint(.white)
-                            } else {
-                                Text(workOrder.status == .completed ? "View Report" : "Complete Work Order")
-                                    .font(.headline)
-                            }
-                        }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color(red: 163/255, green: 53/255, blue: 42/255))
-                        .cornerRadius(12)
                     }
                     
                     .disabled(isSaving || (workOrder.status != .completed && !areAllTasksCompleted))
@@ -497,6 +482,8 @@ struct WorkOrderDetailView: View {
                             .foregroundColor(.red)
                     }
                 }
+                .disabled(isSaving)
+                .padding(.top, 10)
             }
         }
     }
@@ -603,7 +590,9 @@ struct WorkOrderDetailView: View {
                     workOrderId: workOrder.workOrderId,
                     inventoryId: uiPart.inventoryId,
                     quantityRequired: uiPart.quantity,
-                    costAtTime: uiPart.unitCost
+                    costAtTime: uiPart.unitCost,
+                    createdAt: Date(),
+                    usedAt: Date()
                 )
             }
             try await viewModel.upsertParts(workOrderParts)

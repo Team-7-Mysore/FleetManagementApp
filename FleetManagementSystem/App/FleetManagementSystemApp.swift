@@ -33,13 +33,13 @@ struct FleetManagementSystemApp: App {
                         FleetManagerTabView(profile: profile) {
                             await appSession.signOut()
                         }
+                        .tint(AppTheme.accentColor(for: .fleetManager))
                     }
                 } else {
                     LoginView(viewModel: AuthViewModel(appSession: appSession))
                 }
             }
-            .tint(Color(hex: "#A3352A"))
-            .hideKeyboardOnTap()
+            .tint(AppTheme.accentColor(for: appSession.profile?.role))
             .onAppear {
                 NotificationManager.shared.requestPermission()
                 Task {

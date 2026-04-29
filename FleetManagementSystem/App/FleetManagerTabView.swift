@@ -31,7 +31,7 @@ struct FleetManagerTabView: View {
                 }
 
             NavigationStack {
-                ChatListView(currentUserId: profile?.userId ?? UUID())
+                ChatListView(currentUserId: profile?.userId ?? UUID(), accentColor: .TechBlue)
             }
                 .tabItem {
                     Image(systemName: "message.fill")
@@ -39,8 +39,8 @@ struct FleetManagerTabView: View {
                 }
 
         }
-        .accentColor(.TechBlue)
-        .tint(.TechBlue)
+        .accentColor(AppTheme.accentColor(for: .fleetManager))
+        .tint(AppTheme.accentColor(for: .fleetManager))
     }
 }
 
