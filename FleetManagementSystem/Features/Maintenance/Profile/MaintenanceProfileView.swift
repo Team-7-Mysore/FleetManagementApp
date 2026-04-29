@@ -51,6 +51,16 @@ struct MaintenanceProfileView: View {
                     profileRow(icon: "person.text.rectangle", title: "Username", value: profile?.username ?? "Not Set")
                 }
                 
+                // MARK: - Preferences
+                Section("Preferences") {
+                    HStack {
+                        Label("Language", systemImage: "globe")
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        LanguagePickerView()
+                    }
+                }
+
                 // MARK: - App & Security Info
                 Section("App Information") {
                     HStack {

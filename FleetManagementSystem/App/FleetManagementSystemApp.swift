@@ -6,6 +6,9 @@ import Supabase
 @main
 struct FleetManagementSystemApp: App {
 
+    @AppStorage("hasSelectedLanguage") private var hasSelectedLanguage: Bool = false
+    @AppStorage("selectedLanguage") private var selectedLanguage: String = "en"
+
     @StateObject private var appSession = AppSession()
     @State private var showSetPassword = false
     @State private var isLoading = true
@@ -13,7 +16,9 @@ struct FleetManagementSystemApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if isLoading {
+                if !hasSelectedLanguage {
+                    LanguageSelectionOnboardingView()
+                } else if isLoading {
                     ProgressView("Loading...")
                 } else if showSetPassword {
                     SetPasswordView {
@@ -40,6 +45,7 @@ struct FleetManagementSystemApp: App {
             }
             .tint(Color(hex: "#A3352A"))
             .hideKeyboardOnTap()
+            .environment(\.locale, .init(identifier: selectedLanguage))
             .onAppear {
                 NotificationManager.shared.requestPermission()
                 Task {
