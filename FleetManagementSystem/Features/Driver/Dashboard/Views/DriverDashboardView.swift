@@ -44,7 +44,7 @@ struct DriverDashboardView: View {
         .background(AppTheme.pageBackground)
         .overlay(alignment: .bottomTrailing) {
             NavigationLink {
-                ChatListView(currentUserId: user.id)
+                ChatListView(currentUserId: user.id, accentColor: AppTheme.primaryGreen)
             } label: {
                 Image(systemName: "message.fill")
                     .font(.system(size: 22, weight: .semibold))

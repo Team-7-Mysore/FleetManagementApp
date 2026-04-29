@@ -2,11 +2,11 @@ import SwiftUI
 
 struct ChatListView: View {
     let currentUserId: UUID
+    let accentColor: Color
     @StateObject private var viewModel = ChatViewModel()
     @State private var isShowingNewChat = false
     @State private var pendingChatRoom: ChatRoom? = nil
     @State private var queuedChatRoom: ChatRoom? = nil
-    private let accent = AppTheme.primaryGreen
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -23,10 +23,10 @@ struct ChatListView: View {
                         Section {
                             ForEach(filteredChats) { chat in
                                 NavigationLink {
-                                    DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel)
+                                    DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel, accentColor: accentColor)
                                 } label: {
                                     let otherUserName = getOtherUserName(for: chat)
-                                    ChatInboxRow(chat: chat, accent: accent, otherUserName: otherUserName)
+                                    ChatInboxRow(chat: chat, accent: accentColor, otherUserName: otherUserName)
                                 }
                             }
                         }
@@ -40,9 +40,9 @@ struct ChatListView: View {
                 .padding(.horizontal, 20)
         }
         .navigationTitle("Chat")
-        .tint(accent)
+        .tint(accentColor)
         .navigationDestination(item: $pendingChatRoom) { chat in
-            DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel)
+            DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel, accentColor: accentColor)
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -54,7 +54,7 @@ struct ChatListView: View {
                     } label: {
                         Image(systemName: "square.and.pencil")
                             .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(accent)
+                            .foregroundColor(accentColor)
                     }
                 }
             }
@@ -122,7 +122,7 @@ struct ChatListView: View {
             Button("Drivers") { viewModel.selectedRoleFilter = "Driver" }
         } label: {
             Image(systemName: "line.3.horizontal.decrease.circle")
-                .foregroundColor(accent)
+                .foregroundColor(accentColor)
         }
     }
 
@@ -207,13 +207,14 @@ struct DetailWrapper: View {
     let chat: ChatRoom
     let currentUserId: UUID
     let viewModel: ChatViewModel
+    let accentColor: Color
 
     var body: some View {
         ChatDetailView(
             viewModel: viewModel,
             chatRoom: chat,
             currentUserId: currentUserId,
-            globalAccent: AppTheme.primaryGreen
+            globalAccent: accentColor
         )
     }
 }
