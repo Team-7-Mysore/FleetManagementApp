@@ -56,6 +56,7 @@ private struct VehicleUpdatePayload: Encodable {
     let registration_date: String?
     let rc_expiry_date: String?
     let puc_expiry_date: String?
+    let is_sdvs_enabled: Bool
 }
 
 @MainActor
@@ -69,9 +70,11 @@ class VehicleDetailViewModel: ObservableObject {
     @Published var maintenanceReports: [WorkOrderReportRecord] = []
     @Published var autofilledFields: Set<String> = []
     @Published var isGeneratingUsageReport = false
- 
+    @Published var isSdvsEnabled = false
+  
     init(initialVehicle: Vehicle? = nil) {
         self.vehicle = initialVehicle
+        self.isSdvsEnabled = initialVehicle?.isSdvsEnabled ?? false
     }
 
 
@@ -199,7 +202,8 @@ class VehicleDetailViewModel: ObservableObject {
                 registration_no: vehicle.rcNumber,
                 registration_date: vehicle.registrationDate,
                 rc_expiry_date: vehicle.rcExpiryDate,
-                puc_expiry_date: vehicle.pucExpiryDate
+                puc_expiry_date: vehicle.pucExpiryDate,
+                is_sdvs_enabled: isSdvsEnabled
             )
 
             try await SupabaseManager.shared.client

@@ -77,6 +77,16 @@ struct VehicleDetailView: View {
                     InfoRow(title: "Model", value: currentVehicle.model ?? "—", isEditing: false, text: nil)
                     InfoRow(title: "Year", value: currentVehicle.modelYear ?? "—", isEditing: false, text: nil)
                     InfoRow(title: "Fuel", value: currentVehicle.fuelType ?? "—", isEditing: false, text: nil)
+                    if isEditing {
+                        Toggle("SDV Enabled", isOn: $vm.isSdvsEnabled)
+                    } else {
+                        HStack {
+                            Text("SDV Enabled")
+                            Spacer()
+                            Text(currentVehicle.isSdvsEnabled ? "Yes" : "No")
+                                .foregroundColor(currentVehicle.isSdvsEnabled ? .orange : .primary)
+                        }
+                    }
                 }
                 
                 
@@ -277,12 +287,19 @@ struct VehicleDetailView: View {
             Spacer()
             
             HStack(spacing: 8) {
-                if !isEditing && doc != nil {
+                if doc != nil {
                     Text(isExpired ? "Expired" : "Valid")
                         .font(.system(size: 10, weight: .bold))
                         .padding(.horizontal, 10).padding(.vertical, 4)
                         .background(isExpired ? Color.red.opacity(0.1) : Color.green.opacity(0.1))
                         .foregroundColor(isExpired ? .red : .green)
+                        .clipShape(Capsule())
+                } else {
+                    Text("No Document")
+                        .font(.system(size: 10, weight: .bold))
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Color.gray.opacity(0.1))
+                        .foregroundColor(.gray)
                         .clipShape(Capsule())
                 }
                 

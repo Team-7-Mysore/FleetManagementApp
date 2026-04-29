@@ -20,6 +20,7 @@ struct VehicleSavePayload: Encodable {
     var rcExpiry: String
     var imageRCNumber: String?
     var documents: [VehicleDocumentPayload]
+    var isSdvsEnabled: Bool
 
     enum CodingKeys: String, CodingKey {
         case imageUrl = "image_url"
@@ -34,6 +35,7 @@ struct VehicleSavePayload: Encodable {
         case rcExpiry
         case imageRCNumber = "rc_number"
         case documents
+        case isSdvsEnabled = "is_sdvs_enabled"
     }
 }
 
@@ -62,40 +64,42 @@ private struct EdgeFunctionErrorResponse: Decodable {
     let error: String
 }
 
-private struct DirectVehicleInsertPayload: Encodable {
-    var imageUrl: String
-    var vehicleName: String
-    var numberPlate: String
-    var vin: String
-    var brand: String
-    var manufacturer: String
-    var model: String
-    var modelYear: Int
-    var vehicleType: String
-    var fuelType: String
-    var registrationDate: String
-    var pucExpiryDate: String
-    var rcExpiryDate: String
-    var hasRC: Bool
-    var hasInsurance: Bool
-    var hasPUC: Bool
+    private struct DirectVehicleInsertPayload: Encodable {
+        var imageUrl: String
+        var vehicleName: String
+        var numberPlate: String
+        var vin: String
+        var brand: String
+        var manufacturer: String
+        var model: String
+        var modelYear: Int
+        var vehicleType: String
+        var fuelType: String
+        var registrationDate: String
+        var pucExpiryDate: String
+        var rcExpiryDate: String
+        var hasRC: Bool
+        var hasInsurance: Bool
+        var hasPUC: Bool
+        var isSdvsEnabled: Bool
 
-    enum CodingKeys: String, CodingKey {
-        case imageUrl = "image_url"
-        case vehicleName = "vehicle_name"
-        case numberPlate = "number_plate"
-        case vin, brand, manufacturer, model
-        case modelYear = "model_year"
-        case vehicleType = "vehicle_type"
-        case fuelType = "fuel_type"
-        case registrationDate = "registration_date"
-        case pucExpiryDate = "puc_expiry_date"
-        case rcExpiryDate = "rc_expiry_date"
-        case hasRC = "has_rc"
-        case hasInsurance = "has_insurance"
-        case hasPUC = "has_puc"
+        enum CodingKeys: String, CodingKey {
+            case imageUrl = "image_url"
+            case vehicleName = "vehicle_name"
+            case numberPlate = "number_plate"
+            case vin, brand, manufacturer, model
+            case modelYear = "model_year"
+            case vehicleType = "vehicle_type"
+            case fuelType = "fuel_type"
+            case registrationDate = "registration_date"
+            case pucExpiryDate = "puc_expiry_date"
+            case rcExpiryDate = "rc_expiry_date"
+            case hasRC = "has_rc"
+            case hasInsurance = "has_insurance"
+            case hasPUC = "has_puc"
+            case isSdvsEnabled = "is_sdvs_enabled"
+        }
     }
-}
 
 private struct DirectVehicleInsertResult: Decodable {
     let vehicleId: UUID
@@ -136,6 +140,7 @@ class AddVehicleViewModel: ObservableObject {
     @Published var modelYear = ""
     @Published var vehicleType = "Truck"
     @Published var fuelType = "Diesel"
+    @Published var isSdvsEnabled = false
     @Published var isAutoFilled = false
     // MARK: - Dates
     @Published var registrationDate = Date()
@@ -343,7 +348,8 @@ class AddVehicleViewModel: ObservableObject {
                 pucExpiry: sqlDateFormatter.string(from: pucExpiry),
                 rcExpiry: sqlDateFormatter.string(from: rcExpiry),
                 imageRCNumber: nil,
-                documents: documentPayloads
+                documents: documentPayloads,
+                isSdvsEnabled: isSdvsEnabled
             )
 
             let directPayload = DirectVehicleInsertPayload(
@@ -362,7 +368,8 @@ class AddVehicleViewModel: ObservableObject {
                 rcExpiryDate: payload.rcExpiry,
                 hasRC: documentPayloads.contains(where: { $0.type == "RC" }),
                 hasInsurance: documentPayloads.contains(where: { $0.type == "INSURANCE" }),
-                hasPUC: documentPayloads.contains(where: { $0.type == "PUC" })
+                hasPUC: documentPayloads.contains(where: { $0.type == "PUC" }),
+                isSdvsEnabled: isSdvsEnabled
             )
 
             guard let functionURL = URL(string: "\(SupabaseConfig.url.absoluteString)/functions/v1/bright-action") else {

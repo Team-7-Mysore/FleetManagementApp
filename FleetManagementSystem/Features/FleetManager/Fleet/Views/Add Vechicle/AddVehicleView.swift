@@ -97,6 +97,8 @@ struct AddVehicleView: View {
                     Picker("Fuel Type", selection: $vm.fuelType) {
                         ForEach(["Petrol", "Diesel", "Electric", "CNG", "Hybrid"], id: \.self) { Text($0).tag($0) }
                     }
+                    
+                    Toggle("SDV Enabled", isOn: $vm.isSdvsEnabled)
                 }
 
 
