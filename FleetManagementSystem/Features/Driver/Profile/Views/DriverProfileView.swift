@@ -135,14 +135,14 @@ struct DriverProfileView: View {
                     }
                 }
             }
-            .confirmationDialog("Log Out", isPresented: $showLogoutConfirmation) {
+            .alert("Log Out", isPresented: $showLogoutConfirmation) {
+                Button("Cancel", role: .cancel) {}
                 Button("Log Out", role: .destructive) {
                     dismiss()
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                         router.signOut()
                     }
                 }
-                Button("Cancel", role: .cancel) {}
             } message: {
                 Text("Are you sure you want to log out?")
             }
