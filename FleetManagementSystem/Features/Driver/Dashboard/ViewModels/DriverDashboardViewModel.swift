@@ -63,15 +63,18 @@ final class DriverDashboardViewModel: ObservableObject {
                     .from("drivers")
                     .select("driver_id")
                     .eq("user_id", value: user.id)
-                    .single()
                     .execute()
 
-                let driverData = try JSONDecoder().decode(
-                    [String: String].self,
+                let driverDataList = try JSONDecoder().decode(
+                    [[String: String]].self,
                     from: driverResponse.data
                 )
-                guard let driverId = driverData["driver_id"] else {
-                    print("❌ driver_id not found")
+                
+                guard let driverId = driverDataList.first?["driver_id"] else {
+                    print("⚠️ No driver record found for user_id: \(user.id). User might not be fully onboarded as a driver.")
+                    self.assignedVehicle = nil
+                    self.upcomingTrips = []
+                    self.activeTrip = nil
                     return
                 }
 
