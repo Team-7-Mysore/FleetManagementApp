@@ -50,10 +50,10 @@ enum AccountStatus: String, Codable, CaseIterable {
 
 struct StaffUser: Identifiable, Decodable {
     let user_id:    String
-    let name:       String
+    var name:       String
     let email:      String
     let role:       UserRole
-    let phone_no:   String?
+    var phone_no:   String?
     let username:   String?
     let status:     AccountStatus?
     let created_by: String?

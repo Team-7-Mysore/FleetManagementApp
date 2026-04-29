@@ -58,8 +58,12 @@ final class StaffListViewModel: ObservableObject {
 
             // Status filter
             let matchesStatus: Bool = {
-                guard let status = selectedStatus else { return true }
-                return user.status == status
+                if let status = selectedStatus {
+                    return user.status == status
+                } else {
+                    // Default: only show active/pending staff (exclude inactive)
+                    return user.status != .inactive
+                }
             }()
 
             // Role filter
@@ -97,6 +101,7 @@ final class StaffListViewModel: ObservableObject {
                     .from("users")
                     .select()
                     .in("role", values: ["driver", "maintenance"])
+                    .in("status", values: ["active", "pending", "inactive"])
                     .order("created_at", ascending: false)
                     .execute()
                     .value
@@ -107,6 +112,38 @@ final class StaffListViewModel: ObservableObject {
             } catch {
                 self.errorMessage = error.localizedDescription
                 self.isLoading    = false
+            }
+        }
+    }
+
+    func deactivateStaff(_ userId: String) {
+        Task {
+            do {
+                try await SupabaseManager.shared.client
+                    .from("users")
+                    .update(["status": "inactive"])
+                    .eq("user_id", value: userId)
+                    .execute()
+                
+                fetchStaff(forceRefresh: true)
+            } catch {
+                self.errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func deleteStaff(_ userId: String) {
+        Task {
+            do {
+                try await SupabaseManager.shared.client
+                    .from("users")
+                    .delete()
+                    .eq("user_id", value: userId)
+                    .execute()
+                
+                fetchStaff(forceRefresh: true)
+            } catch {
+                self.errorMessage = error.localizedDescription
             }
         }
     }

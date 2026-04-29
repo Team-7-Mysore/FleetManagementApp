@@ -10,12 +10,14 @@ import Foundation
 import Combine
 import UIKit
 import Vision
+import Storage
+import Supabase
 
 // MARK: - Role
 
 enum StaffRole: String, CaseIterable, Identifiable {
-    case driver      = "driver"
-    case maintenance = "maintenance"
+    case driver      = "Driver"
+    case maintenance = "Maintenance"
 
     var id: String { rawValue }
 
@@ -35,7 +37,12 @@ enum StaffRole: String, CaseIterable, Identifiable {
         }
     }
 
-    var dbValue: String { rawValue }
+    var dbValue: String {
+        switch self {
+        case .driver:      return "driver"
+        case .maintenance: return "maintenance"
+        }
+    }
 }
 
 // MARK: - Model
@@ -69,9 +76,37 @@ class StaffRegistrationModel: ObservableObject {
     // MARK: UI State
 
     @Published var currentStep:       Int     = 1
+    @Published var licenceImageURL:    String? = nil
     @Published var isCreatingAccount: Bool    = false
     @Published var accountCreated:    Bool    = false
     @Published var errorMessage:      String? = nil
+
+    // MARK: - Storage Upload
+
+    func uploadLicenceImage() async throws -> String? {
+        guard let image = licenceImage,
+              let data = image.jpegData(compressionQuality: 0.5) else {
+            return nil
+        }
+
+        let fileName = "licence_\(UUID().uuidString).jpg"
+        let bucket = "staff-licences"
+
+        try await SupabaseManager.shared.client.storage
+            .from(bucket)
+            .upload(
+                path: fileName,
+                file: data,
+                options: FileOptions(contentType: "image/jpeg")
+            )
+
+        // Generate public URL (assuming bucket is public or we use public URL pattern)
+        // If bucket is private, we should use a signed URL or just the path.
+        // For simplicity in this flow, we'll use the public URL format.
+        let publicURL = "\(SupabaseConfig.url)/storage/v1/object/public/\(bucket)/\(fileName)"
+        self.licenceImageURL = publicURL
+        return publicURL
+    }
 
     // MARK: Computed
 
