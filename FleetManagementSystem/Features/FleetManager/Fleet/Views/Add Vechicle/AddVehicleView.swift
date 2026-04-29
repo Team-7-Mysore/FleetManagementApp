@@ -11,12 +11,12 @@ struct AddVehicleView: View {
     @State private var showDocumentPicker = false
     @State private var sourceType: UIImagePickerController.SourceType = .photoLibrary
     @State private var selectedType: String = ""
-    @State private var showImageSourceOptions = false
+
+    @State private var showSourcePopover = false
 
     var body: some View {
         NavigationStack {
             Form {
-                // MARK: - Vehicle Photo
                 Section {
                     HStack {
                         Spacer()
@@ -27,167 +27,202 @@ struct AddVehicleView: View {
                 }
                 .listRowBackground(Color.clear)
 
-                // MARK: - Vehicle Identification
-                Section(header: Text("Vehicle Identification")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(.secondary)
-                    .textCase(nil)
-                ) {
+                Section(header: sectionHeader("Required Documents")) {
+                    documentRow(title: "RC Document", isUploaded: vm.rcURL != nil, fileName: vm.rcFileName, type: "RC")
+                    documentRow(title: "Insurance", isUploaded: vm.insuranceURL != nil, fileName: vm.insuranceFileName, type: "INSURANCE")
+                    documentRow(title: "PUC", isUploaded: vm.pucURL != nil, fileName: vm.pucFileName, type: "PUC")
+                }
 
-                    // Vehicle Name
+                Section(header: sectionHeader("Vehicle Identification")) {
+
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Vehicle Name")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(Color(.systemGray2))
+                        fieldLabel("Vehicle Name")
                         TextField("Enter Name", text: $vm.vehicleName)
                     }
                     .padding(.vertical, 4)
 
-                    // Plate Field
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("License Plate")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(Color(.systemGray2))
-
+                        fieldLabel("License Plate")
                         TextField("AA-00-AA-0000", text: $vm.licensePlate)
                             .textInputAutocapitalization(.characters)
                             .disableAutocorrection(true)
                             .onChange(of: vm.licensePlate) { _, newValue in
                                 let formatted = vm.formatPlate(newValue)
-                                if formatted != newValue {
-                                    vm.licensePlate = formatted
-                                }
+                                if formatted != newValue { vm.licensePlate = formatted }
                             }
-
-                        if !vm.licensePlate.isEmpty {
-                            HStack(spacing: 4) {
-                                Image(systemName: vm.isPlateValidCheck ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                                    .font(.system(size: 12))
-                                Text(vm.isPlateValidCheck ? "Valid Format" : "Invalid (AA-00-AA-0000)")
-                                    .font(.system(size: 12, weight: .medium))
-                            }
-                            .foregroundColor(vm.isPlateValidCheck ? .green : .red)
-                        }
                     }
                     .padding(.vertical, 4)
 
-                    // VIN Field
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("VIN")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(Color(.systemGray2))
-
+                        fieldLabel("VIN")
                         TextField("Enter 17-digit VIN", text: Binding(
                             get: { vm.vin },
                             set: { vm.vin = String($0.uppercased().prefix(17)) }
                         ))
                         .textInputAutocapitalization(.characters)
                         .disableAutocorrection(true)
-
-                        if !vm.vin.isEmpty {
-                            HStack(spacing: 4) {
-                                Image(systemName: vm.vin.count == 17 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                                    .font(.system(size: 12))
-                                Text(vm.vin.count == 17 ? "Valid VIN" : "Incomplete VIN")
-                                    .font(.system(size: 12, weight: .medium))
-                            }
-                            .foregroundColor(vm.vin.count == 17 ? .green : .red)
-                        }
                     }
                     .padding(.vertical, 4)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("RC Number")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(Color(.systemGray2))
-                        TextField("Enter RC Number", text: $vm.rcNumber)
-                    }.padding(.vertical, 4)
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Brand")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(Color(.systemGray2))
+                        fieldLabel("Brand")
                         TextField("Enter Brand", text: $vm.brand)
                     }.padding(.vertical, 4)
                 }
 
-                // MARK: - Specs
-                Section(header: Text("Manufacturer & Specs")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(.secondary)
-                    .textCase(nil)
-                ) {
+                Section(header: sectionHeader("Manufacturer & Specs")) {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Manufacturer").font(.system(size: 16, weight: .bold)).foregroundColor(Color(.systemGray2))
+                        fieldLabel("Manufacturer")
                         TextField("Enter Manufacturer", text: $vm.manufacturer)
                     }.padding(.vertical, 4)
 
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Model").font(.system(size: 16, weight: .bold)).foregroundColor(Color(.systemGray2))
+                        fieldLabel("Model")
                         TextField("Enter Model", text: $vm.model)
                     }.padding(.vertical, 4)
+
                     VStack(alignment: .leading, spacing: 6) {
-                            Text("Model Year").font(.system(size: 16, weight: .bold)).foregroundColor(Color(.systemGray2))
-                            TextField("e.g. 2024", text: $vm.modelYear)
-                                .keyboardType(.numberPad) // Ensures numeric input only
-                                .onChange(of: vm.modelYear) { _, newValue in
-                                    // Simple cleanup to keep it to 4 digits
-                                    let filtered = newValue.filter { "0123456789".contains($0) }
-                                    if filtered != newValue {
-                                        vm.modelYear = String(filtered.prefix(4))
-                                    }
-                                }
-                        }.padding(.vertical, 4)
+                        fieldLabel("Model Year")
+                        TextField("e.g. 2024", text: $vm.modelYear)
+                            .keyboardType(.numberPad)
+                            .onChange(of: vm.modelYear) { _, newValue in
+                                let filtered = newValue.filter { "0123456789".contains($0) }
+                                vm.modelYear = String(filtered.prefix(4))
+                            }
+                    }.padding(.vertical, 4)
+
                     Picker("Vehicle Type", selection: $vm.vehicleType) {
                         ForEach(["Truck", "Car", "Bike", "Bus"], id: \.self) { Text($0).tag($0) }
                     }
                     Picker("Fuel Type", selection: $vm.fuelType) {
-                        ForEach(["Petrol", "Diesel", "Electric", "CNG", "Hybrid"], id: \.self) {
-                            Text($0).tag($0)
-                        }
+                        ForEach(["Petrol", "Diesel", "Electric", "CNG", "Hybrid"], id: \.self) { Text($0).tag($0) }
                     }
                 }
 
-                // MARK: - Docs & Dates
-                Section(header: Text("Required Documents").font(.headline)) {
-                    documentRow(title: "RC Document", isUploaded: vm.rcURL != nil, fileName: vm.rcFileName, type: "RC")
-                    documentRow(title: "Insurance", isUploaded: vm.insuranceURL != nil, fileName: vm.insuranceFileName, type: "INSURANCE")
-                    documentRow(title: "PUC", isUploaded: vm.pucURL != nil, fileName: vm.pucFileName, type: "PUC")
-                }
 
-                Section(header: Text("Validity").font(.headline)) {
-                    DatePicker("Registration Date", selection: $vm.registrationDate, displayedComponents: .date)
-                    DatePicker("PUC Expiry", selection: $vm.pucExpiry, displayedComponents: .date)
-                    DatePicker("RC Expiry", selection: $vm.rcExpiry, displayedComponents: .date)
+                if vm.rcURL != nil || vm.pucURL != nil {
+                    Section(header: sectionHeader("Validity")) {
+                        if vm.rcURL != nil {
+                            DatePicker("Registration Date", selection: $vm.registrationDate, displayedComponents: .date)
+                            DatePicker("RC Expiry", selection: $vm.rcExpiry, displayedComponents: .date)
+                        }
+                        
+                        if vm.pucURL != nil {
+                            DatePicker("PUC Expiry", selection: $vm.pucExpiry, displayedComponents: .date)
+                        }
+                    }
+
                 }
             }
             .hideKeyboardOnTap()
             .navigationTitle("Add Vehicle")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItem(placement: .navigationBarLeading) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .navigationBarTrailing) {
+
                     Button("Save") { Task { await vm.saveVehicle() } }
-                    .disabled(!vm.isFormValid)
+                        .disabled(!vm.isFormValid)
                 }
             }
             .sheet(isPresented: $showDocumentPicker) { DocumentPicker { url in handleDocumentSelected(url) } }
             .sheet(isPresented: $showImagePicker) { ImagePicker(sourceType: sourceType) { image in handleImageSelected(image) } }
-            .confirmationDialog("Change Photo", isPresented: $showImageSourceOptions) {
-                Button("Camera") { handleCameraAccess { sourceType = .camera; showImagePicker = true } }
-                Button("Gallery") { handlePhotoLibraryAccess { sourceType = .photoLibrary; showImagePicker = true } }
+            .onChange(of: vm.isSuccess) { _, newValue in
+                if newValue {
+                    dismiss()
+                    Task {
+                        await fleetVM.fetchVehicles()
+                    }
+                }
             }
-            .onChange(of: vm.isSuccess) { if $0 { Task { await fleetVM.fetchVehicles() }; dismiss() } }
         }
     }
 
-    // Handlers
+    private func documentRow(title: String, isUploaded: Bool, fileName: String?, type: String) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 16, weight: .bold))
+
+                if let fileName = fileName, isUploaded {
+                    Text(fileName).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                }
+            }
+            Spacer()
+            
+            Button(isUploaded ? "Replace" : "Upload") {
+                selectedType = type
+                showSourcePopover = true
+            }
+            .buttonStyle(.borderless)
+            .popover(isPresented: Binding(
+                get: { showSourcePopover && selectedType == type },
+                set: { if !$0 { showSourcePopover = false } }
+            )) {
+                sourcePickerContents
+                    .presentationCompactAdaptation(.popover)
+                    .frame(width: 200)
+                    .padding(.vertical, 8)
+            }
+        }
+    }
+
+
+    private var sourcePickerContents: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button(action: {
+                handleCameraAccess { sourceType = .camera; showImagePicker = true; showSourcePopover = false }
+            }) {
+                HStack {
+                    Image(systemName: "camera")
+                    Text("Camera")
+                    Spacer()
+                }
+                .padding()
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.primary)
+
+            Divider()
+
+            Button(action: {
+                handlePhotoLibraryAccess { sourceType = .photoLibrary; showImagePicker = true; showSourcePopover = false }
+            }) {
+                HStack {
+                    Image(systemName: "photo.on.rectangle")
+                    Text("Gallery")
+                    Spacer()
+                }
+                .padding()
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.primary)
+
+            Divider()
+
+            Button(action: {
+                showDocumentPicker = true; showSourcePopover = false
+            }) {
+                HStack {
+                    Image(systemName: "folder")
+                    Text("Files")
+                    Spacer()
+                }
+                .padding()
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.primary)
+        }
+    }
+
+
     private var imageUploadSection: some View {
-        Button { showImageSourceOptions = true } label: {
+        Button {
+            selectedType = "VEHICLE"
+            showSourcePopover = true
+        } label: {
             VStack(spacing: 12) {
                 if let image = vm.localVehicleImage {
                     Image(uiImage: image).resizable().scaledToFill().frame(width: 140, height: 140).clipShape(RoundedRectangle(cornerRadius: 24))
@@ -199,22 +234,62 @@ struct AddVehicleView: View {
                 }
                 Text("Set Vehicle Photo").font(.system(size: 16, weight: .medium)).foregroundColor(.blue)
             }
-        }.buttonStyle(.plain)
-    }
-
-    private func documentRow(title: String, isUploaded: Bool, fileName: String?, type: String) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 16, weight: .medium))
-                if let fileName = fileName, isUploaded { Text(fileName).font(.caption).foregroundColor(.secondary).lineLimit(1) }
-            }
-            Spacer()
-            Button(isUploaded ? "Replace" : "Upload") { selectedType = type; showDocumentPicker = true }.buttonStyle(.borderless)
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: Binding(
+            get: { showSourcePopover && selectedType == "VEHICLE" },
+            set: { if !$0 { showSourcePopover = false } }
+        )) {
+            sourcePickerContents
+                .presentationCompactAdaptation(.popover)
+                .frame(width: 200)
+                .padding(.vertical, 8)
         }
     }
 
-    private func handleImageSelected(_ image: UIImage) { self.vm.localVehicleImage = image; self.selectedType = "VEHICLE"; Task { await vm.uploadImage(image: image, type: "VEHICLE") } }
-    private func handleDocumentSelected(_ url: URL) { let uploadType = self.selectedType; Task { await vm.uploadFile(fileURL: url, type: uploadType) } }
-    private func handleCameraAccess(onGranted: @escaping () -> Void) { let status = AVCaptureDevice.authorizationStatus(for: .video); if status == .authorized { onGranted() } else { AVCaptureDevice.requestAccess(for: .video) { if $0 { DispatchQueue.main.async { onGranted() } } } } }
-    private func handlePhotoLibraryAccess(onGranted: @escaping () -> Void) { let status = PHPhotoLibrary.authorizationStatus(for: .readWrite); if status == .authorized || status == .limited { onGranted() } else { PHPhotoLibrary.requestAuthorization(for: .readWrite) { if $0 == .authorized { DispatchQueue.main.async { onGranted() } } } } }
+    private func sectionHeader(_ text: String) -> some View {
+        Text(text).font(.system(size: 18, weight: .bold)).foregroundColor(.secondary).textCase(nil)
+    }
+
+    private func fieldLabel(_ text: String) -> some View {
+        Text(text).font(.system(size: 14, weight: .bold)).foregroundColor(Color(.systemGray2))
+    }
+
+    private func handleImageSelected(_ image: UIImage) {
+        if selectedType == "VEHICLE" { vm.localVehicleImage = image }
+        Task {
+            await vm.uploadImage(image: image, type: selectedType)
+            if selectedType == "RC" { await vm.processVehicleOCR(from: image) }
+        }
+    }
+
+    private func handleDocumentSelected(_ url: URL) {
+        let uploadType = self.selectedType
+        Task {
+            await vm.uploadFile(fileURL: url, type: uploadType)
+            if uploadType == "RC" {
+                await vm.processVehicleOCR(from: url)
+            }
+        }
+    }
+
+    private func handleCameraAccess(onGranted: @escaping () -> Void) {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        if status == .authorized { onGranted() }
+        else {
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                if granted { DispatchQueue.main.async { onGranted() } }
+            }
+        }
+    }
+
+    private func handlePhotoLibraryAccess(onGranted: @escaping () -> Void) {
+        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        if status == .authorized || status == .limited { onGranted() }
+        else {
+            PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in
+                if status == .authorized || status == .limited { DispatchQueue.main.async { onGranted() } }
+            }
+        }
+    }
 }

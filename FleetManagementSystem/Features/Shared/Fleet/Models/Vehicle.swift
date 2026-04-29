@@ -19,8 +19,13 @@ struct Vehicle: Identifiable, Codable {
     var rcNumber: String = ""
     var registrationDate: String = ""
     var rcExpiryDate: String = ""
-    var pucExpiryDate: String = ""
-
+var pucExpiryDate: String = ""
+    
+    // Document status flags (from vehicles table)
+    var hasRC: Bool = false
+    var hasInsurance: Bool = false
+    var hasPUC: Bool = false
+    
     enum CodingKeys: String, CodingKey {
         case id = "vehicle_id"
         case name = "vehicle_name"
@@ -36,6 +41,9 @@ struct Vehicle: Identifiable, Codable {
         case registrationDate = "registration_date"
         case rcExpiryDate = "rc_expiry_date"
         case pucExpiryDate = "puc_expiry_date"
+        case hasRC = "has_rc"
+        case hasInsurance = "has_insurance"
+        case hasPUC = "has_puc"
     }
 
     init(from decoder: Decoder) throws {
@@ -55,7 +63,12 @@ struct Vehicle: Identifiable, Codable {
         registrationDate = try container.decodeIfPresent(String.self, forKey: .registrationDate) ?? ""
         rcExpiryDate = try container.decodeIfPresent(String.self, forKey: .rcExpiryDate) ?? ""
         pucExpiryDate = try container.decodeIfPresent(String.self, forKey: .pucExpiryDate) ?? ""
-
+        
+        // Decode document status flags
+        hasRC = try container.decodeIfPresent(Bool.self, forKey: .hasRC) ?? false
+        hasInsurance = try container.decodeIfPresent(Bool.self, forKey: .hasInsurance) ?? false
+        hasPUC = try container.decodeIfPresent(Bool.self, forKey: .hasPUC) ?? false
+        
         if let stringYear = try? container.decodeIfPresent(String.self, forKey: .modelYear) {
             modelYear = stringYear
         } else if let intYear = try? container.decodeIfPresent(Int.self, forKey: .modelYear) {
