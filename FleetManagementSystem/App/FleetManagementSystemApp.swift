@@ -6,6 +6,7 @@ import Supabase
 @main
 struct FleetManagementSystemApp: App {
 
+
     @AppStorage("hasSelectedLanguage") private var hasSelectedLanguage: Bool = false
     @AppStorage("selectedLanguage") private var selectedLanguage: String = "en"
 
