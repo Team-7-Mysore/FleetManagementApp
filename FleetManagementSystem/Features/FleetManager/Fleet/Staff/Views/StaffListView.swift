@@ -12,6 +12,8 @@ struct StaffListView: View {
     @StateObject private var vm = StaffListViewModel()
     @State private var navigateToAddPerson = false
     @State private var showFilter          = false
+    @State private var staffToDeactivate:  StaffUser? = nil
+    @State private var staffToDelete:      StaffUser? = nil
 
     var body: some View {
         NavigationStack {
@@ -28,36 +30,50 @@ struct StaffListView: View {
                         .listRowSeparator(.hidden)
                     }
 
-                    // ——— Staff cards section ———
-                    Section {
-                        if vm.isLoading {
+                    // ——— Staff cards sections ———
+                    if vm.isLoading {
+                        Section {
                             staffLoadingState
-                        } else if vm.filteredStaff.isEmpty {
+                        }
+                    } else if vm.filteredStaff.isEmpty {
+                        Section {
                             EmptyStaffView(
                                 hasFilters: vm.activeFilterCount > 0 || !vm.searchText.isEmpty,
                                 onClear: { vm.clearFilters() }
                             )
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
-                        } else {
-                            ForEach(vm.filteredStaff) { staff in
-                                ZStack {
-                                    NavigationLink(destination: StaffProfileView(staff: staff)) {
-                                        EmptyView()
-                                    }
-                                    .opacity(0)
-
-                                    StaffCard(staff: staff)
+                        }
+                    } else {
+                        // Active/Pending Section
+                        let activeItems = vm.filteredStaff.filter { $0.status == .active || $0.status == .pending }
+                        if !activeItems.isEmpty {
+                            Section {
+                                ForEach(activeItems) { staff in
+                                    staffRow(staff)
                                 }
-                                .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
                             }
                         }
-                    } footer: {
-                        if !vm.isLoading && !vm.filteredStaff.isEmpty {
-                            Text("Pull down to refresh the latest staff status.")
+                        
+                        // Inactive Section
+                        let inactiveItems = vm.filteredStaff.filter { $0.status == .inactive }
+                        if !inactiveItems.isEmpty {
+                            Section {
+                                ForEach(inactiveItems) { staff in
+                                    staffRow(staff)
+                                }
+                            }
                         }
+                    }
+
+                    if !vm.isLoading && !vm.filteredStaff.isEmpty {
+                        Section {
+                            Text("Pull down to refresh the latest staff status.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                        }
+                        .listRowBackground(Color.clear)
                     }
                 }
                 .listStyle(.insetGrouped)
@@ -128,6 +144,36 @@ struct StaffListView: View {
                 } message: {
                     Text(vm.errorMessage ?? "")
                 }
+                .alert("Deactivate Staff", isPresented: Binding(
+                    get: { staffToDeactivate != nil },
+                    set: { if !$0 { staffToDeactivate = nil } }
+                )) {
+                    Button("Cancel", role: .cancel) { }
+                    Button("Deactivate", role: .destructive) {
+                        if let user = staffToDeactivate {
+                            vm.deactivateStaff(user.user_id)
+                        }
+                    }
+                } message: {
+                    if let user = staffToDeactivate {
+                        Text("Are you sure you want to deactivate \(user.name)?")
+                    }
+                }
+                .alert("Delete Staff", isPresented: Binding(
+                    get: { staffToDelete != nil },
+                    set: { if !$0 { staffToDelete = nil } }
+                )) {
+                    Button("Cancel", role: .cancel) { }
+                    Button("Delete", role: .destructive) {
+                        if let user = staffToDelete {
+                            vm.deleteStaff(user.user_id)
+                        }
+                    }
+                } message: {
+                    if let user = staffToDelete {
+                        Text("Are you sure you want to permanently delete \(user.name)? This action cannot be undone.")
+                    }
+                }
                 .navigationDestination(isPresented: $navigateToAddPerson) {
                     AddPersonFlowView()
                 }
@@ -144,6 +190,39 @@ struct StaffListView: View {
                 }
                 .padding(.trailing, 20)
                 .padding(.bottom, 24)
+            }
+        }
+    }
+
+
+    @ViewBuilder
+    private func staffRow(_ staff: StaffUser) -> some View {
+        ZStack {
+            NavigationLink(destination: StaffProfileView(staff: staff)) {
+                EmptyView()
+            }
+            .opacity(0)
+
+            StaffCard(staff: staff)
+        }
+        .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if staff.status != .inactive {
+                Button(role: .destructive) {
+                    staffToDeactivate = staff
+                } label: {
+                    Label("Deactivate", systemImage: "minus.circle")
+                }
+                .tint(.red)
+            } else {
+                Button(role: .destructive) {
+                    staffToDelete = staff
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                .tint(.red)
             }
         }
     }
