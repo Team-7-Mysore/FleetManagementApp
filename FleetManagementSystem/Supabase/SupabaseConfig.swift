@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct SupabaseConfig {
-    static let url = URL(string: "https://qisdvwaldlghndrudbvr.supabase.co")!
-    static let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpc2R2d2FsZGxnaG5kcnVkYnZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNDUxMjQsImV4cCI6MjA5MTgyMTEyNH0.NF5JC8_Attne5ULy-iuheZv7Oy2zl4LHrz9zFAhfJLk"
+    static let url = URL(string: "https://wllkarmeeowxuddenxhh.supabase.co")!
+    static let anonKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndsbGthcm1lZW93eHVkZGVueGhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyMjczODgsImV4cCI6MjA5MTgwMzM4OH0.aT6g5pfMuz9sP_Hm1FBGOyqpWOpcYwI9uzkP_6aASQA"
 }
  
