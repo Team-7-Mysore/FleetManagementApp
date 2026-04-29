@@ -6,7 +6,7 @@ struct TripsListView: View {
     let profile: UserProfile?
     let onSignOut: () async -> Void
     @State private var navigateToNotifications = false
-    
+
     @StateObject private var vm = TripListViewModel()
     @State private var showingProfile = false
     @State private var selectedWorkOrder: WorkOrder? = nil
@@ -87,13 +87,10 @@ struct TripsListView: View {
                 .task {
                     if vm.trips.isEmpty {
                         await vm.fetchTrips()
-                        await fetchUnreadCount()
                     }
-                    await vm.setupRealtimeListeners()
                 }
                 .refreshable {
                     await vm.fetchTrips()
-                    await fetchUnreadCount()
                 }
                 .sheet(isPresented: $showingProfile) {
                     FleetManagerProfileView(profile: profile, onSignOut: onSignOut)

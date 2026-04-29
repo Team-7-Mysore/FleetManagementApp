@@ -126,7 +126,6 @@ struct AllTripsView: View {
         .task {
             guard vm.trips.isEmpty else { return }
             await vm.fetchTrips()
-            await vm.setupRealtimeListeners()
         }
         .refreshable {
             await vm.fetchTrips()
