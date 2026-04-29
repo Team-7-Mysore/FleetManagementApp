@@ -36,6 +36,12 @@ struct VehicleDocument: Identifiable, Hashable {
     }
 }
 
+struct VehicleUsageReportResult {
+    let localURL: URL
+    let publicURL: String
+    let fileName: String
+}
+
 private struct VehicleUpdatePayload: Encodable {
     let vehicle_name: String
     let number_plate: String
@@ -62,6 +68,7 @@ class VehicleDetailViewModel: ObservableObject {
     @Published var documentsErrorMessage: String?
     @Published var maintenanceReports: [WorkOrderReportRecord] = []
     @Published var autofilledFields: Set<String> = []
+    @Published var isGeneratingUsageReport = false
  
     init(initialVehicle: Vehicle? = nil) {
         self.vehicle = initialVehicle
@@ -221,6 +228,115 @@ class VehicleDetailViewModel: ObservableObject {
             errorMessage = error.localizedDescription
             return false
         }
+    }
+
+    func generateVehicleUsageReport() async throws -> VehicleUsageReportResult {
+        guard let vehicle else {
+            throw NSError(
+                domain: "VehicleUsageReport",
+                code: 0,
+                userInfo: [NSLocalizedDescriptionKey: "Vehicle details are not loaded yet."]
+            )
+        }
+
+        isGeneratingUsageReport = true
+        defer { isGeneratingUsageReport = false }
+
+        let trips = try await fetchUsageTrips(for: vehicle.id)
+        let localURL = try VehicleUsageReportGenerator.generate(vehicle: vehicle, trips: trips)
+        let pdfData = try Data(contentsOf: localURL)
+        let uploaded = try await uploadVehicleUsageReportToSupabase(
+            pdfData: pdfData,
+            vehicleId: vehicle.id,
+            plate: vehicle.registrationNumber
+        )
+        try await saveVehicleUsageReportRecord(
+            vehicleId: vehicle.id,
+            reportUrl: uploaded.publicURL,
+            reportName: uploaded.fileName,
+            fileSize: pdfData.count
+        )
+        return VehicleUsageReportResult(
+            localURL: localURL,
+            publicURL: uploaded.publicURL,
+            fileName: uploaded.fileName
+        )
+    }
+
+    private func fetchUsageTrips(for vehicleId: UUID) async throws -> [VehicleUsageTrip] {
+        try await SupabaseManager.shared.client
+            .from("trips")
+            .select("""
+                trip_id,
+                trip_name,
+                origin,
+                destination,
+                status,
+                pickup_time,
+                start_time,
+                end_time,
+                distance_travelled,
+                client_contact
+            """)
+            .eq("vehicle_id", value: vehicleId.uuidString.lowercased())
+            .order("pickup_time", ascending: false)
+            .execute()
+            .value
+    }
+
+    private func uploadVehicleUsageReportToSupabase(
+        pdfData: Data,
+        vehicleId: UUID,
+        plate: String
+    ) async throws -> (publicURL: String, fileName: String) {
+        let sanitizedPlate = plate.replacingOccurrences(of: " ", with: "_")
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        let timestamp = formatter.string(from: Date())
+        let fileName = "Vehicle_Usage_Report_\(sanitizedPlate)_\(timestamp).pdf"
+        let path = "usage-reports/\(vehicleId.uuidString.lowercased())/\(fileName)"
+
+        try await SupabaseManager.shared.client.storage
+            .from("vehicle-documents")
+            .upload(
+                path,
+                data: pdfData,
+                options: FileOptions(contentType: "application/pdf")
+            )
+
+        let publicURL = try SupabaseManager.shared.client.storage
+            .from("vehicle-documents")
+            .getPublicURL(path: path)
+
+        return (publicURL.absoluteString, fileName)
+    }
+
+    private func saveVehicleUsageReportRecord(
+        vehicleId: UUID,
+        reportUrl: String,
+        reportName: String,
+        fileSize: Int
+    ) async throws {
+        struct UsageReportRecord: Encodable {
+            let vehicle_id: UUID
+            let document_type: String
+            let file_url: String
+            let file_name: String
+            let file_size: Int
+        }
+
+        let record = UsageReportRecord(
+            vehicle_id: vehicleId,
+            document_type: "USAGE_REPORT",
+            file_url: reportUrl,
+            file_name: reportName,
+            file_size: fileSize
+        )
+
+        try await SupabaseManager.shared.client
+            .from("vehicle_documents")
+            .upsert(record, onConflict: "vehicle_id,document_type")
+            .execute()
     }
 
     // MARK: - IMAGE UPLOAD

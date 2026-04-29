@@ -29,6 +29,8 @@ struct VehicleDetailView: View {
     @State private var showStaffSelection = false
     @State private var showImageSourceDialog = false
     @State private var showReportsSheet = false
+    @State private var usageReportURL: URL?
+    @State private var showUsageReportPreview = false
     
     init(vehicle: Vehicle) {
         self.vehicle = vehicle
@@ -103,12 +105,19 @@ struct VehicleDetailView: View {
                             .foregroundColor(.purple)
                     }
                     Button {
-                            // Action for Vehicle Usage Reports
-                            print("Navigate to Usage Reports")
-                        } label: {
+                        Task { await createVehicleUsageReport() }
+                    } label: {
+                        if vm.isGeneratingUsageReport {
+                            HStack {
+                                ProgressView()
+                                Text("Generating Usage Report...")
+                            }
+                        } else {
                             Label("Vehicle Usage Reports", systemImage: "fuelpump.fill")
                                 .foregroundColor(.blue)
                         }
+                    }
+                    .disabled(vm.isGeneratingUsageReport)
                 }
             }
         }
@@ -155,6 +164,11 @@ struct VehicleDetailView: View {
         .sheet(isPresented: $showReportsSheet) {
             VehicleReportsListView(reports: vm.maintenanceReports)
         }
+        .sheet(isPresented: $showUsageReportPreview) {
+            if let usageReportURL {
+                PDFPreviewSheet(fileURL: usageReportURL)
+            }
+        }
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(sourceType: sourceType) { image in
                 Task {
@@ -182,6 +196,14 @@ struct VehicleDetailView: View {
                     }
                 }
             }
+        }
+        .alert("Something Went Wrong", isPresented: Binding(
+            get: { vm.errorMessage != nil },
+            set: { if !$0 { vm.errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(vm.errorMessage ?? "Unknown error")
         }
     }
     
@@ -335,6 +357,20 @@ struct VehicleDetailView: View {
         let success = await vm.updateVehicle()
         if success { await vm.fetchVehicle(vehicleId: vehicle.id) }
         isSaving = false
+    }
+
+    private func createVehicleUsageReport() async {
+        do {
+            let result = try await vm.generateVehicleUsageReport()
+            await MainActor.run {
+                usageReportURL = result.localURL
+                showUsageReportPreview = true
+            }
+        } catch {
+            await MainActor.run {
+                vm.errorMessage = error.localizedDescription
+            }
+        }
     }
     
     private func binding(_ keyPath: WritableKeyPath<Vehicle, String>) -> Binding<String> {
