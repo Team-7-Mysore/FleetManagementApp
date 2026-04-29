@@ -21,7 +21,9 @@ struct DriverDashboardView: View {
                 routeSummaryCard
 
                 // MARK: - Quick Actions
-                quickActionsRow
+                if vm.activeTrip != nil || !vm.upcomingTrips.isEmpty {
+                    quickActionsRow
+                }
 
                 // MARK: - Vehicle Info
                 VStack(alignment: .leading, spacing: 12) {
