@@ -492,13 +492,8 @@ class AddVehicleViewModel: ObservableObject {
         let plateRange = normalizedForRegex.range(of: plateRegex, options: .regularExpression)
         let vinRange = normalizedForRegex.range(of: vinRegex, options: .regularExpression)
 
-        let labeledPlate = labeledValue(in: normalizedForRegex, for: [
-            "LICENSE PLATE",
-            "REGISTRATION PLATE",
-            "NUMBER PLATE",
-            "REGISTRATION NUMBER"
-        ])
-        let plate = plateFromLabeledValue(labeledPlate) ?? (plateRange != nil ? String(normalizedForRegex[plateRange!]) : nil)
+        let plate = extractPlate(from: rawCleaned)
+            ?? (plateRange != nil ? String(normalizedForRegex[plateRange!]) : nil)
         let vin = vinRange != nil ? String(normalizedForRegex[vinRange!]) : nil
         let dates = rawCleaned.matches(for: dateRegex)
 
@@ -655,11 +650,49 @@ class AddVehicleViewModel: ObservableObject {
             .uppercased()
             .replacingOccurrences(of: " ", with: "")
             .replacingOccurrences(of: ":", with: "")
+            .replacingOccurrences(of: "-", with: "")
+            .replacingOccurrences(of: ".", with: "")
+            .replacingOccurrences(of: "O", with: "0")
+            .replacingOccurrences(of: "I", with: "1")
         let regex = try? NSRegularExpression(pattern: "[A-Z]{2}[0-9]{2}[A-Z]{1,2}[0-9]{4}")
         let range = NSRange(location: 0, length: normalized.utf16.count)
         guard let match = regex?.firstMatch(in: normalized, range: range),
               let swiftRange = Range(match.range, in: normalized) else { return nil }
         return String(normalized[swiftRange])
+    }
+
+    private func extractPlate(from text: String) -> String? {
+        let lines = text
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        let plateLabels = [
+            "LICENSE PLATE",
+            "REGISTRATION PLATE",
+            "NUMBER PLATE",
+            "REGISTRATION NUMBER",
+            "REGISTRATION MARK",
+            "REGN NO",
+            "REGN. NO",
+            "REGD NO",
+            "REGD. NO"
+        ]
+
+        for (index, line) in lines.enumerated() {
+            let upperLine = line.uppercased()
+            guard plateLabels.contains(where: { upperLine.contains($0) }) else { continue }
+
+            if let plate = plateFromLabeledValue(line) {
+                return plate
+            }
+
+            if index + 1 < lines.count, let plate = plateFromLabeledValue(lines[index + 1]) {
+                return plate
+            }
+        }
+
+        return nil
     }
 
     private func inferVehicleType(from text: String) -> String? {

@@ -150,10 +150,6 @@ struct AddVehicleView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.system(size: 16, weight: .bold))
 
-                if type == "RC" && !isUploaded {
-                    Text("Scanning RC will autofill vehicle details").font(.system(size: 11)).foregroundColor(.blue)
-                }
-
                 if let fileName = fileName, isUploaded {
                     Text(fileName).font(.caption).foregroundColor(.secondary).lineLimit(1)
                 }
