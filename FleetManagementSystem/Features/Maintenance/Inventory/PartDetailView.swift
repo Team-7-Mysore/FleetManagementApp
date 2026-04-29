@@ -1,54 +1,58 @@
 import SwiftUI
 
 struct PartDetailView: View {
-    @Environment(\.dismiss) var dismiss
+    @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: InventoryViewModel
     let item: InventoryItem
-    
+
     @State private var isEditing = false
     @State private var isSaving = false
     @State private var errorMessage: String?
-    
-    // Editable fields
+    @State private var totalUsed = 0
+    @State private var usageEntries: [InventoryViewModel.PartUsageEntry] = []
+    @State private var isLoadingUsage = false
+    @State private var showUsageDetails = false
+
     @State private var editPartName: String = ""
     @State private var editVehicleCategory: String = "Car"
     @State private var editSupplier: String = ""
     @State private var editQuantity: Int = 0
     @State private var editCostPerUnitText: String = ""
     @State private var editLocation: String = ""
-    
+
     let categories = ["Car", "Truck", "Bike", "Bus"]
-    
+
     private var currentItem: InventoryItem {
         viewModel.items.first(where: { $0.id == item.id }) ?? item
     }
-    
+
     private var hasChanges: Bool {
         let originalCostStr = currentItem.costPerUnit != nil ? String(format: "%.2f", currentItem.costPerUnit!) : ""
         return editPartName != currentItem.partName ||
-               editVehicleCategory != (currentItem.vehicleCategory ?? "Car") ||
-               editSupplier != (currentItem.supplier ?? "") ||
-               editQuantity != currentItem.quantity ||
-               editCostPerUnitText != originalCostStr ||
-               editLocation != (currentItem.location ?? "")
+            editVehicleCategory != (currentItem.vehicleCategory ?? "Car") ||
+            editSupplier != (currentItem.supplier ?? "") ||
+            editQuantity != currentItem.quantity ||
+            editCostPerUnitText != originalCostStr ||
+            editLocation != (currentItem.location ?? "")
     }
-    
+
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                // Header Image
                 ZStack {
                     RoundedRectangle(cornerRadius: 16)
                         .fill(Color(.systemGray6))
                         .frame(width: 120, height: 120)
-                    
+
                     if let urlString = currentItem.imageUrl, let url = URL(string: urlString) {
                         AsyncImage(url: url) { phase in
                             switch phase {
                             case .empty:
                                 ProgressView()
                             case .success(let image):
-                                image.resizable().scaledToFill()
+                                image
+                                    .resizable()
+                                    .scaledToFill()
                             default:
                                 Image(systemName: "wrench.and.screwdriver.fill")
                                     .font(.system(size: 40))
@@ -64,8 +68,7 @@ struct PartDetailView: View {
                     }
                 }
                 .padding(.top, 24)
-                
-                // Name & SKU
+
                 if isEditing {
                     VStack(spacing: 12) {
                         TextField("Part Name", text: $editPartName)
@@ -74,7 +77,7 @@ struct PartDetailView: View {
                             .multilineTextAlignment(.center)
                             .textFieldStyle(RoundedBorderTextFieldStyle())
                             .padding(.horizontal)
-                        
+
                         Text("SKU: \(currentItem.sku ?? "N/A")")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
@@ -86,14 +89,13 @@ struct PartDetailView: View {
                             .fontWeight(.bold)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
-                        
+
                         Text("SKU: \(currentItem.sku ?? "N/A")")
                             .font(.subheadline)
                             .foregroundColor(.secondary)
                     }
                 }
-                
-                // Info Cards
+
                 HStack(spacing: 16) {
                     infoCard(title: "Stock Quantity", value: isEditing ? "" : "\(currentItem.quantity)", isEditing: isEditing) {
                         if isEditing {
@@ -108,7 +110,7 @@ struct PartDetailView: View {
                                 }
                         }
                     }
-                    
+
                     infoCard(title: "Storage Location", value: isEditing ? "" : (currentItem.location ?? "Not Set"), isEditing: isEditing) {
                         if isEditing {
                             TextField("Location", text: $editLocation)
@@ -118,8 +120,10 @@ struct PartDetailView: View {
                     }
                 }
                 .padding(.horizontal)
-                
-                // Details List
+
+                totalUsedCard
+                    .padding(.horizontal)
+
                 VStack(spacing: 0) {
                     detailRow(title: "Vehicle Category", isEditing: isEditing) {
                         if isEditing {
@@ -135,7 +139,7 @@ struct PartDetailView: View {
                         }
                     }
                     Divider().padding(.leading, 16)
-                    
+
                     detailRow(title: "Supplier", isEditing: isEditing) {
                         if isEditing {
                             TextField("Supplier Name", text: $editSupplier)
@@ -146,33 +150,30 @@ struct PartDetailView: View {
                         }
                     }
                     Divider().padding(.leading, 16)
-                    
+
                     detailRow(title: "Cost per Unit", isEditing: isEditing) {
                         if isEditing {
                             TextField("0.00", text: $editCostPerUnitText)
                                 .keyboardType(.decimalPad)
                                 .multilineTextAlignment(.trailing)
+                        } else if let cost = currentItem.costPerUnit {
+                            Text(cost.formattedAsRupee())
+                                .foregroundColor(.primary)
                         } else {
-                            if let cost = currentItem.costPerUnit {
-                                Text(cost.formattedAsRupee())
-                                    .foregroundColor(.primary)
-                            } else {
-                                Text("N/A")
-                                    .foregroundColor(.primary)
-                            }
+                            Text("N/A")
+                                .foregroundColor(.primary)
                         }
                     }
                     Divider().padding(.leading, 16)
-                    
+
                     detailRow(title: "Minimum Required", isEditing: false) {
                         Text("10")
                             .foregroundColor(.primary)
                     }
                     Divider().padding(.leading, 16)
-                    
+
                     detailRow(title: "Last Updated", isEditing: false) {
                         if let date = currentItem.updatedAt {
-                            // Format: Apr 17, 2026
                             Text(date, style: .date)
                                 .foregroundColor(.secondary)
                         } else {
@@ -184,7 +185,6 @@ struct PartDetailView: View {
                 .background(Color(.systemBackground))
                 .cornerRadius(12)
                 .padding(.horizontal)
-                
             }
             .padding(.bottom, 30)
         }
@@ -200,7 +200,7 @@ struct PartDetailView: View {
                     }
                 }
             }
-            
+
             ToolbarItem(placement: .navigationBarTrailing) {
                 if isSaving {
                     ProgressView()
@@ -225,6 +225,12 @@ struct PartDetailView: View {
                 }
             }
         }
+        .task(id: currentItem.inventoryId) {
+            await loadPartUsage()
+        }
+        .sheet(isPresented: $showUsageDetails) {
+            PartUsageDetailView(entries: usageEntries)
+        }
         .alert("Error", isPresented: Binding(
             get: { errorMessage != nil },
             set: { if !$0 { errorMessage = nil } }
@@ -236,15 +242,49 @@ struct PartDetailView: View {
             }
         }
     }
-    
-    // MARK: - Subviews
-    
+
+    private var totalUsedCard: some View {
+        Button {
+            showUsageDetails = true
+        } label: {
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Total Used")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+
+                    if isLoadingUsage {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                    } else {
+                        Text("\(totalUsed)")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.primary)
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding()
+            .background(Color(.systemBackground))
+            .cornerRadius(12)
+        }
+        .buttonStyle(.plain)
+        .disabled(isLoadingUsage)
+    }
+
     private func infoCard<Content: View>(title: String, value: String, isEditing: Bool, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.footnote)
                 .foregroundColor(.secondary)
-            
+
             if isEditing {
                 content()
             } else {
@@ -259,7 +299,7 @@ struct PartDetailView: View {
         .background(Color(.systemBackground))
         .cornerRadius(12)
     }
-    
+
     private func detailRow<Content: View>(title: String, isEditing: Bool, @ViewBuilder content: () -> Content) -> some View {
         HStack {
             Text(title)
@@ -270,22 +310,20 @@ struct PartDetailView: View {
         .padding(.vertical, 14)
         .padding(.horizontal, 16)
     }
-    
-    // MARK: - Functions
-    
+
     private func startEditing() {
-        let itar = currentItem
-        editPartName = itar.partName
-        editVehicleCategory = itar.vehicleCategory ?? "Car"
-        editSupplier = itar.supplier ?? ""
-        editQuantity = itar.quantity
-        editCostPerUnitText = itar.costPerUnit != nil ? String(format: "%.2f", itar.costPerUnit!) : ""
-        editLocation = itar.location ?? ""
+        let item = currentItem
+        editPartName = item.partName
+        editVehicleCategory = item.vehicleCategory ?? "Car"
+        editSupplier = item.supplier ?? ""
+        editQuantity = item.quantity
+        editCostPerUnitText = item.costPerUnit != nil ? String(format: "%.2f", item.costPerUnit!) : ""
+        editLocation = item.location ?? ""
         withAnimation {
             isEditing = true
         }
     }
-    
+
     private func saveChanges() async {
         isSaving = true
         errorMessage = nil
@@ -309,5 +347,97 @@ struct PartDetailView: View {
         }
         isSaving = false
     }
-    
+
+    private func loadPartUsage() async {
+        isLoadingUsage = true
+        do {
+            let summary = try await viewModel.fetchPartUsage(for: currentItem.inventoryId)
+            totalUsed = summary.totalUsed
+            usageEntries = summary.entries
+        } catch {
+            totalUsed = 0
+            usageEntries = []
+            errorMessage = error.localizedDescription
+        }
+        isLoadingUsage = false
     }
+}
+
+private struct PartUsageDetailView: View {
+    @Environment(\.dismiss) private var dismiss
+    let entries: [InventoryViewModel.PartUsageEntry]
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if entries.isEmpty {
+                    Section {
+                        VStack(spacing: 10) {
+                            Image(systemName: "tray")
+                                .font(.title2)
+                                .foregroundColor(.secondary)
+                            Text("No usage found")
+                                .font(.headline)
+                            Text("This part has not been used in any work orders yet.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 32)
+                    }
+                    .listRowBackground(Color.clear)
+                } else {
+                    Section {
+                        ForEach(entries) { entry in
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(alignment: .firstTextBaseline) {
+                                    Text(entry.vehicleName)
+                                        .font(.headline)
+                                        .foregroundColor(.primary)
+                                    Spacer()
+                                    Text("Qty \(entry.quantityUsed)")
+                                        .font(.subheadline)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(.primary)
+                                }
+
+                                if let vehicleNumber = entry.vehicleNumber, !vehicleNumber.isEmpty {
+                                    Text(vehicleNumber)
+                                        .font(.subheadline)
+                                        .foregroundColor(.secondary)
+                                }
+
+                                HStack {
+                                    Text(entry.workOrderReference)
+                                        .font(.caption)
+                                        .fontWeight(.semibold)
+                                        .foregroundColor(Color(hex: "#A3352A"))
+
+                                    Spacer()
+
+                                    if let usedAt = entry.usedAt {
+                                        Text(usedAt, style: .date)
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                            }
+                            .padding(.vertical, 6)
+                        }
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle("Part Usage")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}

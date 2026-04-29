@@ -7,6 +7,23 @@ import SwiftUI
 // Replace with shared instance if your project centralizes this.
 @MainActor
 final class InventoryViewModel: ObservableObject {
+    struct PartUsageEntry: Identifiable {
+        let workOrderId: UUID
+        let vehicleId: UUID?
+        let vehicleName: String
+        let vehicleNumber: String?
+        let quantityUsed: Int
+        let workOrderReference: String
+        let usedAt: Date?
+
+        var id: UUID { workOrderId }
+    }
+
+    struct PartUsageSummary {
+        let totalUsed: Int
+        let entries: [PartUsageEntry]
+    }
+
     struct AlertItem: Identifiable {
         let id = UUID()
         let message: String
@@ -17,6 +34,32 @@ final class InventoryViewModel: ObservableObject {
         
         enum CodingKeys: String, CodingKey {
             case inventoryId = "inventory_id"
+        }
+    }
+
+    private struct PartUsageWorkOrderPartRow: Decodable {
+        let workOrderId: UUID
+        let quantityRequired: Int
+
+        enum CodingKeys: String, CodingKey {
+            case workOrderId = "work_order_id"
+            case quantityRequired = "quantity_required"
+        }
+    }
+
+    private struct PartUsageWorkOrderRow: Decodable {
+        let workOrderId: UUID
+        let vehicleId: UUID?
+        let updatedAt: Date?
+        let createdAt: Date?
+        let vehicle: WorkOrderVehicle?
+
+        enum CodingKeys: String, CodingKey {
+            case workOrderId = "work_order_id"
+            case vehicleId = "vehicle_id"
+            case updatedAt = "updated_at"
+            case createdAt = "created_at"
+            case vehicle = "vehicles"
         }
     }
     
@@ -250,6 +293,62 @@ final class InventoryViewModel: ObservableObject {
         
         await fetchInventory()
         await syncLowStockNotifications()
+    }
+
+    func fetchPartUsage(for inventoryId: UUID) async throws -> PartUsageSummary {
+        let usageRows: [PartUsageWorkOrderPartRow] = try await SupabaseManager.shared.client
+            .from("work_order_parts")
+            .select("work_order_id, quantity_required")
+            .eq("inventory_id", value: inventoryId.uuidString)
+            .execute()
+            .value
+
+        let totalUsed = usageRows.reduce(0) { $0 + $1.quantityRequired }
+        guard !usageRows.isEmpty else {
+            return PartUsageSummary(totalUsed: 0, entries: [])
+        }
+
+        let workOrderIds = usageRows.map(\.workOrderId.uuidString)
+        let workOrderRows: [PartUsageWorkOrderRow] = try await SupabaseManager.shared.client
+            .from("work_orders")
+            .select("work_order_id, vehicle_id, created_at, updated_at, vehicles(vehicle_id, vin, number_plate, vehicle_name, vehicle_type)")
+            .in("work_order_id", values: workOrderIds)
+            .execute()
+            .value
+
+        let workOrdersById = Dictionary(uniqueKeysWithValues: workOrderRows.map { ($0.workOrderId, $0) })
+        let entries = usageRows
+            .compactMap { usageRow -> PartUsageEntry? in
+                guard let workOrder = workOrdersById[usageRow.workOrderId] else { return nil }
+
+                let vehicleName = workOrder.vehicle?.vehicleName
+                    ?? workOrder.vehicle?.numberPlate
+                    ?? "Unknown Vehicle"
+
+                return PartUsageEntry(
+                    workOrderId: usageRow.workOrderId,
+                    vehicleId: workOrder.vehicleId,
+                    vehicleName: vehicleName,
+                    vehicleNumber: workOrder.vehicle?.numberPlate,
+                    quantityUsed: usageRow.quantityRequired,
+                    workOrderReference: "WO-\(usageRow.workOrderId.uuidString.prefix(6).uppercased())",
+                    usedAt: workOrder.updatedAt ?? workOrder.createdAt
+                )
+            }
+            .sorted {
+                switch ($0.usedAt, $1.usedAt) {
+                case let (lhs?, rhs?):
+                    return lhs > rhs
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                case (nil, nil):
+                    return $0.workOrderReference > $1.workOrderReference
+                }
+            }
+
+        return PartUsageSummary(totalUsed: totalUsed, entries: entries)
     }
     
     

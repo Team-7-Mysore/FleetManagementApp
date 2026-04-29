@@ -14,9 +14,19 @@ class ChatViewController: MessagesViewController {
     private var cancellables = Set<AnyCancellable>()
     private let accentColor: UIColor
 
-    // Disable MessageKit's inputAccessoryView — SwiftUI handles the input bar
-    override var inputAccessoryView: UIView? { return nil }
-    override var canBecomeFirstResponder: Bool { return false }
+    private struct ReceiptStatus {
+        let text: String
+        let color: UIColor
+    }
+
+    private func receiptStatus(for indexPath: IndexPath) -> ReceiptStatus? {
+        let message = messages[indexPath.section]
+        // Only show for outgoing messages
+        guard message.sender.senderId == currentUser.senderId else { return nil }
+        // Last message only (like iMessage)
+        guard indexPath.section == messages.count - 1 else { return nil }
+        return ReceiptStatus(text: "Delivered", color: .systemGray)
+    }
 
     init(chatRoomId: UUID, currentUser: Sender, otherUser: Sender, viewModel: ChatViewModel, accentColor: UIColor) {
         self.chatRoomId = chatRoomId
@@ -96,12 +106,14 @@ class ChatViewController: MessagesViewController {
             }
             .store(in: &cancellables)
 
+        /*
         viewModel.$participantLastRead
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.messagesCollectionView.reloadData()
             }
             .store(in: &cancellables)
+        */
     }
 
     private func updateMessages(_ newMessages: [ChatMessage]) {
@@ -200,5 +212,22 @@ extension ChatViewController: MessagesLayoutDelegate, MessageCellDelegate {
     func cellBottomLabelAlignment(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> LabelAlignment? {
         guard receiptStatus(for: indexPath) != nil else { return nil }
         return LabelAlignment(textAlignment: .right, textInsets: UIEdgeInsets(top: 0, left: 0, bottom: 2, right: 10))
+    }
+}
+
+// MARK: - InputBarAccessoryViewDelegate
+extension ChatViewController: InputBarAccessoryViewDelegate {
+    func inputBar(_ inputBar: InputBarAccessoryView, didPressSendButtonWith text: String) {
+        Task {
+            await viewModel.sendMessage(
+                chatRoomId: chatRoomId,
+                senderId: UUID(uuidString: currentUser.senderId) ?? UUID(),
+                content: text
+            )
+            await MainActor.run {
+                inputBar.inputTextView.text = ""
+                inputBar.invalidatePlugins()
+            }
+        }
     }
 }

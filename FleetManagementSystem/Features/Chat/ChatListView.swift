@@ -31,7 +31,7 @@ struct ChatListView: View {
                         Section {
                             ForEach(filteredChats) { chat in
                                 NavigationLink {
-                                    DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel)
+                                    DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel, accent: accent)
                                 } label: {
                                     let otherUserName = getOtherUserName(for: chat)
                                     ChatInboxRow(chat: chat, accent: accent, otherUserName: otherUserName)
@@ -50,7 +50,7 @@ struct ChatListView: View {
         .navigationTitle("Chat")
         .tint(accent)
         .navigationDestination(item: $pendingChatRoom) { chat in
-            DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel)
+            DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel, accent: accent)
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -211,13 +211,24 @@ struct DetailWrapper: View {
     let chat: ChatRoom
     let currentUserId: UUID
     let viewModel: ChatViewModel
+    let accent: Color
+
+    private var otherUserInfo: (id: UUID, name: String)? {
+        guard let otherUserId = chat.participantIds.first(where: { $0 != currentUserId }) else {
+            return nil
+        }
+        guard let user = viewModel.users.first(where: { $0.id == otherUserId }) else {
+            return nil
+        }
+        return (id: otherUserId, name: user.name)
+    }
 
     var body: some View {
         ChatDetailView(
             viewModel: viewModel,
             chatRoom: chat,
             currentUserId: currentUserId,
-            globalAccent: AppTheme.primaryGreen
+            globalAccent: accent
         )
         .navigationTitle(otherUserInfo?.name ?? "Chat")
         .navigationBarTitleDisplayMode(.inline)
