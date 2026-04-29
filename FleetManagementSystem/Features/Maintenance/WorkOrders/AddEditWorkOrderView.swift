@@ -83,6 +83,17 @@ struct AddEditWorkOrderView: View {
     // MARK: - NEW: Manager Selection States
     @State private var showManagerSelection: Bool = false
     @State private var availableManagers: [ManagerFetch] = []
+    
+    @State private var estimatedHours: String = ""
+    @State private var labourRate: String = "0.0"
+    @State private var labourCost: String = ""
+    
+    // Add this helper function inside the View
+    private func recalculateLabour() {
+        let hours = Double(estimatedHours) ?? 0.0
+        let rate = Double(labourRate) ?? 0.0
+        labourCost = String(format: "%.2f", hours * rate)
+    }
 
     // Routing / Autofill Data
     var sourceIssueId: UUID?
@@ -121,6 +132,7 @@ struct AddEditWorkOrderView: View {
                     taskChecklistSection
                     partsRequiredSection
                     photoDocumentationSection
+                    workEntrySection
                     priorityAndNotesSection
                 }
                 .padding(.horizontal)
@@ -408,6 +420,32 @@ struct AddEditWorkOrderView: View {
             }
         }
     }
+    
+    private var workEntrySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionHeaderView(title: "ESTIMATED WORK ENTRY")
+            CardView {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("HOURS").font(.caption2).fontWeight(.medium).foregroundColor(.secondary)
+                        TextField("0.0", text: $estimatedHours)
+                            .font(.subheadline).keyboardType(.decimalPad).textFieldStyle(.roundedBorder)
+                            .onChange(of: estimatedHours) { _ in recalculateLabour() }
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("RATE/HR (₹)").font(.caption2).fontWeight(.medium).foregroundColor(.secondary)
+                        TextField("0.0", text: $labourRate)
+                            .font(.subheadline).keyboardType(.decimalPad).textFieldStyle(.roundedBorder)
+                            .onChange(of: labourRate) { _ in recalculateLabour() }
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("TOTAL (₹)").font(.caption2).fontWeight(.medium).foregroundColor(.secondary)
+                        TextField("0.00", text: $labourCost).font(.subheadline).keyboardType(.decimalPad).textFieldStyle(.roundedBorder)
+                    }
+                }
+            }
+        }
+    }
 
     private var priorityAndNotesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -536,8 +574,8 @@ struct AddEditWorkOrderView: View {
                     isApproved: false,
                     issueTitle: issueTitle.isEmpty ? "No Title Provided" : issueTitle,
                     issueDescription: issueDescription.isEmpty ? nil : issueDescription,
-                    hoursWorked: 0.0,
-                    estCost: 0.0,
+                    hoursWorked: Double(estimatedHours) ?? 0.0,
+                    estCost: (Double(labourCost) ?? 0.0) + (parts.reduce(0) { $0 + (Double($1.quantity) * 0.0) }),
                     internalNotes: internalNotes.isEmpty ? nil : internalNotes,
                     maintenanceNotes: nil,
                     images: photos.isEmpty ? nil : photos,

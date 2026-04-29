@@ -13,64 +13,68 @@ struct PartDisplayInfo: Identifiable, Equatable {
 
 struct WorkOrderDetailView: View {
     @Environment(\.dismiss) private var dismiss
-
+    
     @StateObject private var viewModel = WorkOrderViewModel()
     @State var workOrder: WorkOrder
-
+    
     // MARK: - Fetched Relational Data
     @State private var tasks: [WorkOrderTask] = []
     @State private var partsUI: [PartDisplayInfo] = []
-
+    
     // MARK: - Editable Fields
     @State private var editedIssueTitle: String = ""
     @State private var editedIssueDescription: String = ""
-
+    
     @State private var newTaskName: String = ""
-
+    
     @State private var editedMaintenanceNotes: String = ""
     @State private var editedHoursWorked: String = ""
     @State private var editedLabourRate: String = "125.0"
     @State private var editedLabourCost: String = ""
-
+    
     @State private var editablePhotos: [String] = []
-
+    
     // MARK: - UI State
     @State private var isLoading: Bool = true
     @State private var isSaving: Bool = false
-
+    
     @State private var showingCompletionAlert: Bool = false
     @State private var showingCompletionReport: Bool = false
     @State private var saveTask: Task<Void, Never>?
-
+    
     var isManagerApprovalMode: Bool = false
-
+    
+    // MARK: - New UI State for Editing & Re-approval
+    @State private var isEditing: Bool = false
+    @State private var originalCost: Double = 0.0
+    
     // MARK: - Live Cost Calculations
     private var parsedHours: Double {
         Double(editedHoursWorked) ?? 0.0
     }
-
+    
     private var labourTotalCost: Double {
         Double(editedLabourCost) ?? 0.0
     }
-
+    
     private var partsTotalCost: Double {
         partsUI.reduce(0) { total, part in
             total + (Double(part.quantity) * part.unitCost)
         }
     }
-
+    
     private var subtotal: Double {
         labourTotalCost + partsTotalCost
     }
-
+    
     private var salesTax: Double {
         subtotal * 0.13
     }
-
+    
     private var finalTotalCost: Double {
         subtotal + salesTax
     }
-
+    
     private var startButtonColor: Color {
         if !workOrder.isApproved {
             return .gray
@@ -80,22 +84,22 @@ struct WorkOrderDetailView: View {
             return .blue
         }
     }
-
+    
     private var startButtonTitle: String {
         workOrder.isApproved ? "Start Work Order" : "Waiting for Approval"
     }
-
+    
     private var areAllTasksCompleted: Bool {
         tasks.isEmpty || tasks.allSatisfy { $0.isCompleted }
     }
-
+    
     // MARK: - Body
     var body: some View {
         ZStack {
             Color(uiColor: .systemGroupedBackground)
                 .ignoresSafeArea()
                 .hideKeyboardOnTap()
-
+            
             ScrollView {
                 if isLoading {
                     ProgressView("Loading details...")
@@ -109,8 +113,26 @@ struct WorkOrderDetailView: View {
         .scrollDismissesKeyboard(.interactively)
         .navigationTitle("Work Order")
         .navigationBarTitleDisplayMode(.inline)
-        // Only loading our specific Toolbar items (the cross)
-        .toolbar { toolbarContent }
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button(action: { dismiss() }) {
+                    Image(systemName: "xmark").fontWeight(.semibold).foregroundColor(Color(hex: "#A3352A"))
+                }
+            }
+            // Only show Edit/Done button if not in Manager Approval Mode
+            if !isManagerApprovalMode {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(isEditing ? "Done" : "Edit") {
+                        if isEditing {
+                            handleSaveWithReapprovalCheck()
+                        }
+                        isEditing.toggle()
+                    }
+                    .fontWeight(.bold)
+                    .foregroundColor(Color(hex: "#A3352A"))
+                }
+            }
+        }
         .alert("Complete Work Order?", isPresented: $showingCompletionAlert) {
             Button("Cancel", role: .cancel) { }
             Button("Generate Report") {
@@ -141,7 +163,7 @@ struct WorkOrderDetailView: View {
             await viewModel.fetchAllInventory()
         }
     }
-
+    
     // MARK: - Extracted Main Content
     private var mainContent: some View {
         VStack(spacing: 24) {
@@ -151,6 +173,7 @@ struct WorkOrderDetailView: View {
             partsSection
             WorkEntryAndDocumentationView(
                 viewModel: viewModel,
+                isEditing: isEditing,
                 editedHoursWorked: $editedHoursWorked,
                 editedLabourRate: $editedLabourRate,
                 editedLabourCost: $editedLabourCost,
@@ -167,18 +190,36 @@ struct WorkOrderDetailView: View {
         .contentShape(Rectangle())
         .hideKeyboardOnTap()
     }
-
+    
+    private func handleSaveWithReapprovalCheck() {
+        let costDifference = finalTotalCost - originalCost
+        
+        if costDifference > 500 {
+            // Reset approval status if cost increased significantly
+            workOrder.isApproved = false
+            workOrder.status = .pending
+            
+            Task {
+                await performSilentSave()
+                // Send notification to manager logic should be inside performSilentSave if needed
+            }
+        } else {
+            Task { await performSilentSave() }
+        }
+    }
+    
     // MARK: - Extracted View Sections
     private var issueSummarySection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeaderView(title: "ISSUE SUMMARY")
             EditableIssueSummaryCardView(
+                isEditing: isEditing,
                 issueTitle: $editedIssueTitle,
                 issueDescription: $editedIssueDescription
             )
         }
     }
-
+    
     private var tasksSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeaderView(title: "MAINTENANCE TASKS")
@@ -207,31 +248,36 @@ struct WorkOrderDetailView: View {
                                     .strikethrough(task.isCompleted)
                                 
                                 Spacer()
-                    
-                                Button(action: {
-                                    tasks.removeAll { $0.taskId == task.taskId }
-                                    scheduleAutosave()
-                                }) {
-                                    Image(systemName: "trash")
-                                        .foregroundColor(.red.opacity(0.8))
-                                        .font(.subheadline)
+                                
+                                // Only allow task deletion in Edit Mode
+                                if isEditing {
+                                    Button(action: {
+                                        tasks.removeAll { $0.taskId == task.taskId }
+                                        scheduleAutosave()
+                                    }) {
+                                        Image(systemName: "trash")
+                                            .foregroundColor(.red.opacity(0.8))
+                                            .font(.subheadline)
+                                    }
                                 }
                             }
                             .padding(.vertical, 4)
                             Divider()
                         }
                     }
-                    addTaskRow
+                    if isEditing {
+                        addTaskRow
+                    }
                 }
             }
         }
     }
-
+    
     private var addTaskRow: some View {
         HStack {
             Image(systemName: "plus.circle.fill")
                 .foregroundColor(.blue)
-
+            
             TextField("Add Task...", text: $newTaskName)
                 .font(.subheadline)
                 .padding(.vertical, 8)
@@ -250,7 +296,7 @@ struct WorkOrderDetailView: View {
                 }
         }
     }
-
+    
     private var partsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeaderView(title: "PARTS REQUIRED")
@@ -264,22 +310,28 @@ struct WorkOrderDetailView: View {
                             .padding(.bottom, 8)
                     } else {
                         ForEach($partsUI) { $part in
-                            PartDetailRowView(part: $part, onQuantityChange: {
-                                scheduleAutosave()
-                            }, onDelete: {
-                                partsUI.removeAll { $0.id == part.id }
-                                scheduleAutosave()
-                            })
+                            PartDetailRowView(
+                                part: $part,
+                                isEditing: isEditing,
+                                onQuantityChange: {
+                                    scheduleAutosave()
+                                }, onDelete: {
+                                    partsUI.removeAll { $0.id == part.id }
+                                    scheduleAutosave()
+                                }
+                            )
                             .padding(.vertical, 4)
                             Divider()
                         }
                     }
-                    partsDropdownMenu
+                    if isEditing {
+                        partsDropdownMenu
+                    }
                 }
             }
         }
     }
-
+    
     private var partsDropdownMenu: some View {
         Menu {
             if viewModel.availableInventory.isEmpty {
@@ -307,13 +359,13 @@ struct WorkOrderDetailView: View {
             HStack {
                 Image(systemName: "plus.circle.fill")
                     .foregroundColor(.blue)
-
+                
                 Text("Select a Part from Inventory...")
                     .font(.subheadline)
                     .foregroundColor(.primary)
-
+                
                 Spacer()
-
+                
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.caption)
                     .foregroundColor(.gray)
@@ -321,7 +373,7 @@ struct WorkOrderDetailView: View {
             .padding(.vertical, 8)
         }
     }
-
+    
     private var liveCostSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeaderView(title: "ESTIMATED COST SUMMARY")
@@ -333,60 +385,89 @@ struct WorkOrderDetailView: View {
             )
         }
     }
-
+    
     @ViewBuilder
-        private var actionButtonSection: some View {
-            if isManagerApprovalMode {
-                if !workOrder.isApproved && workOrder.status == .pending {
-                    HStack(spacing: 16) {
-                        Button(action: {
-                            Task { await declineAndDeleteWorkOrder() }
-                        }) {
-                            Text("Decline")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.red)
-                                .cornerRadius(12)
-                        }
-
-                        Button(action: {
-                            Task { await handleApproval(approved: true) }
-                        }) {
-                            Text("Approve")
-                                .font(.headline)
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                                .background(Color.green)
-                                .cornerRadius(12)
-                        }
-                    }
-                    .padding(.top, 10)
-                } else if workOrder.status == .completed {
-                    // Show View Report if completed
-                    Button {
-                        showingCompletionReport = true
-                    } label: {
-                        Text("View Report")
+    private var actionButtonSection: some View {
+        if isManagerApprovalMode {
+            if !workOrder.isApproved && workOrder.status == .pending {
+                HStack(spacing: 16) {
+                    Button(action: {
+                        Task { await declineAndDeleteWorkOrder() }
+                    }) {
+                        Text("Decline")
                             .font(.headline)
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color(red: 163/255, green: 53/255, blue: 42/255))
+                            .background(Color.red)
                             .cornerRadius(12)
                     }
-                    .padding(.top, 10)
+                    
+                    Button(action: {
+                        Task { await handleApproval(approved: true) }
+                    }) {
+                        Text("Approve")
+                            .font(.headline)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.green)
+                            .cornerRadius(12)
+                    }
                 }
-                // If approved but not yet completed, Manager sees NOTHING here.
-
-            } else {
-                if workOrder.status == .pending {
-                    // Start Work Order
+                .padding(.top, 10)
+            } else if workOrder.status == .completed {
+                // Show View Report if completed
+                Button {
+                    showingCompletionReport = true
+                } label: {
+                    Text("View Report")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color(red: 163/255, green: 53/255, blue: 42/255))
+                        .cornerRadius(12)
+                }
+                .padding(.top, 10)
+            }
+            
+        } else {
+            if workOrder.status == .pending {
+                // Start Work Order
+                Button {
+                    if workOrder.isApproved {
+                        startWorkOrder()
+                    }
+                } label: {
+                    HStack {
+                        if isSaving {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .tint(.white)
+                        } else {
+                            Text(startButtonTitle)
+                                .font(.headline)
+                        }
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(startButtonColor)
+                    .cornerRadius(12)
+                }
+                .disabled(!workOrder.isApproved || isSaving)
+                .padding(.top, 10)
+                
+            } else if workOrder.status == .inProgress || workOrder.status == .completed {
+                // Complete Work Order / View Report
+                VStack(spacing: 8) {
                     Button {
-                        if workOrder.isApproved {
-                            startWorkOrder()
+                        cancelPendingSave()
+                        if workOrder.status == .completed {
+                            showingCompletionReport = true
+                        } else {
+                            showingCompletionAlert = true
                         }
                     } label: {
                         HStack {
@@ -395,72 +476,31 @@ struct WorkOrderDetailView: View {
                                     .progressViewStyle(.circular)
                                     .tint(.white)
                             } else {
-                                Text(startButtonTitle)
+                                Text(workOrder.status == .completed ? "View Report" : "Complete Work Order")
                                     .font(.headline)
                             }
                         }
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
                         .padding()
-                        .background(startButtonColor)
+                        .background(Color(red: 163/255, green: 53/255, blue: 42/255))
                         .cornerRadius(12)
                     }
-                    .disabled(!workOrder.isApproved || isSaving)
+                    
+                    .disabled(isSaving || (workOrder.status != .completed && !areAllTasksCompleted))
+                    .opacity((workOrder.status != .completed && !areAllTasksCompleted) ? 0.5 : 1.0)
                     .padding(.top, 10)
-
-                } else if workOrder.status == .inProgress || workOrder.status == .completed {
-                    // Complete Work Order / View Report
-                    VStack(spacing: 8) {
-                        Button {
-                            cancelPendingSave()
-                            if workOrder.status == .completed {
-                                showingCompletionReport = true
-                            } else {
-                                showingCompletionAlert = true
-                            }
-                        } label: {
-                            HStack {
-                                if isSaving {
-                                    ProgressView()
-                                        .progressViewStyle(.circular)
-                                        .tint(.white)
-                                } else {
-                                    Text(workOrder.status == .completed ? "View Report" : "Complete Work Order")
-                                        .font(.headline)
-                                }
-                            }
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color(red: 163/255, green: 53/255, blue: 42/255))
-                            .cornerRadius(12)
-                        }
-                        
-                        .disabled(isSaving || (workOrder.status != .completed && !areAllTasksCompleted))
-                        .opacity((workOrder.status != .completed && !areAllTasksCompleted) ? 0.5 : 1.0)
-                        .padding(.top, 10)
-                        
-                        if workOrder.status != .completed && !areAllTasksCompleted {
-                            Text("⚠️ Please complete all maintenance tasks to finish.")
-                                .font(.caption)
-                                .foregroundColor(.red)
-                        }
+                    
+                    if workOrder.status != .completed && !areAllTasksCompleted {
+                        Text("⚠️ Please complete all maintenance tasks to finish.")
+                            .font(.caption)
+                            .foregroundColor(.red)
                     }
                 }
             }
         }
-
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarLeading) {
-            Button(action: { dismiss() }) {
-                Image(systemName: "xmark")
-                    .fontWeight(.semibold)
-                    .foregroundColor(Color(red: 163/255, green: 53/255, blue: 42/255))
-            }
-        }
     }
-
+    
     private func startWorkOrder() {
         cancelPendingSave()
         isSaving = true
@@ -470,24 +510,24 @@ struct WorkOrderDetailView: View {
             await MainActor.run { isSaving = false }
         }
     }
-
+    
     // MARK: - Manager Approval Logic
     private func handleApproval(approved: Bool) async {
         isSaving = true
         cancelPendingSave()
-
+        
         do {
             let newStatus = approved ? WorkOrderStatus.pending.rawValue : WorkOrderStatus.cancelled.rawValue
             struct ApprovalUpdate: Encodable { let is_approved: Bool; let status: String }
-
+            
             try await SupabaseManager.shared.client
                 .from("work_orders")
                 .update(ApprovalUpdate(is_approved: approved, status: newStatus))
                 .eq("work_order_id", value: workOrder.workOrderId.uuidString)
                 .execute()
-
+            
             await sendResponseNotificationToMechanic(approved: approved)
-
+            
             await MainActor.run {
                 self.workOrder.isApproved = approved
                 self.isSaving = false
@@ -498,14 +538,14 @@ struct WorkOrderDetailView: View {
             await MainActor.run { self.isSaving = false }
         }
     }
-
+    
     private func sendResponseNotificationToMechanic(approved: Bool) async {
         guard let mechanicId = workOrder.maintenancePersonnelId else { return }
         do {
             let session = try await SupabaseManager.shared.client.auth.session
             let managerId = session.user.id
             let statusString = approved ? "Approved" : "Declined"
-
+            
             let responseNotification = NotificationInsertDTO(
                 recipient_id: mechanicId,
                 sender_id: managerId,
@@ -514,13 +554,13 @@ struct WorkOrderDetailView: View {
                 type: NotificationType.maintenance.rawValue,
                 related_entity_id: workOrder.workOrderId
             )
-
+            
             try await SupabaseManager.shared.client.from("notifications").insert(responseNotification).execute()
         } catch {
             print("🚨 Failed to send response notification: \(error)")
         }
     }
-
+    
     private func completeWorkOrderAndShowReport() {
         workOrder.status = .completed
         workOrder.updatedAt = Date()
@@ -529,7 +569,7 @@ struct WorkOrderDetailView: View {
             await MainActor.run { showingCompletionReport = true }
         }
     }
-
+    
     // MARK: - Autosave Logic
     private func scheduleAutosave() {
         guard !isLoading else { return }
@@ -540,11 +580,11 @@ struct WorkOrderDetailView: View {
             await performSilentSave()
         }
     }
-
+    
     private func cancelPendingSave() {
         saveTask?.cancel()
     }
-
+    
     private func performSilentSave() async {
         workOrder.issueTitle = editedIssueTitle
         workOrder.issueDescription = editedIssueDescription.isEmpty ? nil : editedIssueDescription
@@ -553,11 +593,11 @@ struct WorkOrderDetailView: View {
         workOrder.maintenanceNotes = editedMaintenanceNotes.isEmpty ? nil : editedMaintenanceNotes
         workOrder.images = editablePhotos.isEmpty ? nil : editablePhotos
         workOrder.updatedAt = Date()
-
+        
         do {
             try await viewModel.upsertWorkOrder(workOrder)
             if !tasks.isEmpty { try await viewModel.upsertTasks(tasks) }
-
+            
             let workOrderParts = partsUI.map { uiPart in
                 WorkOrderPart(
                     workOrderId: workOrder.workOrderId,
@@ -571,29 +611,32 @@ struct WorkOrderDetailView: View {
             print("🚨 Autosave failed: \(error)")
         }
     }
-
+    
     // MARK: - Fetch Relational Data
     private func fetchWorkOrderDetails() async {
         editedIssueTitle = workOrder.issueTitle
         editedIssueDescription = workOrder.issueDescription ?? ""
         editedMaintenanceNotes = workOrder.maintenanceNotes ?? ""
-
+        
         let initialHours = workOrder.hoursWorked ?? 0.0
         editedHoursWorked = String(format: "%.1f", initialHours)
-
+        
+        // Save initial cost to track increases later
+        self.originalCost = workOrder.estCost ?? 0.0
+        
         let currentRate = Double(editedLabourRate) ?? 125.0
         editedLabourCost = String(format: "%.2f", initialHours * currentRate)
         editablePhotos = workOrder.images ?? []
-
+        
         do {
             let fetchedTasks = try await viewModel.fetchTasks(for: workOrder.workOrderId)
             let fetchedParts = try await viewModel.fetchParts(for: workOrder.workOrderId)
-
+            
             var mappedParts: [PartDisplayInfo] = []
             if !fetchedParts.isEmpty {
                 let inventoryIds = fetchedParts.map { $0.inventoryId }
                 let fetchedInventory = try await viewModel.fetchInventory(for: inventoryIds)
-
+                
                 for wp in fetchedParts {
                     if let inv = fetchedInventory.first(where: { $0.inventoryId == wp.inventoryId }) {
                         mappedParts.append(PartDisplayInfo(
@@ -605,7 +648,7 @@ struct WorkOrderDetailView: View {
                     }
                 }
             }
-
+            
             await MainActor.run {
                 self.tasks = fetchedTasks
                 self.partsUI = mappedParts
@@ -616,18 +659,18 @@ struct WorkOrderDetailView: View {
             await MainActor.run { self.isLoading = false }
         }
     }
-
+    
     // MARK: - Decline & Delete Work Order
     private func declineAndDeleteWorkOrder() async {
         isSaving = true
         cancelPendingSave()
-
+        
         do {
             let client = SupabaseManager.shared.client
             let session = try await client.auth.session
             let currentUserId = session.user.id
             let workOrderIdString = workOrder.workOrderId.uuidString
-
+            
             // 1. Send the Cancellation Notification
             if let personnelId = workOrder.maintenancePersonnelId {
                 let declineNotification = NotificationInsertDTO(
@@ -638,42 +681,42 @@ struct WorkOrderDetailView: View {
                     type: NotificationType.maintenance.rawValue,
                     related_entity_id: nil // Nil because the entity is being deleted
                 )
-
+                
                 try await client
                     .from("notifications")
                     .insert(declineNotification)
                     .execute()
             }
-
+            
             // 2. Delete Work Order Parts (to avoid Foreign Key constraint errors)
             try await client
                 .from("work_order_parts")
                 .delete()
                 .eq("work_order_id", value: workOrderIdString)
                 .execute()
-
+            
             // 3. Delete Work Order Tasks
             try await client
                 .from("work_order_tasks")
                 .delete()
                 .eq("work_order_id", value: workOrderIdString)
                 .execute()
-
+            
             // 4. Finally, Delete the Work Order itself
             try await client
                 .from("work_orders")
                 .delete()
                 .eq("work_order_id", value: workOrderIdString)
                 .execute()
-
+            
             print("✅ Work Order successfully declined and deleted.")
-
+            
             // Close the screen
             await MainActor.run {
                 isSaving = false
                 dismiss()
             }
-
+            
         } catch {
             print("🚨 Error declining work order: \(error)")
             await MainActor.run { isSaving = false }
@@ -725,14 +768,21 @@ struct WorkOrderHeaderView: View {
 }
 
 struct EditableIssueSummaryCardView: View {
+    var isEditing: Bool
     @Binding var issueTitle: String
     @Binding var issueDescription: String
     var body: some View {
         CardView {
             VStack(alignment: .leading, spacing: 0) {
-                TextField("Issue Title", text: $issueTitle).font(.headline).fontWeight(.bold).foregroundColor(Color(red: 0.65, green: 0.35, blue: 0.15)).padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading)
-                Divider()
-                TextField("Detailed description...", text: $issueDescription, axis: .vertical).font(.subheadline).padding(.vertical, 12).frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading).lineLimit(3...6)
+                if isEditing {
+                    TextField("Issue Title", text: $issueTitle).font(.headline).fontWeight(.bold).foregroundColor(Color(red: 0.65, green: 0.35, blue: 0.15)).padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading)
+                    Divider()
+                    TextField("Detailed description...", text: $issueDescription, axis: .vertical).font(.subheadline).padding(.vertical, 12).frame(maxWidth: .infinity, minHeight: 60, alignment: .topLeading).lineLimit(3...6)
+                } else {
+                    Text(issueTitle).font(.headline).fontWeight(.bold).foregroundColor(Color(red: 0.65, green: 0.35, blue: 0.15)).padding(.vertical, 12)
+                    Divider()
+                    Text(issueDescription.isEmpty ? "No description provided." : issueDescription).font(.subheadline).padding(.vertical, 12)
+                }
             }
         }
     }
@@ -740,17 +790,18 @@ struct EditableIssueSummaryCardView: View {
 
 struct WorkEntryAndDocumentationView: View {
     @ObservedObject var viewModel: WorkOrderViewModel
+    var isEditing: Bool
     @Binding var editedHoursWorked: String
     @Binding var editedLabourRate: String
     @Binding var editedLabourCost: String
     @Binding var editedMaintenanceNotes: String
     @Binding var photos: [String]
-
+    
     @State private var showImagePicker = false
     @State private var showSourceTypePicker = false
     @State private var imageSource: UIImagePickerController.SourceType = .photoLibrary
     @State private var photoToReplace: String? = nil
-
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             workEntrySection
@@ -783,7 +834,7 @@ struct WorkEntryAndDocumentationView: View {
             }
         }
     }
-
+    
     private var workEntrySection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeaderView(title: "WORK ENTRY")
@@ -791,49 +842,63 @@ struct WorkEntryAndDocumentationView: View {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("HOURS").font(.caption2).fontWeight(.medium).foregroundColor(.secondary)
-                        TextField("0.0", text: $editedHoursWorked).font(.subheadline).keyboardType(.decimalPad).textFieldStyle(.roundedBorder).onChange(of: editedHoursWorked) { _, _ in recalculateLabourCost() }
+                        if isEditing {
+                            TextField("0.0", text: $editedHoursWorked).font(.subheadline).keyboardType(.decimalPad).textFieldStyle(.roundedBorder).onChange(of: editedHoursWorked) { _, _ in recalculateLabourCost() }
+                        } else {
+                            Text(editedHoursWorked).font(.subheadline).fontWeight(.semibold).padding(.vertical, 8)
+                        }
                     }
                     VStack(alignment: .leading, spacing: 4) {
                         Text("RATE/HR (₹)").font(.caption2).fontWeight(.medium).foregroundColor(.secondary)
-                        TextField("0.0", text: $editedLabourRate).font(.subheadline).keyboardType(.decimalPad).textFieldStyle(.roundedBorder).onChange(of: editedLabourRate) { _, _ in recalculateLabourCost() }
+                        if isEditing {
+                            TextField("0.0", text: $editedLabourRate).font(.subheadline).keyboardType(.decimalPad).textFieldStyle(.roundedBorder).onChange(of: editedLabourRate) { _, _ in recalculateLabourCost() }
+                        } else {
+                            Text(editedLabourRate).font(.subheadline).fontWeight(.semibold).padding(.vertical, 8)
+                        }
                     }
                     VStack(alignment: .leading, spacing: 4) {
                         Text("TOTAL (₹)").font(.caption2).fontWeight(.medium).foregroundColor(.secondary)
-                        TextField("0.00", text: $editedLabourCost).font(.subheadline).keyboardType(.decimalPad).textFieldStyle(.roundedBorder)
+                        Text(editedLabourCost).font(.subheadline).fontWeight(.bold).padding(.vertical, 8)
                     }
                 }
             }
         }
     }
-
+    
     private func recalculateLabourCost() {
         let hours = Double(editedHoursWorked) ?? 0.0
         let rate = Double(editedLabourRate) ?? 0.0
         editedLabourCost = String(format: "%.2f", hours * rate)
     }
-
+    
     private var maintenanceNotesSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeaderView(title: "MAINTENANCE NOTES")
             CardView {
-                TextEditor(text: $editedMaintenanceNotes)
-                    .font(.subheadline).frame(minHeight: 100).overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(uiColor: .systemGray5), lineWidth: 1))
+                if isEditing {
+                    TextEditor(text: $editedMaintenanceNotes)
+                        .font(.subheadline).frame(minHeight: 100).overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(uiColor: .systemGray5), lineWidth: 1))
+                } else {
+                    Text(editedMaintenanceNotes.isEmpty ? "No notes added." : editedMaintenanceNotes).font(.subheadline).frame(maxWidth: .infinity, alignment: .leading)
+                }
             }
         }
     }
-
+    
     private var photoDocumentationSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             SectionHeaderView(title: "DOCUMENTATION")
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 16) {
-                    Button(action: { photoToReplace = nil; showSourceTypePicker = true }) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .systemGray5)).frame(width: 110, height: 110)
-                            Image(systemName: "plus").font(.system(size: 32, weight: .semibold)).foregroundColor(.blue)
-                        }
-                    }.padding(.leading, 1)
-
+                    if isEditing {
+                        Button(action: { photoToReplace = nil; showSourceTypePicker = true }) {
+                            ZStack {
+                                RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .systemGray5)).frame(width: 110, height: 110)
+                                Image(systemName: "plus").font(.system(size: 32, weight: .semibold)).foregroundColor(.blue)
+                            }
+                        }.padding(.leading, 1)
+                    }
+                    
                     ForEach(photos, id: \.self) { urlString in
                         if let url = URL(string: urlString) {
                             CachedAsyncImage(url: url) { phase in
@@ -845,8 +910,10 @@ struct WorkEntryAndDocumentationView: View {
                                 }
                             }
                             .contextMenu {
-                                Button(action: { photoToReplace = urlString; showSourceTypePicker = true }) { Label("Replace", systemImage: "arrow.triangle.2.circlepath") }
-                                Button(role: .destructive, action: { withAnimation { photos.removeAll { $0 == urlString } } }) { Label("Delete", systemImage: "trash") }
+                                if isEditing {
+                                    Button(action: { photoToReplace = urlString; showSourceTypePicker = true }) { Label("Replace", systemImage: "arrow.triangle.2.circlepath") }
+                                    Button(role: .destructive, action: { withAnimation { photos.removeAll { $0 == urlString } } }) { Label("Delete", systemImage: "trash") }
+                                }
                             }
                         }
                     }
@@ -907,6 +974,7 @@ struct CardView<Content: View>: View {
 
 struct PartDetailRowView: View {
     @Binding var part: PartDisplayInfo
+    var isEditing: Bool
     var onQuantityChange: () -> Void
     var onDelete: () -> Void
     var body: some View {
@@ -916,12 +984,16 @@ struct PartDetailRowView: View {
                 Text(String(format: "₹%.2f ea", part.unitCost)).font(.caption2).foregroundColor(.secondary)
             }
             Spacer()
-            HStack(spacing: 16) {
-                Button(action: { if part.quantity > 1 { part.quantity -= 1; onQuantityChange() } }) { Image(systemName: "minus").foregroundColor(.blue) }
-                Text("\(part.quantity)").font(.subheadline).fontWeight(.medium)
-                Button(action: { part.quantity += 1; onQuantityChange() }) { Image(systemName: "plus").foregroundColor(.blue) }
-            }.padding(.horizontal, 12).padding(.vertical, 8).background(Color(uiColor: .systemGray6)).cornerRadius(8)
-            Button(action: onDelete) { Image(systemName: "trash.fill").foregroundColor(.red.opacity(0.8)) }.padding(.leading, 8)
+            if isEditing {
+                HStack(spacing: 16) {
+                    Button(action: { if part.quantity > 1 { part.quantity -= 1; onQuantityChange() } }) { Image(systemName: "minus").foregroundColor(.blue) }
+                    Text("\(part.quantity)").font(.subheadline).fontWeight(.medium)
+                    Button(action: { part.quantity += 1; onQuantityChange() }) { Image(systemName: "plus").foregroundColor(.blue) }
+                }.padding(.horizontal, 12).padding(.vertical, 8).background(Color(uiColor: .systemGray6)).cornerRadius(8)
+                Button(action: onDelete) { Image(systemName: "trash.fill").foregroundColor(.red.opacity(0.8)) }.padding(.leading, 8)
+            } else {
+                Text("Qty: \(part.quantity)").font(.subheadline).fontWeight(.semibold)
+            }
         }
     }
 }
