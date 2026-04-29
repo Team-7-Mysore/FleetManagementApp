@@ -46,8 +46,8 @@ class ChatViewController: MessagesViewController {
 
         // Hide avatars for iMessage feel
         if let layout = messagesCollectionView.collectionViewLayout as? MessagesCollectionViewFlowLayout {
-            layout.textMessageSizeCalculator.outgoingAvatarSize = .zero
-            layout.textMessageSizeCalculator.incomingAvatarSize = .zero
+            layout.setMessageOutgoingAvatarSize(.zero)
+            layout.setMessageIncomingAvatarSize(.zero)
         }
 
         // Dismiss keyboard on tap
@@ -64,9 +64,11 @@ class ChatViewController: MessagesViewController {
         Task { await viewModel.startChatRoomRealtime(chatRoomId: chatRoomId) }
     }
 
+
+
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        Task { await viewModel.stopChatRoomRealtime(chatRoomId: chatRoomId) }
+        viewModel.clearMessages()
     }
 
     private func setupViewModelObservation() {
@@ -86,7 +88,8 @@ class ChatViewController: MessagesViewController {
     }
 
     private func updateMessages(_ newMessages: [ChatMessage]) {
-        let mapped = newMessages.map { msg in
+        let roomMessages = newMessages.filter { $0.chatRoomId == self.chatRoomId }
+        let mapped = roomMessages.map { msg in
             let isCurrent = msg.senderId.uuidString == currentUser.senderId
             let content = msg.content ?? ""
             
@@ -172,7 +175,46 @@ extension ChatViewController: MessagesDataSource {
                         in messagesCollectionView: MessagesCollectionView) -> MessageKit.MessageType {
         return messages[indexPath.section]
     }
+
+    func cellTopLabelAttributedText(for message: MessageType, at indexPath: IndexPath) -> NSAttributedString? {
+        if isFirstMessageInDay(at: indexPath) {
+            let date = message.sentDate
+            let text = formatDateHeader(date)
+            let paragraphStyle = NSMutableParagraphStyle()
+            paragraphStyle.alignment = .center
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.boldSystemFont(ofSize: 12),
+                .foregroundColor: UIColor.secondaryLabel,
+                .paragraphStyle: paragraphStyle
+            ]
+            return NSAttributedString(string: text, attributes: attributes)
+        }
+        return nil
+    }
+
+    private func isFirstMessageInDay(at indexPath: IndexPath) -> Bool {
+        if indexPath.section == 0 { return true }
+        let currentItem = messages[indexPath.section]
+        let previousItem = messages[indexPath.section - 1]
+        
+        return !Calendar.current.isDate(currentItem.sentDate, inSameDayAs: previousItem.sentDate)
+    }
+
+    private func formatDateHeader(_ date: Date) -> String {
+        if Calendar.current.isDateInToday(date) {
+            return "Today"
+        } else if Calendar.current.isDateInYesterday(date) {
+            return "Yesterday"
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .none
+            return formatter.string(from: date)
+        }
+    }
 }
+
+
 
 // MARK: - MessagesDisplayDelegate
 extension ChatViewController: MessagesDisplayDelegate {
@@ -194,4 +236,7 @@ extension ChatViewController: MessagesDisplayDelegate {
 
 // MARK: - MessagesLayoutDelegate & MessageCellDelegate
 extension ChatViewController: MessagesLayoutDelegate, MessageCellDelegate {
+    func cellTopLabelHeight(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> CGFloat {
+        return isFirstMessageInDay(at: indexPath) ? 36 : 0
+    }
 }

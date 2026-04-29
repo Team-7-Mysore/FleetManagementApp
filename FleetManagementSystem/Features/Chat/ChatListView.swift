@@ -72,10 +72,14 @@ struct ChatListView: View {
                 isShowingNewChat = false
             }
         }
-        .task {
-            await viewModel.fetchUsers(currentUserId: currentUserId)
-            await viewModel.fetchChatRooms(userId: currentUserId)
-            await viewModel.startChatRoomsRealtime(userId: currentUserId)
+        .onAppear {
+            Task {
+                if viewModel.users.isEmpty {
+                    await viewModel.fetchUsers(currentUserId: currentUserId)
+                }
+                await viewModel.fetchChatRooms(userId: currentUserId)
+                await viewModel.startChatRoomsRealtime(userId: currentUserId)
+            }
         }
         .refreshable {
             await viewModel.fetchUsers(currentUserId: currentUserId)
