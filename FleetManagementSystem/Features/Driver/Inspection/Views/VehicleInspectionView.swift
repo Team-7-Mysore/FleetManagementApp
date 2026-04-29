@@ -60,7 +60,14 @@ struct VehicleInspectionView: View {
             Text(confirmationMessage)
         }
         .sheet(isPresented: $showReportIssue) {
-            ReportIssueView(user: user, vehicle: nil)
+            ReportIssueView(
+                user: user,
+                vehicle: nil,
+                activeTripId: nil,
+                prefilledDescription: nil,
+                prefilledCategory: nil,
+                prefilledSeverity: nil
+            )
         }
         .onAppear {
             vm.loadDataAndAutoStart(for: trip, type: defaultType)

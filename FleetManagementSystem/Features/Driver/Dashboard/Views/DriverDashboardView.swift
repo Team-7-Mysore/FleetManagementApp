@@ -391,19 +391,38 @@ struct DriverDashboardView: View {
     // MARK: - Quick Actions (Report Issue)
     private var quickActionsRow: some View {
         NavigationLink {
-            ReportIssueView(user: user, vehicle: vm.assignedVehicle)
+            ReportIssueView(
+                user: user,
+                vehicle: vm.assignedVehicle,
+                activeTripId: nil,
+                prefilledDescription: nil,
+                prefilledCategory: nil,
+                prefilledSeverity: nil
+            )
         } label: {
             HStack(spacing: 16) {
                 ZStack {
-                    Circle().fill(AppTheme.statusDanger.opacity(0.1)).frame(width: 44, height: 44)
+                    Circle()
+                        .fill(AppTheme.statusDanger.opacity(0.1))
+                        .frame(width: 44, height: 44)
+
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.headline).foregroundStyle(AppTheme.statusDanger)
+                        .font(.headline)
+                        .foregroundStyle(AppTheme.statusDanger)
                 }
+
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Report Issue").font(.headline).foregroundStyle(Color(.label))
-                    Text("Log defect or safety concern").font(.caption).foregroundStyle(.secondary)
+                    Text("Report Issue")
+                        .font(.headline)
+                        .foregroundStyle(Color(.label))
+
+                    Text("Log defect or safety concern")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+
                 Spacer()
+
                 Image(systemName: "chevron.right")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(Color(.tertiaryLabel))
@@ -412,7 +431,6 @@ struct DriverDashboardView: View {
             .cardStyle()
         }
     }
-
 
 
     // MARK: - Upcoming Trips Section

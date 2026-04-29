@@ -12,6 +12,8 @@ struct ActiveTripView: View {
     @State private var showEndTripConfirmation = false
     @State private var showReportIssue = false
     @State private var timer: Timer?
+    @State private var detectedCategory: String? = nil
+    @State private var detectedSeverity: String? = nil
 
     // SOS State
     @State private var showSOSConfirmation = false
@@ -244,6 +246,15 @@ struct ActiveTripView: View {
         } message: {
             Text("This will immediately dial emergency contact. Only proceed in a genuine emergency.")
         }
+//        .sheet(isPresented: $showReportIssue) {
+//            let tripVehicle = Vehicle(
+//                id: trip.vehicleId,
+//                name: trip.startLocation,
+//                registrationNumber: "",
+//                vehicleType: "unknown"
+//            )
+//            ReportIssueView(user: user, vehicle: tripVehicle, activeTripId: trip.id)
+//        }
         .sheet(isPresented: $showReportIssue) {
             let tripVehicle = Vehicle(
                 id: trip.vehicleId,
@@ -251,7 +262,13 @@ struct ActiveTripView: View {
                 registrationNumber: "",
                 vehicleType: "unknown"
             )
-            ReportIssueView(user: user, vehicle: tripVehicle, activeTripId: trip.id)
+
+            ReportIssueView(
+                user: user,
+                vehicle: tripVehicle,
+                activeTripId: trip.id,
+                prefilledDescription: voiceIssueText   // 👈 ADD THIS
+            )
         }
         .sheet(isPresented: $showVoiceUI) {
             if let intent = detectedIntent {
@@ -445,10 +462,14 @@ struct ActiveTripView: View {
     func startListening() {
         remainingTime = 10
 
-        voiceManager.requestAuthorization()
-        voiceManager.startListening()
-
         recordingTimer?.invalidate()
+
+        voiceManager.requestAuthorization()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            voiceManager.startListening()
+        }
+        print("🎤 isListening:", voiceManager.isListening)
 
         recordingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { timer in
             if remainingTime > 0 {
@@ -466,15 +487,21 @@ struct ActiveTripView: View {
 
         voiceManager.stopListening()
 
-        let text = voiceManager.recognizedText
+        let text = voiceManager.recognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
+
         print("🧠 Final voice:", text)
+
+        // ✅ ADD THIS CHECK
+        guard !text.isEmpty else {
+            print("⚠️ Empty voice input")
+            return
+        }
 
         let intent = IntentParser.parse(text)
 
         detectedIntent = intent
         showVoiceUI = true
     }
-
     // MARK: - Route Persistence
 
     /// Encodes the MKDirections result and upserts it into the `routes` table.
@@ -591,8 +618,10 @@ struct ActiveTripView: View {
             router.path.append(AppRoute.vehicleInspection(trip, type: .postTrip))
         case .fuel(let amount):
             viewModel.storeFuel(amount)
-        case .issue(let desc):
+        case .issue(let desc, let category, let severity):
             voiceIssueText = desc
+            detectedCategory = category
+            detectedSeverity = severity
             showReportIssue = true
         case .unknown:
             break
