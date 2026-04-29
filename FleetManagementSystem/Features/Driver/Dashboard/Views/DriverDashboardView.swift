@@ -229,9 +229,14 @@ struct DriverDashboardView: View {
             HStack {
                 StatusBadge(text: "Next Trip", color: AppTheme.statusInfo)
                 Spacer()
-                Text(trip.scheduledStartTime, style: .time)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("START TIME")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Text(trip.scheduledStartTime, style: .time)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                }
             }
 
             HStack(alignment: .top) {
@@ -266,7 +271,7 @@ struct DriverDashboardView: View {
                         Text("DISTANCE").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
                         HStack(alignment: .firstTextBaseline, spacing: 2) {
                             Text("\(Int(trip.distance))").font(.title3.weight(.bold))
-                            Text("mi").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+                            Text("km").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
                         }
                     }
                 }
