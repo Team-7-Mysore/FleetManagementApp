@@ -200,7 +200,13 @@ struct ActiveTripView: View {
             Text("This will immediately dial emergency contact. Only proceed in a genuine emergency.")
         }
         .sheet(isPresented: $showReportIssue) {
-            ReportIssueView(user: user, vehicle: nil)
+            let tripVehicle = Vehicle(
+                id: trip.vehicleId,
+                name: trip.startLocation,
+                registrationNumber: "",
+                vehicleType: "unknown"
+            )
+            ReportIssueView(user: user, vehicle: tripVehicle, activeTripId: trip.id)
         }
         .onAppear {
             // Seed emergency contact (replace with user-configurable value later)

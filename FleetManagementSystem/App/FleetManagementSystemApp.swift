@@ -75,7 +75,7 @@ struct FleetManagementSystemApp: App {
         isLoading = false
     }
 
-    // MARK: - Fetch User Profile + MFA Gate
+    // MARK: - Fetch User Profile
     private func authenticateCurrentSessionIfAllowed() async {
         do {
             let user = try await SupabaseManager.shared.client.auth.user()
@@ -88,16 +88,8 @@ struct FleetManagementSystemApp: App {
                 .execute()
                 .value
 
-            if appSession.hasMFAVerified(email: profile.email) {
-                await MainActor.run {
-                    appSession.setAuthenticated(profile: profile)
-                }
-            } else {
-                print("🔒 MFA verification missing for session user: \(profile.email)")
-                try await SupabaseManager.shared.client.auth.signOut()
-                await MainActor.run {
-                    appSession.clearAuthenticatedState()
-                }
+            await MainActor.run {
+                appSession.setAuthenticated(profile: profile)
             }
         } catch {
             print("❌ Profile fetch error:", error)

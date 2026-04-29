@@ -190,7 +190,7 @@ struct DriverDashboardView: View {
                         Text("DISTANCE").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
                         HStack(alignment: .firstTextBaseline, spacing: 2) {
                             Text("\(Int(trip.distance))").font(.title3.weight(.bold))
-                            Text("mi").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+                              Text("km").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
                         }
                     }
                 }
