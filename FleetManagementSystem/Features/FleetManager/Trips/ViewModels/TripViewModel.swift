@@ -32,6 +32,12 @@ private struct UserRecord: Decodable {
     let name: String
 }
 
+private struct RouteRecord: Decodable {
+    let route_id: UUID
+    let start_location: String?
+    let end_location: String?
+}
+
 @MainActor
 final class TripViewModel: ObservableObject {
 
@@ -57,6 +63,7 @@ final class TripViewModel: ObservableObject {
 
     func loadAssignmentOptions(
         pickupLocation: String,
+        destination: String,
         pickupDate: Date,
         expectedEndDate: Date
     ) async {
@@ -90,12 +97,25 @@ final class TripViewModel: ObservableObject {
             do {
                 trips = try await SupabaseManager.shared.client
                     .from("trips")
-                    .select("trip_id, vehicle_id, driver_id, status, start_time, end_time, pickup_time, origin, destination, start_location, end_location")
+                    .select("trip_id, vehicle_id, driver_id, route_id, status, start_time, end_time, pickup_time, origin, destination, start_location, end_location")
                     .execute()
                     .value
             } catch {
                 trips = []
             }
+
+            let routes: [RouteRecord]
+            do {
+                routes = try await SupabaseManager.shared.client
+                    .from("routes")
+                    .select("route_id, start_location, end_location")
+                    .execute()
+                    .value
+            } catch {
+                routes = []
+            }
+
+            let routesById = Dictionary(uniqueKeysWithValues: routes.map { ($0.route_id, $0) })
 
             // Fetch active work orders to exclude vehicles currently in maintenance
             // Uses exact WorkOrderStatus raw values: "Pending" and "In Progress"
@@ -152,6 +172,8 @@ final class TripViewModel: ObservableObject {
 
                 let busyDriverIDs = Set(conflictingTrips.compactMap(\.driver_id))
                 let usersByID = Dictionary(uniqueKeysWithValues: users.map { ($0.user_id, $0) })
+                let normalizedOrigin = normalizeLocation(pickupLocation)
+                let normalizedDestination = normalizeLocation(destination)
 
                 availableDrivers = drivers
                     .filter { hasValidLicenseExpiry($0.license_expiry, relativeTo: pickupDate) }
@@ -159,20 +181,37 @@ final class TripViewModel: ObservableObject {
                     .map { driver in
                         let user = driver.user_id.flatMap { usersByID[$0] }
                         let inferredLocation = inferredDriverLocation(for: driver.driver_id, trips: trips)
+                        let routeExperienceCount = routeExperienceCount(
+                            for: driver.driver_id,
+                            trips: trips,
+                            routesById: routesById,
+                            normalizedOrigin: normalizedOrigin,
+                            normalizedDestination: normalizedDestination
+                        )
                         return DriverAssignmentOption(
                             id: driver.driver_id,
                             userID: driver.user_id,
                             name: user?.name ?? "Driver \(driver.driver_id.uuidString.prefix(4))",
                             licenseNumber: driver.license_no,
                             licenseExpiry: driver.license_expiry,
-                            locationHint: inferredLocation.map { "Near \($0)" }
+                            locationHint: inferredLocation.map { "Near \($0)" },
+                            routeExperienceCount: routeExperienceCount,
+                            isRecommended: false
                         )
                     }
-                    .sorted { lhs, rhs in
-                        if lhs.locationHint != nil, rhs.locationHint == nil { return true }
-                        if lhs.locationHint == nil, rhs.locationHint != nil { return false }
-                        return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-                    }
+
+                availableDrivers = applyRouteRecommendation(to: availableDrivers)
+#if DEBUG
+                debugLogRouteRecommendation(
+                    pickupLocation: pickupLocation,
+                    destination: destination,
+                    normalizedOrigin: normalizedOrigin,
+                    normalizedDestination: normalizedDestination,
+                    trips: trips,
+                    routesById: routesById,
+                    drivers: availableDrivers
+                )
+#endif
             } catch {
                 availableDrivers = []
             }
@@ -473,14 +512,6 @@ final class TripViewModel: ObservableObject {
             || normalizedPickupLocation.contains(normalizedDriverLocation)
     }
 
-    private func normalizeLocation(_ value: String) -> String {
-        value
-            .lowercased()
-            .components(separatedBy: ",")
-            .first?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-    }
-
     private func parseDatabaseDate(_ value: String?) -> Date? {
         guard let value else { return nil }
 
@@ -527,4 +558,153 @@ final class TripViewModel: ObservableObject {
 
         return nil
     }
+
+    private func routeExperienceCount(
+        for driverID: UUID,
+        trips: [AssignmentTripRecord],
+        routesById: [UUID: RouteRecord],
+        normalizedOrigin: String,
+        normalizedDestination: String
+    ) -> Int {
+        guard !normalizedOrigin.isEmpty, !normalizedDestination.isEmpty else { return 0 }
+
+        let completedTrips = trips.filter { trip in
+            guard trip.driver_id == driverID else { return false }
+            guard let status = trip.status?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
+            return status == "completed" || status == "done"
+        }
+
+        return completedTrips.filter { trip in
+            let tokens = routeTokens(from: trip, routesById: routesById)
+            guard let tripOrigin = tokens.origin, let tripDestination = tokens.destination else { return false }
+
+            let matchesForward = tripOrigin == normalizedOrigin && tripDestination == normalizedDestination
+            let matchesBackward = tripOrigin == normalizedDestination && tripDestination == normalizedOrigin
+            return matchesForward || matchesBackward
+        }.count
+    }
+
+    private func routeTokens(from trip: AssignmentTripRecord, routesById: [UUID: RouteRecord]) -> (origin: String?, destination: String?) {
+        if let routeId = trip.route_id, let route = routesById[routeId] {
+            return (
+                normalizeLocation(route.start_location),
+                normalizeLocation(route.end_location)
+            )
+        }
+
+        let origin = normalizeLocation(trip.origin ?? trip.start_location)
+        let destination = normalizeLocation(trip.destination ?? trip.end_location)
+        return (origin.isEmpty ? nil : origin, destination.isEmpty ? nil : destination)
+    }
+
+    private func normalizeLocation(_ value: String?) -> String {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return ""
+        }
+
+        let parts = value
+            .components(separatedBy: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard let first = parts.first else { return "" }
+        let second = parts.count > 1 ? parts[1] : nil
+
+        let firstLower = first.lowercased()
+        let hasDigits = firstLower.rangeOfCharacter(from: .decimalDigits) != nil
+        let roadTokens = ["road", "rd", "street", "st", "ave", "avenue", "highway", "hwy", "nh", "route", "bypass", "blvd", "lane", "ln"]
+        let isRoadLike = roadTokens.contains { firstLower.contains($0) }
+
+        let stateTokens: Set<String> = [
+            "andhra pradesh", "arunachal pradesh", "assam", "bihar", "chhattisgarh", "goa", "gujarat",
+            "haryana", "himachal pradesh", "jharkhand", "karnataka", "kerala", "madhya pradesh",
+            "maharashtra", "manipur", "meghalaya", "mizoram", "nagaland", "odisha", "orissa", "punjab",
+            "rajasthan", "sikkim", "tamil nadu", "telangana", "tripura", "uttar pradesh", "uttarakhand",
+            "west bengal", "andaman and nicobar islands", "chandigarh", "dadra and nagar haveli",
+            "daman and diu", "delhi", "jammu and kashmir", "ladakh", "lakshadweep", "puducherry",
+            "mh", "ka", "tn", "ts", "ap", "up", "uk", "dl", "gj", "ga", "br", "wb", "od", "pb",
+            "rj", "mp", "hp", "hr", "jh", "cg", "kl"
+        ]
+
+        func isState(_ value: String?) -> Bool {
+            guard let value = value?.lowercased() else { return false }
+            return stateTokens.contains(value)
+        }
+
+        let aliasMap: [String: String] = [
+            "mysore": "mysuru",
+            "mysuru": "mysuru",
+            "bangalore": "bengaluru",
+            "bengaluru": "bengaluru"
+        ]
+
+        if (hasDigits || isRoadLike), let second, !second.isEmpty {
+            let candidate = second.lowercased()
+            return aliasMap[candidate] ?? candidate
+        }
+
+        if let second, !second.isEmpty, !isState(second) {
+            let candidate = second.lowercased()
+            return aliasMap[candidate] ?? candidate
+        }
+
+        return aliasMap[firstLower] ?? firstLower
+    }
+
+    private func applyRouteRecommendation(to drivers: [DriverAssignmentOption]) -> [DriverAssignmentOption] {
+        guard !drivers.isEmpty else { return drivers }
+        let maxCount = drivers.map(\.routeExperienceCount).max() ?? 0
+        let hasRecommendation = maxCount > 0
+
+        let sorted = drivers.sorted { lhs, rhs in
+            if lhs.routeExperienceCount != rhs.routeExperienceCount {
+                return lhs.routeExperienceCount > rhs.routeExperienceCount
+            }
+            if lhs.locationHint != nil, rhs.locationHint == nil { return true }
+            if lhs.locationHint == nil, rhs.locationHint != nil { return false }
+            return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+
+        guard hasRecommendation, let top = sorted.first else { return sorted }
+
+        return sorted.map { driver in
+            DriverAssignmentOption(
+                id: driver.id,
+                userID: driver.userID,
+                name: driver.name,
+                licenseNumber: driver.licenseNumber,
+                licenseExpiry: driver.licenseExpiry,
+                locationHint: driver.locationHint,
+                routeExperienceCount: driver.routeExperienceCount,
+                isRecommended: driver.id == top.id
+            )
+        }
+    }
+
+#if DEBUG
+    private func debugLogRouteRecommendation(
+        pickupLocation: String,
+        destination: String,
+        normalizedOrigin: String,
+        normalizedDestination: String,
+        trips: [AssignmentTripRecord],
+        routesById: [UUID: RouteRecord],
+        drivers: [DriverAssignmentOption]
+    ) {
+        print("🧭 Route recommendation debug")
+        print("   Origin: \(pickupLocation) → \(destination)")
+        print("   Normalized: \(normalizedOrigin) → \(normalizedDestination)")
+        print("   Trips loaded: \(trips.count), routes loaded: \(routesById.count)")
+        for trip in trips {
+            let tokens = routeTokens(from: trip, routesById: routesById)
+            let status = trip.status ?? "nil"
+            let driver = trip.driver_id?.uuidString.prefix(6) ?? "nil"
+            let routeId = trip.route_id?.uuidString.prefix(6) ?? "nil"
+            print("   Trip \(trip.trip_id.uuidString.prefix(6)) status=\(status) driver=\(driver) route=\(routeId) tokens=\(tokens.origin ?? "-") → \(tokens.destination ?? "-")")
+        }
+        for driver in drivers {
+            print("   Driver \(driver.name) (\(driver.id.uuidString.prefix(6))): routeCount=\(driver.routeExperienceCount), recommended=\(driver.isRecommended)")
+        }
+    }
+#endif
 }
