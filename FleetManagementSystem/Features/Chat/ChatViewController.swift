@@ -92,12 +92,16 @@ class ChatViewController: MessagesViewController {
     
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        // Force inline display as requested
-        navigationItem.largeTitleDisplayMode = .never
-        navigationController?.navigationBar.prefersLargeTitles = true
-        navigationItem.title = otherUser.displayName
+        Task { await viewModel.startChatRoomRealtime(chatRoomId: chatRoomId) }
     }
-    
+
+
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        viewModel.clearMessages()
+    }
+
     private func setupViewModelObservation() {
         viewModel.$messages
             .receive(on: DispatchQueue.main)
@@ -117,9 +121,49 @@ class ChatViewController: MessagesViewController {
     }
 
     private func updateMessages(_ newMessages: [ChatMessage]) {
-        let mapped = newMessages.map { msg in
+        let roomMessages = newMessages.filter { $0.chatRoomId == self.chatRoomId }
+        let mapped = roomMessages.map { msg in
             let isCurrent = msg.senderId.uuidString == currentUser.senderId
-            return MessageKitMessage(chatMessage: msg, senderName: isCurrent ? currentUser.displayName : otherUser.displayName)
+            let content = msg.content ?? ""
+            
+            // Format time
+            let timeFormatter = DateFormatter()
+            timeFormatter.timeStyle = .short
+            let timeString = timeFormatter.string(from: msg.createdAt ?? Date())
+            
+            // Font and Colors
+            let mainFont = UIFont.systemFont(ofSize: 16)
+            let mainColor = isCurrent ? UIColor.white : UIColor.label
+            let metaFont = UIFont.systemFont(ofSize: 11)
+            let metaColor = isCurrent ? UIColor.white.withAlphaComponent(0.7) : UIColor.secondaryLabel
+            
+            // Add non-breaking spaces for spacing between text and timestamp
+            let attributedString = NSMutableAttributedString(string: content + "\u{00A0}\u{00A0}\u{00A0}", attributes: [
+                .font: mainFont,
+                .foregroundColor: mainColor
+            ])
+            
+            // Build metadata string (time + ticks)
+            var metaText = timeString
+            if isCurrent {
+                var isRead = false
+                if let otherId = UUID(uuidString: otherUser.senderId),
+                   let lastReadAt = viewModel.participantLastRead[otherId],
+                   let messageDate = msg.createdAt {
+                    isRead = lastReadAt >= messageDate
+                }
+                // ✓ is \u{2713}
+                metaText += isRead ? " \u{2713}\u{2713}" : " \u{2713}"
+            }
+            
+            let metaString = NSAttributedString(string: metaText, attributes: [
+                .font: metaFont,
+                .foregroundColor: metaColor
+            ])
+            
+            attributedString.append(metaString)
+            
+            return MessageKitMessage(chatMessage: msg, senderName: isCurrent ? currentUser.displayName : otherUser.displayName, customKind: .attributedText(attributedString))
         }
         self.messages = mapped
         messagesCollectionView.reloadData()
@@ -139,29 +183,9 @@ class ChatViewController: MessagesViewController {
         messagesCollectionView.messagesDisplayDelegate = self
         messagesCollectionView.messageCellDelegate = self
     }
-    
-    private func setupInputBar() {
-        messageInputBar.delegate = self
-        messageInputBar.backgroundView.backgroundColor = .systemBackground
-        
-        // Remove extra padding/margins
-        messageInputBar.padding = UIEdgeInsets(top: 5, left: 5, bottom: 5, right: 5)
-        messageInputBar.separatorLine.isHidden = false // Subtle line above input
-        
-        // Role-based accents in input bar
-        messageInputBar.tintColor = accentColor
-        messageInputBar.inputTextView.tintColor = accentColor
-        messageInputBar.sendButton.setTitleColor(accentColor, for: .normal)
-        messageInputBar.sendButton.setTitleColor(accentColor.withAlphaComponent(0.3), for: .disabled)
-        
-        // Improved input bar capsule look
-        messageInputBar.inputTextView.backgroundColor = UIColor.systemGray6
-        messageInputBar.inputTextView.layer.cornerRadius = 18
-        messageInputBar.inputTextView.layer.masksToBounds = true
-        messageInputBar.inputTextView.textContainerInset = UIEdgeInsets(top: 8, left: 12, bottom: 8, right: 12)
-        messageInputBar.inputTextView.placeholderLabelInsets = UIEdgeInsets(top: 8, left: 16, bottom: 8, right: 16)
-    }
-    
+
+
+
     private func loadMessages() {
         Task {
             await viewModel.fetchMessages(chatRoomId: chatRoomId)
@@ -176,7 +200,46 @@ extension ChatViewController: MessagesDataSource {
     func messageForItem(at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> MessageType {
         return messages[indexPath.section]
     }
+
+    func cellTopLabelAttributedText(for message: MessageType, at indexPath: IndexPath) -> NSAttributedString? {
+        if isFirstMessageInDay(at: indexPath) {
+            let date = message.sentDate
+            let text = formatDateHeader(date)
+            let paragraphStyle = NSMutableParagraphStyle()
+            paragraphStyle.alignment = .center
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.boldSystemFont(ofSize: 12),
+                .foregroundColor: UIColor.secondaryLabel,
+                .paragraphStyle: paragraphStyle
+            ]
+            return NSAttributedString(string: text, attributes: attributes)
+        }
+        return nil
+    }
+
+    private func isFirstMessageInDay(at indexPath: IndexPath) -> Bool {
+        if indexPath.section == 0 { return true }
+        let currentItem = messages[indexPath.section]
+        let previousItem = messages[indexPath.section - 1]
+        
+        return !Calendar.current.isDate(currentItem.sentDate, inSameDayAs: previousItem.sentDate)
+    }
+
+    private func formatDateHeader(_ date: Date) -> String {
+        if Calendar.current.isDateInToday(date) {
+            return "Today"
+        } else if Calendar.current.isDateInYesterday(date) {
+            return "Yesterday"
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .none
+            return formatter.string(from: date)
+        }
+    }
 }
+
+
 
 // MARK: - MessagesDisplayDelegate
 extension ChatViewController: MessagesDisplayDelegate {
@@ -192,26 +255,12 @@ extension ChatViewController: MessagesDisplayDelegate {
         let corner: MessageStyle.TailCorner = isFromCurrentSender(message: message) ? .bottomRight : .bottomLeft
         return .bubbleTail(corner, .curved)
     }
-
-    func cellBottomLabelAttributedText(for message: MessageType, at indexPath: IndexPath) -> NSAttributedString? {
-        guard let status = receiptStatus(for: indexPath) else { return nil }
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: 10, weight: .medium),
-            .foregroundColor: status.color
-        ]
-        return NSAttributedString(string: status.text, attributes: attributes)
-    }
 }
 
 // MARK: - MessagesLayoutDelegate & MessageCellDelegate
 extension ChatViewController: MessagesLayoutDelegate, MessageCellDelegate {
-    func cellBottomLabelHeight(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> CGFloat {
-        return receiptStatus(for: indexPath) == nil ? 0 : 14
-    }
-
-    func cellBottomLabelAlignment(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> LabelAlignment? {
-        guard receiptStatus(for: indexPath) != nil else { return nil }
-        return LabelAlignment(textAlignment: .right, textInsets: UIEdgeInsets(top: 0, left: 0, bottom: 2, right: 10))
+    func cellTopLabelHeight(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> CGFloat {
+        return isFirstMessageInDay(at: indexPath) ? 36 : 0
     }
 }
 

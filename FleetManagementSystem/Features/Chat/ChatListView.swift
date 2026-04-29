@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ChatListView: View {
     let currentUserId: UUID
+    let accentColor: Color
     @StateObject private var viewModel = ChatViewModel()
     @State private var isShowingNewChat = false
     @State private var pendingChatRoom: ChatRoom? = nil
@@ -31,10 +32,10 @@ struct ChatListView: View {
                         Section {
                             ForEach(filteredChats) { chat in
                                 NavigationLink {
-                                    DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel, accent: accent)
+                                    DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel, accentColor: accentColor)
                                 } label: {
                                     let otherUserName = getOtherUserName(for: chat)
-                                    ChatInboxRow(chat: chat, accent: accent, otherUserName: otherUserName)
+                                    ChatInboxRow(chat: chat, accent: accentColor, otherUserName: otherUserName)
                                 }
                             }
                         }
@@ -48,9 +49,9 @@ struct ChatListView: View {
                 .padding(.horizontal, 20)
         }
         .navigationTitle("Chat")
-        .tint(accent)
+        .tint(accentColor)
         .navigationDestination(item: $pendingChatRoom) { chat in
-            DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel, accent: accent)
+            DetailWrapper(chat: chat, currentUserId: currentUserId, viewModel: viewModel, accentColor: accentColor)
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
@@ -62,7 +63,7 @@ struct ChatListView: View {
                     } label: {
                         Image(systemName: "square.and.pencil")
                             .font(.system(size: 18, weight: .medium))
-                            .foregroundColor(accent)
+                            .foregroundColor(accentColor)
                     }
                 }
             }
@@ -80,10 +81,14 @@ struct ChatListView: View {
                 isShowingNewChat = false
             }
         }
-        .task {
-            await viewModel.fetchUsers(currentUserId: currentUserId)
-            await viewModel.fetchChatRooms(userId: currentUserId)
-            await viewModel.startChatRoomsRealtime(userId: currentUserId)
+        .onAppear {
+            Task {
+                if viewModel.users.isEmpty {
+                    await viewModel.fetchUsers(currentUserId: currentUserId)
+                }
+                await viewModel.fetchChatRooms(userId: currentUserId)
+                await viewModel.startChatRoomsRealtime(userId: currentUserId)
+            }
         }
         .refreshable {
             await viewModel.fetchUsers(currentUserId: currentUserId)
@@ -126,7 +131,7 @@ struct ChatListView: View {
             Button("Drivers") { viewModel.selectedRoleFilter = "Driver" }
         } label: {
             Image(systemName: "line.3.horizontal.decrease.circle")
-                .foregroundColor(accent)
+                .foregroundColor(accentColor)
         }
     }
 
@@ -211,24 +216,14 @@ struct DetailWrapper: View {
     let chat: ChatRoom
     let currentUserId: UUID
     let viewModel: ChatViewModel
-    let accent: Color
-
-    private var otherUserInfo: (id: UUID, name: String)? {
-        guard let otherUserId = chat.participantIds.first(where: { $0 != currentUserId }) else {
-            return nil
-        }
-        guard let user = viewModel.users.first(where: { $0.id == otherUserId }) else {
-            return nil
-        }
-        return (id: otherUserId, name: user.name)
-    }
+    let accentColor: Color
 
     var body: some View {
         ChatDetailView(
             viewModel: viewModel,
             chatRoom: chat,
             currentUserId: currentUserId,
-            globalAccent: accent
+            globalAccent: accentColor
         )
         .navigationTitle(otherUserInfo?.name ?? "Chat")
         .navigationBarTitleDisplayMode(.inline)

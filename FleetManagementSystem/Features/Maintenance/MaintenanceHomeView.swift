@@ -20,7 +20,7 @@ struct MaintenanceHomeView: View {
 
             if let userId = profile?.userId {
                 NavigationStack {
-                    ChatListView(currentUserId: userId)
+                    ChatListView(currentUserId: userId, accentColor: Color(red: 163/255, green: 53/255, blue: 42/255))
                 }
                     .tabItem {
                         Label("Chat", systemImage: "message")

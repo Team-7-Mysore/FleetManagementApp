@@ -127,6 +127,7 @@ struct ActiveTripView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
 
+
                     HStack(spacing: 12) {
                         Button { showReportIssue = true } label: {
                             HStack(spacing: 6) {
