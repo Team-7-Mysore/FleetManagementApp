@@ -117,6 +117,24 @@ final class TripViewModel: ObservableObject {
 
             let routesById = Dictionary(uniqueKeysWithValues: routes.map { ($0.route_id, $0) })
 
+            // Fetch active work orders to exclude vehicles currently in maintenance
+            // Uses exact WorkOrderStatus raw values: "Pending" and "In Progress"
+            struct WorkOrderVehicleRecord: Decodable {
+                let vehicle_id: UUID
+            }
+            let activeWorkOrders: [WorkOrderVehicleRecord]
+            do {
+                activeWorkOrders = try await SupabaseManager.shared.client
+                    .from("work_orders")
+                    .select("vehicle_id")
+                    .in("status", values: ["Pending", "In Progress"])
+                    .execute()
+                    .value
+            } catch {
+                activeWorkOrders = []
+            }
+            let maintenanceVehicleIDs = Set(activeWorkOrders.map { $0.vehicle_id })
+
             let conflictingTrips = trips.filter { trip in
                 blocksAvailability(status: trip.status) && overlaps(
                     existingStart: tripStartDate(from: trip),
@@ -130,6 +148,7 @@ final class TripViewModel: ObservableObject {
 
             availableVehicles = vehicles
                 .filter(isVehicleEligible)
+                .filter { !maintenanceVehicleIDs.contains($0.vehicle_id) }
                 .filter { !busyVehicleIDs.contains($0.vehicle_id) }
                 .sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
 
@@ -408,7 +427,17 @@ final class TripViewModel: ObservableObject {
         guard let status = vehicle.status?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) else {
             return true
         }
-        return status != "maintenance" && status != "inactive"
+        // Matches all maintenance/unavailable status values stored in the DB's vehicle_status enum
+        let ineligibleStatuses = [
+            "maintenance",
+            "under_maintenance",   // primary DB value for maintenance
+            "in_maintenance",
+            "inactive",
+            "out_of_service",
+            "decommissioned",
+            "unassigned"           // unassigned vehicles may be mid-handoff
+        ]
+        return !ineligibleStatuses.contains(status)
     }
 
     private func hasValidLicenseExpiry(_ rawDate: String, relativeTo referenceDate: Date) -> Bool {

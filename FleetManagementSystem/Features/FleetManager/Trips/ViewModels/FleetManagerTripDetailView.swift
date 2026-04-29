@@ -4,16 +4,16 @@ import Supabase
 
 struct FleetManagerTripDetailView: View {
     let trip: Trip
-    
+
     @StateObject private var vm: TripDetailViewModel
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var hasAutoFocusedVehicle = false
-    
+
     init(trip: Trip) {
         self.trip = trip
         _vm = StateObject(wrappedValue: TripDetailViewModel(trip: trip))
     }
-    
+
     var body: some View {
         List {
             // MARK: - Map Section
@@ -25,17 +25,17 @@ struct FleetManagerTripDetailView: View {
                                 Marker("Origin", coordinate: CLLocationCoordinate2D(latitude: originLat, longitude: originLng))
                                     .tint(.green)
                             }
-                            
+
                             if let destLat = trip.destination_latitude, let destLng = trip.destination_longitude {
                                 Marker("Destination", coordinate: CLLocationCoordinate2D(latitude: destLat, longitude: destLng))
                                     .tint(.red)
                             }
-                            
+
                             if !vm.routeCoordinates.isEmpty {
                                 MapPolyline(coordinates: vm.routeCoordinates)
                                     .stroke(Color.TechBlue, lineWidth: 4)
                             }
-                            
+
                             if let driverLoc = vm.driverLocation {
                                 Annotation("Driver", coordinate: driverLoc) {
                                     ZStack {
@@ -43,7 +43,7 @@ struct FleetManagerTripDetailView: View {
                                             .fill(.white)
                                             .frame(width: 38, height: 38)
                                             .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
-                                        
+
                                         Image(systemName: "car.circle.fill")
                                             .font(.system(size: 34))
                                             .foregroundStyle(.blue.gradient)
@@ -67,7 +67,7 @@ struct FleetManagerTripDetailView: View {
                             MapUserLocationButton()
                             MapCompass()
                         }
-                        
+
                         if vm.driverLocation != nil {
                             HStack(spacing: 8) {
                                 if vm.isRouteDeviated {
@@ -113,7 +113,7 @@ struct FleetManagerTripDetailView: View {
                 .listRowInsets(EdgeInsets())
             }
             .listRowBackground(Color.clear)
-            
+
             // MARK: - Route Monitoring Controls
             if vm.trip.normalisedStatus == .inTransit || vm.trip.normalisedStatus == .inProgress {
                 Section("Route Monitoring") {
@@ -126,14 +126,14 @@ struct FleetManagerTripDetailView: View {
                                 Text("\(Int(vm.deviationRadius)) meters")
                                     .font(.subheadline.weight(.semibold))
                             }
-                            
+
                             Spacer()
-                            
+
                             Slider(value: $vm.deviationRadius, in: 100...2000, step: 100)
                                 .frame(width: 150)
                                 .tint(.TechBlue)
                         }
-                        
+
                         if vm.isRouteDeviated {
                             Button(action: { vm.approveCurrentDeviation() }) {
                                 HStack {
@@ -153,7 +153,7 @@ struct FleetManagerTripDetailView: View {
                     .padding(.vertical, 4)
                 }
             }
-            
+
             // MARK: - Status & Key Info
             Section {
                 HStack {
@@ -168,7 +168,7 @@ struct FleetManagerTripDetailView: View {
                     statusBadge
                 }
                 .padding(.vertical, 4)
-                
+
                 HStack(spacing: 0) {
                     TripStatItem(title: "Distance", value: String(format: "%.1f km", trip.distance_travelled ?? 0), icon: "road.lanes")
                     Divider().padding(.vertical, 8)
@@ -178,7 +178,7 @@ struct FleetManagerTripDetailView: View {
                 }
                 .listRowInsets(EdgeInsets(top: 12, leading: 0, bottom: 12, trailing: 0))
             }
-            
+
             // MARK: - Route Details
             Section("Route") {
                 VStack(alignment: .leading, spacing: 0) {
@@ -187,7 +187,7 @@ struct FleetManagerTripDetailView: View {
                 }
                 .padding(.vertical, 4)
             }
-            
+
             // MARK: - Schedule
             Section("Schedule") {
                 LabeledContent {
@@ -196,15 +196,26 @@ struct FleetManagerTripDetailView: View {
                 } label: {
                     Label("Pickup Time", systemImage: "calendar")
                 }
-                
+
                 LabeledContent {
                     Text(trip.formattedEstimatedDate)
                         .foregroundStyle(.primary)
                 } label: {
                     Label("Estimated Arrival", systemImage: "clock.badge.checkmark")
                 }
+
+                // Fuel usage — only shown once the trip is completed and data is available
+                if trip.normalisedStatus == .completed,
+                   let fuelUsed = vm.fullTrip?.fuel_used ?? trip.fuel_used {
+                    LabeledContent {
+                        Text(String(format: "%.2f L", fuelUsed))
+                            .foregroundStyle(.primary)
+                    } label: {
+                        Label("Fuel Used", systemImage: "fuelpump.fill")
+                    }
+                }
             }
-            
+
             // MARK: - Vehicle
             if let vehicle = vm.vehicle {
                 Section("Vehicle") {
@@ -214,7 +225,7 @@ struct FleetManagerTripDetailView: View {
                             .frame(width: 32, height: 32)
                             .background(Color.blue.gradient)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
-                        
+
                         VStack(alignment: .leading, spacing: 2) {
                             Text(vehicle.name)
                                 .font(.subheadline.weight(.semibold))
@@ -223,12 +234,12 @@ struct FleetManagerTripDetailView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    
+
                     LabeledContent("Type", value: vehicle.vehicleType ?? "N/A")
                     LabeledContent("Fuel", value: vehicle.fuelType ?? "N/A")
                 }
             }
-            
+
             // MARK: - Driver
             if let driver = vm.driver {
                 Section("Driver") {
@@ -237,7 +248,7 @@ struct FleetManagerTripDetailView: View {
                             .resizable()
                             .frame(width: 40, height: 40)
                             .foregroundStyle(.secondary)
-                        
+
                         VStack(alignment: .leading, spacing: 2) {
                             Text(driver.name)
                                 .font(.subheadline.weight(.semibold))
@@ -245,9 +256,9 @@ struct FleetManagerTripDetailView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        
+
                         Spacer()
-                        
+
                         if let phone = driver.phone {
                             Button {
                                 if let url = URL(string: "tel://\(phone)") {
@@ -259,7 +270,7 @@ struct FleetManagerTripDetailView: View {
                                     .foregroundStyle(.green)
                             }
                             .buttonStyle(.plain)
-                            
+
                             Button {
                                 // Message driver
                             } label: {
@@ -297,7 +308,9 @@ struct FleetManagerTripDetailView: View {
             await vm.refreshVehicleLocation()
         }
     }
-    
+
+    // MARK: - Helpers
+
     private func updateCameraPosition() {
         var coordinates: [CLLocationCoordinate2D] = []
         if let lat = trip.origin_latitude, let lng = trip.origin_longitude {
@@ -306,7 +319,6 @@ struct FleetManagerTripDetailView: View {
         if let lat = trip.destination_latitude, let lng = trip.destination_longitude {
             coordinates.append(CLLocationCoordinate2D(latitude: lat, longitude: lng))
         }
-        
         if !coordinates.isEmpty {
             cameraPosition = .automatic
         }
@@ -323,13 +335,13 @@ struct FleetManagerTripDetailView: View {
             ))
         }
     }
-    
+
     private func formatETA(_ minutes: Double) -> String {
         let hours = Int(minutes) / 60
         let mins = Int(minutes) % 60
         return hours > 0 ? "\(hours)h \(mins)m" : "\(mins)m"
     }
-    
+
     private var statusBadge: some View {
         Text(trip.normalisedStatus.displayTitle)
             .font(.caption.weight(.bold))
@@ -339,15 +351,15 @@ struct FleetManagerTripDetailView: View {
             .foregroundStyle(statusColor)
             .clipShape(Capsule())
     }
-    
+
     private var statusColor: Color {
         switch trip.normalisedStatus {
-        case .inTransit: return .orange
-        case .inProgress: return .blue
-        case .scheduled: return .purple
-        case .completed: return .green
-        case .cancelled: return .red
-        default: return .secondary
+        case .inTransit:  return Color(hex: "#F59E0B")  // Amber
+        case .inProgress: return Color(hex: "#3B82F6")  // Blue
+        case .scheduled:  return Color(hex: "#8B5CF6")  // Purple
+        case .completed:  return Color(hex: "#10B981")  // Emerald
+        case .cancelled:  return Color(hex: "#EF4444")  // Red
+        default:          return Color(.systemGray)
         }
     }
 }
@@ -358,7 +370,7 @@ struct TripStatItem: View {
     let title: String
     let value: String
     let icon: String
-    
+
     var body: some View {
         VStack(spacing: 4) {
             Image(systemName: icon)
@@ -381,7 +393,7 @@ struct RoutePointRow: View {
     let icon: String
     let color: Color
     let isLast: Bool
-    
+
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
             VStack(spacing: 0) {
@@ -389,7 +401,7 @@ struct RoutePointRow: View {
                     .font(.system(size: 14))
                     .foregroundStyle(color)
                     .background(Circle().fill(.white))
-                
+
                 if !isLast {
                     Rectangle()
                         .fill(Color.secondary.opacity(0.3))
@@ -397,7 +409,7 @@ struct RoutePointRow: View {
                 }
             }
             .frame(width: 20)
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.caption.weight(.bold))
@@ -428,9 +440,10 @@ struct MapPin: Identifiable {
             origin: "Mumbai, Maharashtra",
             destination: "Pune, Maharashtra",
             pickup_time: "2026-04-22T10:00:00Z",
-            status: "in_progress",
+            status: "completed",
             trip_number: "TR-001",
             distance_travelled: 150.5,
+            fuel_used: 12.4,
             fleet_manager_id: UUID(),
             origin_latitude: 19.0760,
             origin_longitude: 72.8777,

@@ -3,7 +3,7 @@ import Combine
 import Foundation
 import Supabase
 
-// MARK: - UI Models (Renamed to avoid conflict with MaintenanceTask)
+
 struct MaintenanceAlert: Identifiable {
     let id: UUID
     let unitNumber: String
@@ -15,7 +15,7 @@ struct MaintenanceAlert: Identifiable {
     let timeRemaining: String
 }
 
-// Renamed from MaintenanceStatus to MaintenanceAlertStatus
+
 enum MaintenanceAlertStatus: String {
     case overdue = "OVERDUE"
     case dueSoon = "DUE SOON"
@@ -50,7 +50,7 @@ final class FleetListViewModel: ObservableObject {
 
             let data = try JSONSerialization.jsonObject(with: response.data) as? [[String: Any]]
 
-            // 🚫 STEP 2: If assigned → block delete
+            
             if let data = data, !data.isEmpty {
                 DispatchQueue.main.async {
                     self.errorMessage = "Vehicle is currently assigned to an active trip"
@@ -58,7 +58,7 @@ final class FleetListViewModel: ObservableObject {
                 return
             }
 
-            // ✅ STEP 3: Safe to delete
+
             try await SupabaseManager.shared.client
                 .from("vehicles")
                 .delete()
@@ -76,7 +76,7 @@ final class FleetListViewModel: ObservableObject {
             }
         }
     }
-    func fetchVehicles() async {
+func fetchVehicles() async {
         isLoading = true
         do {
             let response = try await SupabaseManager.shared.client
@@ -97,20 +97,23 @@ final class FleetListViewModel: ObservableObject {
                     registration_date,
                     rc_expiry_date,
                     puc_expiry_date,
-                     created_at
+                    has_rc,
+                    has_insurance,
+                    has_puc,
+                    created_at
                 """)
                 .order("created_at", ascending: false)
                 .execute()
 
             let parsedVehicles = try Self.parseVehicles(from: response.data)
 
-                    // 1. Update the vehicle list
-                    self.vehicles = parsedVehicles
+            // 1. Update the vehicle list
+            self.vehicles = parsedVehicles
 
-                    // 2. TRIGGER THE CALCULATION (This was missing)
-                    self.calculateMonthlyReminders(from: parsedVehicles)
+            // 2. TRIGGER THE CALCULATION (This was missing)
+            self.calculateMonthlyReminders(from: parsedVehicles)
 
-                    isLoading = false
+            isLoading = false
         } catch {
             print("❌ Supabase Fetch Error: \(error)")
             isLoading = false
@@ -147,23 +150,19 @@ final class FleetListViewModel: ObservableObject {
                 )
             }
 
-            return nil // Return nil if the vehicle is not at a 6-month milestone
+            return nil
         }
     }
 
     func completeWorkOrder(workOrderId: UUID) async {
         do {
-            // 1. Update the Work Order Status
-            // This triggers the SQL 'tr_on_work_order_completed' on the server
+      
             try await SupabaseManager.shared.client
                 .from("work_orders")
-                .update(["status": "Completed"]) // ✅ Ensure casing matches your SQL ('Completed')
+                .update(["status": "Completed"])
                 .eq("work_order_id", value: workOrderId)
                 .execute()
 
-            // 2. Refresh Local UI
-            // Since the SQL Trigger modified the 'vehicles' and 'maintenance_issues' tables,
-            // we re-fetch everything to show the vehicle as 'Active' and remove the alert.
             await fetchVehicles()
             await fetchMaintenanceAlerts()
 
@@ -188,8 +187,7 @@ final class FleetListViewModel: ObservableObject {
                         number_plate
                     )
                 """)
-                // CHANGE: Now we ONLY pull "pending" items.
-                // This ignores "in_progress" and "completed".
+               
                 .eq("status", value: "pending")
                 .order("created_at", ascending: false)
                 .execute()
@@ -220,14 +218,14 @@ final class FleetListViewModel: ObservableObject {
     }
 }
 
-// MARK: - Parsing Helpers
+
 private extension FleetListViewModel {
     static func parseVehicles(from data: Data) throws -> [Vehicle] {
         guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
             throw NSError(domain: "FleetList", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid JSON"])
         }
 
-        return rows.compactMap { row in
+        return rows.compactMap { row -> Vehicle? in
             guard let idString = stringValue(row["vehicle_id"]),
                   let id = UUID(uuidString: idString) else { return nil }
 
@@ -248,6 +246,9 @@ private extension FleetListViewModel {
             vehicle.registrationDate = stringValue(row["registration_date"]) ?? ""
             vehicle.rcExpiryDate = stringValue(row["rc_expiry_date"]) ?? ""
             vehicle.pucExpiryDate = stringValue(row["puc_expiry_date"]) ?? ""
+            vehicle.hasRC = row["has_rc"] as? Bool ?? false
+            vehicle.hasInsurance = row["has_insurance"] as? Bool ?? false
+            vehicle.hasPUC = row["has_puc"] as? Bool ?? false
             return vehicle
         }
     }

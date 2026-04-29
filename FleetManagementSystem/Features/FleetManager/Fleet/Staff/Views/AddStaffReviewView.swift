@@ -71,6 +71,15 @@ struct AddStaffReviewView: View {
         .navigationTitle("Review")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button {
+                    onBack()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .fontWeight(.bold)
+                }
+                .disabled(model.isCreatingAccount)
+            }
             ToolbarItem(placement: .confirmationAction) {
                 Button(action: inviteUserAndSubmit) {
                     if model.isCreatingAccount {
@@ -82,7 +91,11 @@ struct AddStaffReviewView: View {
                 .disabled(model.isCreatingAccount)
             }
         }
-        .alert("Account Creation Failed", isPresented: .constant(model.errorMessage != nil)) {
+        .navigationBarBackButtonHidden(true)
+        .alert("Account Creation Failed", isPresented: Binding(
+            get: { model.errorMessage != nil },
+            set: { if !$0 { model.errorMessage = nil } }
+        )) {
             Button("OK") { model.errorMessage = nil }
         } message: {
             Text(model.errorMessage ?? "")
@@ -111,7 +124,7 @@ struct AddStaffReviewView: View {
                     formattedDate = nil
                 }
 
-                let url = URL(string: "https://qisdvwaldlghndrudbvr.supabase.co/functions/v1/invite-user")!
+                let url = URL(string: "https://wllkarmeeowxuddenxhh.supabase.co/functions/v1/invite-user")!
                 var req = URLRequest(url: url)
                 req.httpMethod = "POST"
 
@@ -123,7 +136,7 @@ struct AddStaffReviewView: View {
                 // ✅ Build request safely
                 var body: [String: Any] = [
                     "email": model.email,
-                    "role": model.selectedRole?.rawValue ?? "",
+                    "role": model.selectedRole?.dbValue ?? "",
                     "name": fullName,
                     "phone_no": model.phoneNo
                 ]
@@ -131,6 +144,11 @@ struct AddStaffReviewView: View {
                 if model.selectedRole == .driver {
                     body["license_no"] = model.licenceNumber
                     body["license_expiry"] = formattedDate
+                    
+                    // Upload image if exists
+                    if let imageURL = try await model.uploadLicenceImage() {
+                        body["license_image_url"] = imageURL
+                    }
                 }
 
                 req.httpBody = try JSONSerialization.data(withJSONObject: body)
