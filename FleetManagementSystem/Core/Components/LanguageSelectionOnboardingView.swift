@@ -18,7 +18,13 @@ struct LanguageSelectionOnboardingView: View {
             VStack(spacing: 16) {
                 Image(systemName: "globe")
                     .font(.system(size: 64))
-                    .foregroundStyle(AppTheme.primaryGreen)
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [Color.blue, Color.blue.opacity(0.85)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
                 
                 Text("Select Language")
                     .font(.title)
@@ -50,7 +56,7 @@ struct LanguageSelectionOnboardingView: View {
                             
                             if selectedLanguage == language.0 {
                                 Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(AppTheme.primaryGreen)
+                                    .foregroundStyle(.blue)
                                     .font(.title3)
                             }
                         }
@@ -58,8 +64,8 @@ struct LanguageSelectionOnboardingView: View {
                         .frame(maxWidth: .infinity)
                         .background(
                             RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
-                                .stroke(selectedLanguage == language.0 ? AppTheme.primaryGreen : AppTheme.separator, lineWidth: 2)
-                                .background(selectedLanguage == language.0 ? AppTheme.lightGreen.opacity(0.3) : Color.clear)
+                                .stroke(selectedLanguage == language.0 ? Color.blue : AppTheme.separator, lineWidth: 2)
+                                .background(selectedLanguage == language.0 ? Color.blue.opacity(0.1) : Color.clear)
                                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
                         )
                     }
@@ -70,15 +76,33 @@ struct LanguageSelectionOnboardingView: View {
             
             Spacer()
             
-            Button("Continue") {
+            Button {
                 withAnimation {
                     hasSelectedLanguage = true
                 }
+            } label: {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.blue, Color.blue.opacity(0.9)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                    
+                    Text("Continue")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.white)
+                }
+                .frame(height: 58)
+                .shadow(color: .blue.opacity(0.22), radius: 16, x: 0, y: 8)
             }
-            .buttonStyle(PrimaryButtonStyle())
+            .buttonStyle(.plain)
             .padding(.horizontal, 24)
             .padding(.bottom, 32)
             .disabled(selectedLanguage.isEmpty)
+            .opacity(selectedLanguage.isEmpty ? 0.65 : 1)
         }
         .environment(\.locale, .init(identifier: selectedLanguage))
     }
