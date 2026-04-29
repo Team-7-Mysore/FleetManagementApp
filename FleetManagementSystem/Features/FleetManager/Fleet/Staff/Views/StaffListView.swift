@@ -116,7 +116,7 @@ struct StaffListView: View {
                     }
                 }
                 .task { vm.fetchStaff() }
-                .refreshable { vm.fetchStaff() }
+                .refreshable { vm.fetchStaff(forceRefresh: true) }
                 .sheet(isPresented: $showFilter) {
                     StaffFilterSheet(vm: vm)
                         .presentationDetents([.medium])

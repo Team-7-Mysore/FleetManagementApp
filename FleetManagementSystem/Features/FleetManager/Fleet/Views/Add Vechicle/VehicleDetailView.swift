@@ -197,7 +197,7 @@ struct VehicleDetailView: View {
         ZStack(alignment: .bottomTrailing) {
             Group {
                 if let urlString = vehicle.imageURL, let url = URL(string: urlString) {
-                    AsyncImage(url: url) { image in
+                    CachedAsyncImage(url: url) { image in
                         image.resizable().scaledToFill()
                     } placeholder: {
                         Rectangle().fill(Color(.systemGray5))
