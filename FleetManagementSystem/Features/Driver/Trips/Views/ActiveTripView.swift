@@ -1,6 +1,7 @@
 import SwiftUI
 import MapKit
 import Supabase
+import Combine
 // MARK: - Active Trip View
 struct ActiveTripView: View {
     let trip: TripMap
@@ -25,6 +26,23 @@ struct ActiveTripView: View {
 
     // Route persistence — tracks the routes table row for this trip
     @State private var savedRouteId: UUID?
+
+    // Voice State
+    @StateObject private var voiceManager = VoiceManager()
+    @State private var detectedIntent: VoiceIntent? = nil
+    @State private var showVoiceUI = false
+    @State private var voiceIssueText = ""
+    @StateObject private var viewModel: DriverTripViewModel
+    
+    
+    @State private var recordingTimer: Timer?
+    @State private var remainingTime: Int = 10
+
+    init(trip: TripMap, user: User) {
+        self.trip = trip
+        self.user = user
+        self._viewModel = StateObject(wrappedValue: DriverTripViewModel(user: user))
+    }
 
     // Database points with fallbacks to demonstration points
     var startPoint: CLLocationCoordinate2D {
@@ -95,6 +113,33 @@ struct ActiveTripView: View {
                     showSOSConfirmation = true
                 }
                 .padding(.trailing, 20)
+                .padding(.bottom, 20)
+            }
+            .overlay(alignment: .bottomLeading) {
+                Button {
+                    if voiceManager.isListening {
+                        stopAndProcessVoice()
+                    } else {
+                        startListening()
+                    }
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(voiceManager.isListening ? Color.red : Color.blue)
+                            .frame(width: 60, height: 60)
+
+                        if voiceManager.isListening {
+                            Text("\(remainingTime)")
+                                .foregroundColor(.white)
+                                .font(.caption)
+                        } else {
+                            Image(systemName: "mic.fill")
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .shadow(radius: 4)
+                }
+                .padding(.leading, 20)
                 .padding(.bottom, 20)
             }
 
@@ -207,6 +252,40 @@ struct ActiveTripView: View {
                 vehicleType: "unknown"
             )
             ReportIssueView(user: user, vehicle: tripVehicle, activeTripId: trip.id)
+        }
+        .sheet(isPresented: $showVoiceUI) {
+            if let intent = detectedIntent {
+                VStack(spacing: 20) {
+                    Text("Detected Action")
+                        .font(.headline)
+                    Text(intent.displayText)
+                        .font(.title)
+                        .bold()
+                        .multilineTextAlignment(.center)
+                    HStack(spacing: 16) {
+                        Button("Retry") {
+                            showVoiceUI = false
+                            voiceManager.startListening()
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.gray.opacity(0.2))
+                        .cornerRadius(12)
+
+                        Button("Confirm") {
+                            showVoiceUI = false
+                            executeVoiceIntent(intent)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                    }
+                }
+                .padding()
+                .presentationDetents([.fraction(0.3), .medium])
+            }
         }
         .onAppear {
             // Seed emergency contact (replace with user-configurable value later)
@@ -362,6 +441,39 @@ struct ActiveTripView: View {
             MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
         ])
     }
+    
+    func startListening() {
+        remainingTime = 10
+
+        voiceManager.requestAuthorization()
+        voiceManager.startListening()
+
+        recordingTimer?.invalidate()
+
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { timer in
+            if remainingTime > 0 {
+                remainingTime -= 1
+            } else {
+                timer.invalidate()
+                stopAndProcessVoice()
+            }
+        }
+    }
+    
+    func stopAndProcessVoice() {
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+
+        voiceManager.stopListening()
+
+        let text = voiceManager.recognizedText
+        print("🧠 Final voice:", text)
+
+        let intent = IntentParser.parse(text)
+
+        detectedIntent = intent
+        showVoiceUI = true
+    }
 
     // MARK: - Route Persistence
 
@@ -467,6 +579,23 @@ struct ActiveTripView: View {
 
         if UIApplication.shared.canOpenURL(url) {
             UIApplication.shared.open(url)
+        }
+    }
+
+    private func executeVoiceIntent(_ intent: VoiceIntent) {
+        switch intent {
+        case .startTrip:
+            viewModel.startTrip(trip)
+        case .endTrip(let mileage):
+            viewModel.storeMileage(mileage)
+            router.path.append(AppRoute.vehicleInspection(trip, type: .postTrip))
+        case .fuel(let amount):
+            viewModel.storeFuel(amount)
+        case .issue(let desc):
+            voiceIssueText = desc
+            showReportIssue = true
+        case .unknown:
+            break
         }
     }
 }

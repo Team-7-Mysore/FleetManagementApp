@@ -12,6 +12,10 @@ final class DriverTripViewModel: ObservableObject {
     @Published var upcomingFilterDate: Date?
     @Published var completedFilterDate: Date?
     @Published private(set) var hasLoadedData = false
+    
+    // Voice intent properties
+    @Published var pendingMileage: Double? = nil
+    @Published var pendingFuel: Double? = nil
 
     private let user: User
     private var driverId: String?
@@ -209,5 +213,14 @@ final class DriverTripViewModel: ObservableObject {
                 print("❌ cancelTrip error:", error)
             }
         }
+    }
+    
+    // Voice intent methods
+    func storeMileage(_ value: Double?) {
+        pendingMileage = value
+    }
+
+    func storeFuel(_ value: Double?) {
+        pendingFuel = value
     }
 }
