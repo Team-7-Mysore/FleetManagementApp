@@ -4,15 +4,19 @@ import InputBarAccessoryView
 import Combine
 
 class ChatViewController: MessagesViewController {
-    
+
     var chatRoomId: UUID
     var currentUser: Sender
     var otherUser: Sender
     var viewModel: ChatViewModel
-    
+
     private var messages: [MessageKitMessage] = []
     private var cancellables = Set<AnyCancellable>()
     private let accentColor: UIColor
+
+    // Disable MessageKit's inputAccessoryView — SwiftUI handles the input bar
+    override var inputAccessoryView: UIView? { return nil }
+    override var canBecomeFirstResponder: Bool { return false }
 
     init(chatRoomId: UUID, currentUser: Sender, otherUser: Sender, viewModel: ChatViewModel, accentColor: UIColor) {
         self.chatRoomId = chatRoomId
@@ -23,11 +27,11 @@ class ChatViewController: MessagesViewController {
         super.init(nibName: nil, bundle: nil)
         self.hidesBottomBarWhenPushed = true
     }
-    
+
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
-    
+
     override func viewDidLoad() {
         super.viewDidLoad()
         
@@ -91,19 +95,37 @@ class ChatViewController: MessagesViewController {
                 self?.updateMessages(msgs)
             }
             .store(in: &cancellables)
+
+        viewModel.$participantLastRead
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.messagesCollectionView.reloadData()
+            }
+            .store(in: &cancellables)
     }
-    
+
     private func updateMessages(_ newMessages: [ChatMessage]) {
-        self.messages = newMessages.map { msg in
+        let mapped = newMessages.map { msg in
             let isCurrent = msg.senderId.uuidString == currentUser.senderId
             return MessageKitMessage(chatMessage: msg, senderName: isCurrent ? currentUser.displayName : otherUser.displayName)
         }
+        self.messages = mapped
         messagesCollectionView.reloadData()
         messagesCollectionView.scrollToLastItem(animated: true)
+        if !messages.isEmpty {
+            messagesCollectionView.reloadSections(IndexSet(integer: messages.count - 1))
+        }
     }
-    
+
     @objc private func dismissKeyboard() {
         view.endEditing(true)
+    }
+
+    private func setupCollectionView() {
+        messagesCollectionView.messagesDataSource = self
+        messagesCollectionView.messagesLayoutDelegate = self
+        messagesCollectionView.messagesDisplayDelegate = self
+        messagesCollectionView.messageCellDelegate = self
     }
     
     private func setupInputBar() {
@@ -149,32 +171,34 @@ extension ChatViewController: MessagesDisplayDelegate {
     func backgroundColor(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> UIColor {
         return isFromCurrentSender(message: message) ? accentColor : UIColor.systemGray6
     }
-    
+
     func textColor(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> UIColor {
         return isFromCurrentSender(message: message) ? .white : .label
     }
-    
+
     func messageStyle(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> MessageStyle {
         let corner: MessageStyle.TailCorner = isFromCurrentSender(message: message) ? .bottomRight : .bottomLeft
         return .bubbleTail(corner, .curved)
     }
+
+    func cellBottomLabelAttributedText(for message: MessageType, at indexPath: IndexPath) -> NSAttributedString? {
+        guard let status = receiptStatus(for: indexPath) else { return nil }
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: UIFont.systemFont(ofSize: 10, weight: .medium),
+            .foregroundColor: status.color
+        ]
+        return NSAttributedString(string: status.text, attributes: attributes)
+    }
 }
 
 // MARK: - MessagesLayoutDelegate & MessageCellDelegate
-extension ChatViewController: MessagesLayoutDelegate, MessageCellDelegate {}
+extension ChatViewController: MessagesLayoutDelegate, MessageCellDelegate {
+    func cellBottomLabelHeight(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> CGFloat {
+        return receiptStatus(for: indexPath) == nil ? 0 : 14
+    }
 
-// MARK: - InputBarAccessoryViewDelegate
-extension ChatViewController: InputBarAccessoryViewDelegate {
-    func inputBar(_ inputBar: InputBarAccessoryView, didPressSendButtonWith text: String) {
-        let content = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !content.isEmpty else { return }
-        
-        inputBar.inputTextView.text = ""
-        
-        Task {
-            let senderUUID = UUID(uuidString: currentUser.senderId) ?? UUID()
-            await viewModel.sendMessage(chatRoomId: chatRoomId, senderId: senderUUID, content: content)
-            loadMessages()
-        }
+    func cellBottomLabelAlignment(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> LabelAlignment? {
+        guard receiptStatus(for: indexPath) != nil else { return nil }
+        return LabelAlignment(textAlignment: .right, textInsets: UIEdgeInsets(top: 0, left: 0, bottom: 2, right: 10))
     }
 }

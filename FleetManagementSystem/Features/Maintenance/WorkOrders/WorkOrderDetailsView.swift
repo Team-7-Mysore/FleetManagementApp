@@ -577,7 +577,71 @@ struct WorkOrderDetailView: View {
             await MainActor.run { self.isLoading = false }
         }
     }
+
+    // MARK: - Decline & Delete Work Order
+    private func declineAndDeleteWorkOrder() async {
+        isSaving = true
+        cancelPendingSave()
+
+        do {
+            let client = SupabaseManager.shared.client
+            let session = try await client.auth.session
+            let currentUserId = session.user.id
+            let workOrderIdString = workOrder.workOrderId.uuidString
+
+            // 1. Send the Cancellation Notification
+            if let personnelId = workOrder.maintenancePersonnelId {
+                let declineNotification = NotificationInsertDTO(
+                    recipient_id: personnelId,
+                    sender_id: currentUserId,
+                    title: "Work Order Cancelled",
+                    message: "The work order '\(workOrder.issueTitle)' has been declined and removed.",
+                    type: NotificationType.maintenance.rawValue,
+                    related_entity_id: nil // Nil because the entity is being deleted
+                )
+
+                try await client
+                    .from("notifications")
+                    .insert(declineNotification)
+                    .execute()
+            }
+
+            // 2. Delete Work Order Parts (to avoid Foreign Key constraint errors)
+            try await client
+                .from("work_order_parts")
+                .delete()
+                .eq("work_order_id", value: workOrderIdString)
+                .execute()
+
+            // 3. Delete Work Order Tasks
+            try await client
+                .from("work_order_tasks")
+                .delete()
+                .eq("work_order_id", value: workOrderIdString)
+                .execute()
+
+            // 4. Finally, Delete the Work Order itself
+            try await client
+                .from("work_orders")
+                .delete()
+                .eq("work_order_id", value: workOrderIdString)
+                .execute()
+
+            print("✅ Work Order successfully declined and deleted.")
+
+            // Close the screen
+            await MainActor.run {
+                isSaving = false
+                dismiss()
+            }
+
+        } catch {
+            print("🚨 Error declining work order: \(error)")
+            await MainActor.run { isSaving = false }
+        }
+    }
 }
+
 
 // MARK: - Reusable UI Subviews
 

@@ -200,7 +200,13 @@ struct ActiveTripView: View {
             Text("This will immediately dial emergency contact. Only proceed in a genuine emergency.")
         }
         .sheet(isPresented: $showReportIssue) {
-            ReportIssueView(user: user, vehicle: nil)
+            let tripVehicle = Vehicle(
+                id: trip.vehicleId,
+                name: trip.startLocation,
+                registrationNumber: "",
+                vehicleType: "unknown"
+            )
+            ReportIssueView(user: user, vehicle: tripVehicle, activeTripId: trip.id)
         }
         .onAppear {
             // Seed emergency contact (replace with user-configurable value later)
@@ -220,8 +226,41 @@ struct ActiveTripView: View {
     private func fetchGeofences() async {
         let geofenceService = GeofenceService()
         do {
-            self.geofences = try await geofenceService.fetchGeofencesForVehicle(trip.vehicleId)
-            print("🗺️ ActiveTripView: Geofences loaded: \(geofences.count)")
+            // 1. Fetch geofences assigned to the vehicle
+            var allRelevantGeofences = try await geofenceService.fetchGeofencesForVehicle(trip.vehicleId)
+            
+            // 2. Fetch geofences at origin and destination
+            // We search within a small radius (e.g., 100m) to catch geofences that might be the source/destination
+            if let startCoord = trip.startCoordinate {
+                let nearOrigin = try await geofenceService.findOverlappingGeofences(
+                    latitude: startCoord.latitude,
+                    longitude: startCoord.longitude,
+                    radius: 100,
+                    excluding: nil
+                )
+                for g in nearOrigin {
+                    if !allRelevantGeofences.contains(where: { $0.id == g.id }) {
+                        allRelevantGeofences.append(g)
+                    }
+                }
+            }
+            
+            if let endCoord = trip.endCoordinate {
+                let nearDest = try await geofenceService.findOverlappingGeofences(
+                    latitude: endCoord.latitude,
+                    longitude: endCoord.longitude,
+                    radius: 100,
+                    excluding: nil
+                )
+                for g in nearDest {
+                    if !allRelevantGeofences.contains(where: { $0.id == g.id }) {
+                        allRelevantGeofences.append(g)
+                    }
+                }
+            }
+            
+            self.geofences = allRelevantGeofences
+            print("🗺️ ActiveTripView: Geofences loaded (Vehicle + Route): \(geofences.count)")
         } catch {
             print("❌ ActiveTripView: Failed to load geofences: \(error)")
         }

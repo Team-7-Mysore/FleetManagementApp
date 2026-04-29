@@ -18,10 +18,12 @@ struct ReportIssueView: View {
     @State private var issues: [IssueEntry] = [IssueEntry()]
     @State private var showDeleteConfirm: UUID? = nil
 
-    init(user: User, vehicle: Vehicle?) {
+    init(user: User, vehicle: Vehicle?, activeTripId: UUID? = nil) {
         self.user = user
         self.vehicle = vehicle
-        _vm = StateObject(wrappedValue: ReportIssueViewModel(user: user, vehicle: vehicle))
+        let viewModel = ReportIssueViewModel(user: user, vehicle: vehicle)
+        viewModel.activeTripId = activeTripId
+        _vm = StateObject(wrappedValue: viewModel)
     }
 
     private let categories = ["Mechanical", "Electrical", "Tyre/Wheel", "Fluid Leak", "Bodywork", "Safety", "Other"]

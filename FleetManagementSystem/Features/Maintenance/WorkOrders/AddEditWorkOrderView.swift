@@ -18,6 +18,13 @@ private struct WorkOrderVehicleFetch: Decodable, Identifiable {
     let vehicle_type: String?
 }
 
+// MARK: - NEW: Manager Fetch Model
+private struct ManagerFetch: Decodable, Identifiable {
+    let user_id: UUID
+    let name: String?
+    var id: UUID { user_id }
+}
+
 struct AddEditWorkOrderView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -72,6 +79,10 @@ struct AddEditWorkOrderView: View {
 
     // Saving State
     @State private var isSaving: Bool = false
+
+    // MARK: - NEW: Manager Selection States
+    @State private var showManagerSelection: Bool = false
+    @State private var availableManagers: [ManagerFetch] = []
 
     // Routing / Autofill Data
     var sourceIssueId: UUID?
@@ -131,6 +142,24 @@ struct AddEditWorkOrderView: View {
                 }
             }
         }
+        // MARK: - NEW: Manager Selection Dialog
+        .confirmationDialog("Select Manager for Approval", isPresented: $showManagerSelection, titleVisibility: .visible) {
+            ForEach(availableManagers) { manager in
+                // Simply use manager.name here
+                Button(manager.name!) {
+                    // Use user_id for the database
+                    saveWorkOrderToSupabase(targetManagerId: manager.user_id)
+                }
+            }
+
+            Button("Save Without Approval Route", role: .destructive) {
+                saveWorkOrderToSupabase(targetManagerId: nil)
+            }
+
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Who should approve this work order?")
+        }
         .task {
             await viewModel.fetchAllInventory()
             await fetchVehicles()
@@ -148,16 +177,15 @@ struct AddEditWorkOrderView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
-                    saveWorkOrderToSupabase()
+                    handleSaveAction() // Modified to handle the routing
                 } label: {
                     if isSaving {
                         ProgressView()
                     } else {
-                        Text("Save").fontWeight(.semibold).foregroundColor(isFormValid ? .blue : .gray)
+                        Text("Save").fontWeight(.semibold).foregroundColor(isFormValid ? Color(hex: "#A3352A") : .gray)
                     }
                 }.disabled(isSaving || !isFormValid)
             }
-            // Removed the redundant "Done" keyboard text dismiss button to clean up UI
         }
     }
 
@@ -414,13 +442,9 @@ struct AddEditWorkOrderView: View {
 
                 // 🔥 Auto-Fill Process (Runs when triggered from a Notification)
                 if let vId = preSelectedVehicleId, let autoVehicle = fetched.first(where: { $0.id == vId }) {
-                    // Set category to unlock models
                     self.selectedCategory = autoVehicle.vehicle_type
-                    // Set model to unlock plates
                     self.selectedModel = autoVehicle.vehicle_name
-                    // Select the specific license plate
                     self.selectedVehicleId = vId
-                    // Finally, visually update the info card
                     updateVehicleDetails(for: vId)
                 }
 
@@ -451,8 +475,48 @@ struct AddEditWorkOrderView: View {
         }
     }
 
+    // MARK: - NEW: Manager Fetch & Routing Logic
+
+    private func handleSaveAction() {
+        if let existingManagerId = self.managerId {
+            // Scenario 1: Came from notification, we know who to send the approval to.
+            saveWorkOrderToSupabase(targetManagerId: existingManagerId)
+        } else {
+            // Scenario 2: Came from "Plus" button, we need to ask the user.
+            fetchManagersAndPrompt()
+        }
+    }
+
+    private func fetchManagersAndPrompt() {
+        isSaving = true
+        Task {
+            do {
+                // Pointing to your "users" table and fetching exact columns
+                let fetched: [ManagerFetch] = try await SupabaseManager.shared.client
+                    .from("users")
+                    .select("user_id, name")
+                    .eq("role", value: "fleet_manager") // Note: Ensure "manager" matches exactly how it's stored in your custom role Enum
+                    .execute()
+                    .value
+
+                await MainActor.run {
+                    self.availableManagers = fetched
+                    self.isSaving = false
+                    self.showManagerSelection = true // Shows the Confirmation Dialog
+                }
+            } catch {
+                print("🚨 Error fetching managers: \(error)")
+                await MainActor.run {
+                    self.isSaving = false
+                    // Fallback to saving without approval if fetch fails
+                    self.saveWorkOrderToSupabase(targetManagerId: nil)
+                }
+            }
+        }
+    }
+
     // MARK: - Save Logic
-    private func saveWorkOrderToSupabase() {
+    private func saveWorkOrderToSupabase(targetManagerId: UUID?) {
         guard !isSaving else { return }
         guard let finalVehicleId = selectedVehicleId else { return }
 
@@ -512,7 +576,8 @@ struct AddEditWorkOrderView: View {
                         .execute()
                 }
 
-                if let actualManagerId = self.managerId {
+                // 🔥 Trigger approval notification using the targetManagerId passed in
+                if let actualManagerId = targetManagerId {
                     let session = try await SupabaseManager.shared.client.auth.session
                     let currentUserId = session.user.id
 
@@ -530,6 +595,7 @@ struct AddEditWorkOrderView: View {
                         .insert(approvalNotification)
                         .execute()
                 }
+
                 await MainActor.run {
                     isSaving = false
                     dismiss()

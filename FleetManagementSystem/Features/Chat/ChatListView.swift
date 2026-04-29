@@ -83,10 +83,14 @@ struct ChatListView: View {
         .task {
             await viewModel.fetchUsers(currentUserId: currentUserId)
             await viewModel.fetchChatRooms(userId: currentUserId)
+            await viewModel.startChatRoomsRealtime(userId: currentUserId)
         }
         .refreshable {
             await viewModel.fetchUsers(currentUserId: currentUserId)
             await viewModel.fetchChatRooms(userId: currentUserId)
+        }
+        .onDisappear {
+            Task { await viewModel.stopChatRoomsRealtime() }
         }
     }
 
@@ -208,25 +212,12 @@ struct DetailWrapper: View {
     let currentUserId: UUID
     let viewModel: ChatViewModel
 
-    private var otherUserInfo: (id: UUID, name: String)? {
-        guard let otherUserId = chat.participantIds.first(where: { $0 != currentUserId }) else {
-            return nil
-        }
-        guard let user = viewModel.users.first(where: { $0.id == otherUserId }) else {
-            return nil
-        }
-        return (id: otherUserId, name: user.name)
-    }
-
     var body: some View {
-        ChatDetailRepresentable(
-            chatRoomId: chat.id,
-            currentUser: Sender(senderId: currentUserId.uuidString, displayName: "Me"),
-            otherUser: Sender(
-                senderId: otherUserInfo?.id.uuidString ?? UUID().uuidString,
-                displayName: otherUserInfo?.name ?? "Chat"
-            ),
-            viewModel: viewModel, accentUIColor: .tintColor
+        ChatDetailView(
+            viewModel: viewModel,
+            chatRoom: chat,
+            currentUserId: currentUserId,
+            globalAccent: AppTheme.primaryGreen
         )
         .navigationTitle(otherUserInfo?.name ?? "Chat")
         .navigationBarTitleDisplayMode(.inline)

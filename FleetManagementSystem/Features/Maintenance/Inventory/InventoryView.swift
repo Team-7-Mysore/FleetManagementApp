@@ -93,29 +93,29 @@ struct InventoryView: View {
             }
             .navigationTitle("Inventory")
             .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    // 🔔 Notification Bell
-                    Button {
-                        showNotifications = true
-                    } label: {
-                        ZStack {
-                            Image(systemName: "bell")
-                                .font(.system(size: 18, weight: .medium))
-                                .foregroundColor(Color(hex:"#A3352A"))
-                        }
-                    }
-                    
-                    // 👤 Profile Icon
-                    Button {
-                        showingProfile = true
-                    } label: {
-                        Image(systemName: "person.circle")
-                            .font(.title3)
-                            .foregroundColor(Color(hex:"#A3352A"))
-                    }
-                }
-            }
+//            .toolbar {
+//                ToolbarItemGroup(placement: .topBarTrailing) {
+//                    // 🔔 Notification Bell
+//                    Button {
+//                        showNotifications = true
+//                    } label: {
+//                        ZStack {
+//                            Image(systemName: "bell")
+//                                .font(.system(size: 18, weight: .medium))
+//                                .foregroundColor(Color(hex:"#A3352A"))
+//                        }
+//                    }
+//                    
+//                    // 👤 Profile Icon
+//                    Button {
+//                        showingProfile = true
+//                    } label: {
+//                        Image(systemName: "person.circle")
+//                            .font(.title3)
+//                            .foregroundColor(Color(hex:"#A3352A"))
+//                    }
+//                }
+//            }
             .overlay(alignment: .bottomTrailing) {
                 ZStack(alignment: .bottomTrailing) {
                     if showOptions {

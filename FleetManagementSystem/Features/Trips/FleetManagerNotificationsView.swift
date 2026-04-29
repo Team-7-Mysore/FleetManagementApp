@@ -59,6 +59,12 @@ struct FleetManagerNotificationsView: View {
 
                             let currentNotif = notifications[index]
 
+                            // Check if we should open the modal
+                            let destination = notificationDestination(for: currentNotif)
+                            if case .none = destination {
+                                return
+                            }
+
                             // 2. Clear old data and show modal IMMEDIATELY
                             routingWorkOrder = nil
                             routingDriverReport = nil
@@ -249,6 +255,8 @@ struct FleetManagerNotificationsView: View {
                 }
             case .unsupported(let message):
                 await MainActor.run { self.fetchError = message }
+            case .none:
+                break
             }
         } catch {
             await MainActor.run { self.fetchError = error.localizedDescription }
@@ -261,7 +269,7 @@ struct FleetManagerNotificationsView: View {
         if notification.type == .maintenance { return .workOrder }
         if notification.type == .driverReport { return .driverReport }
         if normalizedTitle.contains("issue reported") || normalizedTitle.contains("driver report") { return .driverReport }
-        if normalizedTitle.contains("route deviation") { return .unsupported("This alert does not open a detail screen.") }
+        if normalizedTitle.contains("route deviation") || normalizedMessage.contains("route deviation") { return .none }
         return .unsupported("Notification type not supported yet.")
     }
 
@@ -378,6 +386,7 @@ private enum NotificationDestination {
     case workOrder
     case driverReport
     case unsupported(String)
+    case none
 }
 
 // MARK: - Modal Container
