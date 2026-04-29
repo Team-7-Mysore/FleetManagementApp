@@ -354,4 +354,49 @@ final class TripListViewModel: ObservableObject {
          print("🚨 Failed to update unread count: \(error)")
       }
    }
+
+   // MARK: - Maintenance Approval Actions
+
+   /// Approves a pending work order — sets is_approved = true, keeps status as Pending
+   /// so the maintenance team can proceed with the work.
+   func approveWorkOrder(_ workOrder: WorkOrder) async {
+      do {
+         struct ApprovalUpdate: Encodable {
+            let is_approved: Bool
+         }
+         try await SupabaseManager.shared.client
+            .from("work_orders")
+            .update(ApprovalUpdate(is_approved: true))
+            .eq("work_order_id", value: workOrder.workOrderId.uuidString)
+            .execute()
+
+         // Update local list immediately so UI reflects change without a full refresh
+         if let index = workOrders.firstIndex(where: { $0.workOrderId == workOrder.workOrderId }) {
+            workOrders[index].isApproved = true
+         }
+         print("✅ Work order \(workOrder.workOrderId) approved")
+      } catch {
+         print("❌ Failed to approve work order: \(error)")
+      }
+   }
+
+   /// Declines a pending work order — sets status to Cancelled.
+   func declineWorkOrder(_ workOrder: WorkOrder) async {
+      do {
+         struct DeclineUpdate: Encodable {
+            let status: String
+         }
+         try await SupabaseManager.shared.client
+            .from("work_orders")
+            .update(DeclineUpdate(status: WorkOrderStatus.cancelled.rawValue))
+            .eq("work_order_id", value: workOrder.workOrderId.uuidString)
+            .execute()
+
+         // Remove from local list immediately
+         workOrders.removeAll { $0.workOrderId == workOrder.workOrderId }
+         print("✅ Work order \(workOrder.workOrderId) declined")
+      } catch {
+         print("❌ Failed to decline work order: \(error)")
+      }
+   }
 }

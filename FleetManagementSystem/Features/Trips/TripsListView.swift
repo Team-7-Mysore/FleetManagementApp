@@ -19,8 +19,7 @@ struct TripsListView: View {
 
     // MARK: - Computed Properties for Separation
     private var pendingApprovals: [WorkOrder] {
-        // Only show pending work orders that haven't been approved yet
-        vm.vehiclesInMaintenance.filter { $0.status == .pending && $0.isApproved == false }
+        vm.vehiclesInMaintenance.filter { $0.status == .pending }
     }
 
     private var activeMaintenance: [WorkOrder] {
@@ -196,49 +195,25 @@ struct TripsListView: View {
     private var pendingApprovalsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                HStack(spacing: 8) {
-                    Text("Pending Approvals")
-                        .font(.title3.weight(.semibold))
-                        .foregroundColor(.primary)
-
-                    // Count badge
-                    Text("\(pendingApprovals.count)")
-                        .font(.caption.weight(.bold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(Color.orange)
-                        .clipShape(Capsule())
-                }
+                Text("Pending Approvals")
+                    .font(.title3.weight(.semibold))
+                    .foregroundColor(.primary)
 
                 Spacer()
 
-                NavigationLink("View All", destination: AllMaintenanceView())
+                NavigationLink("View All", destination: AllPendingApprovalsView())
                     .font(.subheadline.weight(.semibold))
                     .foregroundColor(.TechBlue)
             }
 
             ForEach(Array(pendingApprovals.prefix(3))) { workOrder in
-                Button(action: {
+                PendingApprovalCard(workOrder: workOrder) {
+                    Task { await vm.approveWorkOrder(workOrder) }
+                } onDecline: {
+                    Task { await vm.declineWorkOrder(workOrder) }
+                } onTap: {
                     selectedWorkOrder = workOrder
-                }) {
-                    MaintenanceVehicleCard(workOrder: workOrder)
                 }
-                .buttonStyle(.plain)
-            }
-
-            // Show overflow hint if more than 3
-            if pendingApprovals.count > 3 {
-                NavigationLink(destination: AllMaintenanceView()) {
-                    Text("+ \(pendingApprovals.count - 3) more awaiting approval")
-                        .font(.subheadline)
-                        .foregroundColor(.TechBlue)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color.orange.opacity(0.08))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                .buttonStyle(.plain)
             }
         }
     }
@@ -402,6 +377,84 @@ struct EnhancedTripCard: View {
     }
 }
 
+
+// MARK: - Pending Approval Card (tap to view details)
+// Swipe actions (approve/decline) are applied at the List row level in AllPendingApprovalsView.
+// The dashboard uses ScrollView so swipe is not available there — use "View All" to access swipe.
+struct PendingApprovalCard: View {
+    let workOrder: WorkOrder
+    let onApprove: () -> Void
+    let onDecline: () -> Void
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(alignment: .top, spacing: 12) {
+                // Icon
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.orange.opacity(0.12))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "wrench.and.screwdriver.fill")
+                        .font(.system(size: 18))
+                        .foregroundColor(.orange)
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(workOrder.vehicle?.vehicleName ?? workOrder.vehicle?.numberPlate ?? "Fleet Vehicle")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.primary)
+
+                    Text(workOrder.issueTitle)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+
+                    HStack(spacing: 6) {
+                        Text(workOrder.priority.rawValue)
+                            .font(.caption2.weight(.bold))
+                            .foregroundColor(priorityColor)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(priorityColor.opacity(0.12))
+                            .clipShape(Capsule())
+
+                        if let plate = workOrder.vehicle?.numberPlate {
+                            Text(plate)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .padding(.top, 2)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(Color(.tertiaryLabel))
+            }
+            .padding(14)
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: Color.orange.opacity(0.08), radius: 8, x: 0, y: 4)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.orange.opacity(0.15), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var priorityColor: Color {
+        switch workOrder.priority {
+        case .urgent: return .red
+        case .high:   return .orange
+        case .medium: return .yellow
+        case .low:    return .green
+        }
+    }
+}
 
 // MARK: - Maintenance Vehicle Card
 struct MaintenanceVehicleCard: View {
