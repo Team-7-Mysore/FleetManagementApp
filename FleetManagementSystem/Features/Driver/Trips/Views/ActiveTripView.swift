@@ -10,6 +10,7 @@ struct ActiveTripView: View {
     @State private var elapsedTime: TimeInterval = 0
     @State private var showEndTripConfirmation = false
     @State private var showReportIssue = false
+    @State private var showVoiceLog = false
     @State private var timer: Timer?
 
     // SOS State
@@ -127,6 +128,20 @@ struct ActiveTripView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
 
+                    // Voice Log Button
+                    Button { showVoiceLog = true } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "mic.fill")
+                            Text("Voice Log")
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(AppTheme.primaryGreen)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 46)
+                        .background(AppTheme.primaryGreen.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+
                     HStack(spacing: 12) {
                         Button { showReportIssue = true } label: {
                             HStack(spacing: 6) {
@@ -207,6 +222,9 @@ struct ActiveTripView: View {
                 vehicleType: "unknown"
             )
             ReportIssueView(user: user, vehicle: tripVehicle, activeTripId: trip.id)
+        }
+        .sheet(isPresented: $showVoiceLog) {
+            VoiceTripLogView(trip: trip)
         }
         .onAppear {
             // Seed emergency contact (replace with user-configurable value later)

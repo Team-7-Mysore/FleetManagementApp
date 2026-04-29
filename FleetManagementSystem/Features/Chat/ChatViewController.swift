@@ -88,7 +88,46 @@ class ChatViewController: MessagesViewController {
     private func updateMessages(_ newMessages: [ChatMessage]) {
         let mapped = newMessages.map { msg in
             let isCurrent = msg.senderId.uuidString == currentUser.senderId
-            return MessageKitMessage(chatMessage: msg, senderName: isCurrent ? currentUser.displayName : otherUser.displayName)
+            let content = msg.content ?? ""
+            
+            // Format time
+            let timeFormatter = DateFormatter()
+            timeFormatter.timeStyle = .short
+            let timeString = timeFormatter.string(from: msg.createdAt ?? Date())
+            
+            // Font and Colors
+            let mainFont = UIFont.systemFont(ofSize: 16)
+            let mainColor = isCurrent ? UIColor.white : UIColor.label
+            let metaFont = UIFont.systemFont(ofSize: 11)
+            let metaColor = isCurrent ? UIColor.white.withAlphaComponent(0.7) : UIColor.secondaryLabel
+            
+            // Add non-breaking spaces for spacing between text and timestamp
+            let attributedString = NSMutableAttributedString(string: content + "\u{00A0}\u{00A0}\u{00A0}", attributes: [
+                .font: mainFont,
+                .foregroundColor: mainColor
+            ])
+            
+            // Build metadata string (time + ticks)
+            var metaText = timeString
+            if isCurrent {
+                var isRead = false
+                if let otherId = UUID(uuidString: otherUser.senderId),
+                   let lastReadAt = viewModel.participantLastRead[otherId],
+                   let messageDate = msg.createdAt {
+                    isRead = lastReadAt >= messageDate
+                }
+                // ✓ is \u{2713}
+                metaText += isRead ? " \u{2713}\u{2713}" : " \u{2713}"
+            }
+            
+            let metaString = NSAttributedString(string: metaText, attributes: [
+                .font: metaFont,
+                .foregroundColor: metaColor
+            ])
+            
+            attributedString.append(metaString)
+            
+            return MessageKitMessage(chatMessage: msg, senderName: isCurrent ? currentUser.displayName : otherUser.displayName, customKind: .attributedText(attributedString))
         }
         self.messages = mapped
         messagesCollectionView.reloadData()
@@ -109,32 +148,7 @@ class ChatViewController: MessagesViewController {
         messagesCollectionView.messageCellDelegate = self
     }
 
-    private func receiptStatus(for indexPath: IndexPath) -> (text: String, color: UIColor)? {
-        guard indexPath.section < viewModel.messages.count else { return nil }
-        guard let lastOutgoingIndex = lastOutgoingMessageIndex(), lastOutgoingIndex == indexPath.section else {
-            return nil
-        }
 
-        guard let otherId = UUID(uuidString: otherUser.senderId) else {
-            return ("Delivered", UIColor.secondaryLabel)
-        }
-        let lastReadAt = viewModel.participantLastRead[otherId]
-        let message = viewModel.messages[indexPath.section]
-        let messageDate = message.createdAt ?? Date.distantPast
-        if let lastReadAt = lastReadAt, lastReadAt >= messageDate {
-            return ("Read", accentColor)
-        }
-        return ("Delivered", UIColor.secondaryLabel)
-    }
-
-    private func lastOutgoingMessageIndex() -> Int? {
-        for index in viewModel.messages.indices.reversed() {
-            if viewModel.messages[index].senderId.uuidString == currentUser.senderId {
-                return index
-            }
-        }
-        return nil
-    }
 
     private func loadMessages() {
         Task {
@@ -176,25 +190,8 @@ extension ChatViewController: MessagesDisplayDelegate {
         let corner: MessageStyle.TailCorner = isFromCurrentSender(message: message) ? .bottomRight : .bottomLeft
         return .bubbleTail(corner, .curved)
     }
-
-    func cellBottomLabelAttributedText(for message: MessageType, at indexPath: IndexPath) -> NSAttributedString? {
-        guard let status = receiptStatus(for: indexPath) else { return nil }
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: UIFont.systemFont(ofSize: 10, weight: .medium),
-            .foregroundColor: status.color
-        ]
-        return NSAttributedString(string: status.text, attributes: attributes)
-    }
 }
 
 // MARK: - MessagesLayoutDelegate & MessageCellDelegate
 extension ChatViewController: MessagesLayoutDelegate, MessageCellDelegate {
-    func cellBottomLabelHeight(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> CGFloat {
-        return receiptStatus(for: indexPath) == nil ? 0 : 14
-    }
-
-    func cellBottomLabelAlignment(for message: MessageType, at indexPath: IndexPath, in messagesCollectionView: MessagesCollectionView) -> LabelAlignment? {
-        guard receiptStatus(for: indexPath) != nil else { return nil }
-        return LabelAlignment(textAlignment: .right, textInsets: UIEdgeInsets(top: 0, left: 0, bottom: 2, right: 10))
-    }
 }
