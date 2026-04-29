@@ -14,7 +14,18 @@ final class TripListViewModel: ObservableObject {
    @Published var isLoading = false
    @Published var searchText = ""
    @Published var unreadNotificationCount: Int = 0
-   private var channels: [RealtimeChannelV2] = []
+   private var cancellables = Set<AnyCancellable>()
+
+   // MARK: - Cache timestamps (5-minute TTL for slow-changing tables)
+   private static let cacheTTL: TimeInterval = 300
+   private var lastVehicleFetch: Date?
+   private var lastWorkOrderFetch: Date?
+   private var lastDriverFetch: Date?
+
+   // MARK: - Debounce subjects for realtime events
+   private let tripsRefreshSubject    = PassthroughSubject<Void, Never>()
+   private let vehiclesRefreshSubject = PassthroughSubject<Void, Never>()
+   private let workOrdersRefreshSubject = PassthroughSubject<Void, Never>()
 
 
    /// Trips that are currently ongoing (in transit or in progress)
@@ -193,7 +204,14 @@ final class TripListViewModel: ObservableObject {
        }
    }
 
-   private func fetchVehicles() async {
+   private func fetchVehicles(ignoreCache: Bool = false) async {
+       // Skip if data is still fresh, unless explicitly bypassed
+       if !ignoreCache,
+          let last = lastVehicleFetch,
+          Date().timeIntervalSince(last) < Self.cacheTTL {
+           print("⏭️ Vehicles cache still valid, skipping fetch")
+           return
+       }
        do {
            let response: [Vehicle] = try await SupabaseManager.shared.client
                .from("vehicles")
@@ -201,13 +219,21 @@ final class TripListViewModel: ObservableObject {
                .execute()
                .value
            vehicles = response
+           lastVehicleFetch = Date()
            print("✅ Fetched \(vehicles.count) vehicles")
        } catch {
            print("❌ FetchVehicles error: \(error)")
        }
    }
 
-   private func fetchWorkOrders() async {
+   private func fetchWorkOrders(ignoreCache: Bool = false) async {
+       // Skip if data is still fresh, unless explicitly bypassed
+       if !ignoreCache,
+          let last = lastWorkOrderFetch,
+          Date().timeIntervalSince(last) < Self.cacheTTL {
+           print("⏭️ WorkOrders cache still valid, skipping fetch")
+           return
+       }
        do {
            let response: [WorkOrder] = try await SupabaseManager.shared.client
                .from("work_orders")
@@ -215,13 +241,21 @@ final class TripListViewModel: ObservableObject {
                .execute()
                .value
            workOrders = response
+           lastWorkOrderFetch = Date()
            print("✅ Fetched \(workOrders.count) work orders")
        } catch {
            print("❌ FetchWorkOrders error: \(error)")
        }
    }
 
-   private func fetchDrivers() async {
+   private func fetchDrivers(ignoreCache: Bool = false) async {
+       // Skip if data is still fresh, unless explicitly bypassed
+       if !ignoreCache,
+          let last = lastDriverFetch,
+          Date().timeIntervalSince(last) < Self.cacheTTL {
+           print("⏭️ Drivers cache still valid, skipping fetch")
+           return
+       }
        do {
            let response: [Driver] = try await SupabaseManager.shared.client
               .from("drivers")
@@ -229,6 +263,7 @@ final class TripListViewModel: ObservableObject {
               .execute()
               .value
            drivers = response
+           lastDriverFetch = Date()
            print("✅ Fetched \(drivers.count) drivers")
        } catch {
            print("❌ FetchDrivers error: \(error)")
@@ -236,76 +271,70 @@ final class TripListViewModel: ObservableObject {
    }
 
    init() {
-      Task { await setupRealtimeListeners() }
+      setupObservers()
+      Task {
+          await RealtimeManager.shared.startAll()
+          if let session = try? await SupabaseManager.shared.client.auth.session {
+              await updateUnreadCount(userId: session.user.id)
+          }
+      }
    }
 
-   func setupRealtimeListeners() async {
-      guard channels.isEmpty else { return }
-      let client = SupabaseManager.shared.client
-      
-      do {
-         let session = try await client.auth.session
-         let userId = session.user.id
-         
-         // 1. Trips Channel
-         let tripsChannel = client.realtimeV2.channel("dashboard-trips")
-         let tripChanges = tripsChannel.postgresChange(AnyAction.self, schema: "public", table: "trips")
-         try await tripsChannel.subscribe()
-         channels.append(tripsChannel)
-         
-         // 2. Vehicles Channel
-         let vehiclesChannel = client.realtimeV2.channel("dashboard-vehicles")
-         let vehicleChanges = vehiclesChannel.postgresChange(AnyAction.self, schema: "public", table: "vehicles")
-         try await vehiclesChannel.subscribe()
-         channels.append(vehiclesChannel)
-         
-         // 3. Work Orders Channel
-         let woChannel = client.realtimeV2.channel("dashboard-wo")
-         let woChanges = woChannel.postgresChange(AnyAction.self, schema: "public", table: "work_orders")
-         try await woChannel.subscribe()
-         channels.append(woChannel)
-         
-         // 4. Notifications Channel
-         let notifChannel = client.realtimeV2.channel("dashboard-notifs")
-         let notifChanges = notifChannel.postgresChange(
-            AnyAction.self, 
-            schema: "public", 
-            table: "notifications"
-         )
-         try await notifChannel.subscribe()
-         channels.append(notifChannel)
-         
-         Task {
-            for await _ in tripChanges { await fetchTrips() }
-         }
-         Task {
-            for await _ in vehicleChanges { await fetchTrips() }
-         }
-         Task {
-            for await _ in woChanges { await fetchTrips() }
-         }
-         Task {
-            for await action in notifChanges { 
-                // Only refresh if the change is for this user
-                let recipientId: String? = {
-                    switch action {
-                    case .insert(let act): return act.record["recipient_id"]?.stringValue
-                    case .update(let act): return act.record["recipient_id"]?.stringValue
-                    case .delete(let act): return act.oldRecord["recipient_id"]?.stringValue
-                    default: return nil
-                    }
-                }()
-                
-                if recipientId == userId.uuidString {
-                    await updateUnreadCount(userId: userId) 
-                }
-            }
-         }
-         
-         await updateUnreadCount(userId: userId)
-      } catch {
-         print("🚨 Realtime setup failed: \(error)")
-      }
+   private func setupObservers() {
+      // Trips: debounce 500ms — a burst of trip events fires only one fetch
+      tripsRefreshSubject
+          .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+          .sink { [weak self] in Task { await self?.fetchTrips() } }
+          .store(in: &cancellables)
+
+      // Vehicles: debounce 500ms — only re-fetch vehicles, not all 4 tables
+      vehiclesRefreshSubject
+          .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+          .sink { [weak self] in Task { await self?.fetchVehicles(ignoreCache: true) } }
+          .store(in: &cancellables)
+
+      // Work orders: debounce 500ms — only re-fetch work orders
+      workOrdersRefreshSubject
+          .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
+          .sink { [weak self] in Task { await self?.fetchWorkOrders(ignoreCache: true) } }
+          .store(in: &cancellables)
+
+      NotificationCenter.default.publisher(for: .tripsUpdated)
+          .sink { [weak self] _ in self?.tripsRefreshSubject.send() }
+          .store(in: &cancellables)
+
+      NotificationCenter.default.publisher(for: .vehiclesUpdated)
+          .sink { [weak self] _ in self?.vehiclesRefreshSubject.send() }
+          .store(in: &cancellables)
+
+      NotificationCenter.default.publisher(for: .workOrdersUpdated)
+          .sink { [weak self] _ in self?.workOrdersRefreshSubject.send() }
+          .store(in: &cancellables)
+
+      NotificationCenter.default.publisher(for: .notificationsUpdated)
+          .sink { [weak self] notification in
+              Task {
+                  guard let self = self else { return }
+                  if let action = notification.object as? AnyAction,
+                     let session = try? await SupabaseManager.shared.client.auth.session {
+                      
+                      let userId = session.user.id
+                      let recipientId: String? = {
+                          switch action {
+                          case .insert(let act): return act.record["recipient_id"]?.stringValue
+                          case .update(let act): return act.record["recipient_id"]?.stringValue
+                          case .delete(let act): return act.oldRecord["recipient_id"]?.stringValue
+                          default: return nil
+                          }
+                      }()
+                      
+                      if recipientId == userId.uuidString {
+                          await self.updateUnreadCount(userId: userId)
+                      }
+                  }
+              }
+          }
+          .store(in: &cancellables)
    }
 
    private func updateUnreadCount(userId: UUID) async {

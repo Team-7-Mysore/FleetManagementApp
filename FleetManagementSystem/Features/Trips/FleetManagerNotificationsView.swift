@@ -5,20 +5,22 @@ struct FleetManagerNotificationsView: View {
     @State private var notifications: [AppNotification] = []
     @State private var isLoading = true
     @State private var unreadCount: Int = 0
+    // Cached once during fetchNotifications() — avoids auth.session calls in the realtime loop
+    @State private var resolvedUserId: UUID?
 
     // MARK: - Routing State for Modal
     @State private var routingWorkOrder: WorkOrder? = nil
     @State private var routingDriverReport: DriverReport? = nil
     @State private var fetchError: String? = nil
     @State private var isRoutingActive = false
+    @State private var showingClearConfirmation = false
+    @State private var selectedNotifications = Set<UUID>()
+    @State private var editMode: EditMode = .inactive
 
     var onUnreadCountChanged: ((Int) -> Void)? = nil
 
     // User Context
     let userId: UUID?
-
-    // Real-time channel
-    @State private var realtimeChannel: RealtimeChannelV2?
 
     init(userId: UUID? = nil, onUnreadCountChanged: ((Int) -> Void)? = nil) {
         self.userId = userId
@@ -43,88 +45,130 @@ struct FleetManagerNotificationsView: View {
                 }
             } else {
                 List {
-                    ForEach(notifications.indices, id: \.self) { index in
-                        Button(action: {
-                            // 1. Handle Unread Status
-                            if !notifications[index].isRead {
-                                notifications[index].isRead = true
-                                unreadCount = max(0, unreadCount - 1)
-                                onUnreadCountChanged?(unreadCount)
-
-                                let notifId = notifications[index].id
-                                Task {
-                                    await markNotificationAsReadInDB(notificationId: notifId)
-                                }
-                            }
-
-                            let currentNotif = notifications[index]
-
-                            // Check if we should open the modal
-                            let destination = notificationDestination(for: currentNotif)
-                            if case .none = destination {
-                                return
-                            }
-
-                            // 2. Clear old data and show modal IMMEDIATELY
-                            routingWorkOrder = nil
-                            routingDriverReport = nil
-                            fetchError = nil
-                            isRoutingActive = true
-
-                            // 3. Fetch the actual data in the background
-                            Task {
-                                await fetchDataAndRoute(currentNotif)
-                            }
-                        }) {
-                            HStack(alignment: .top, spacing: 12) {
-                                Circle()
-                                    .fill(notifications[index].isRead ? Color.clear : Color.blue)
-                                    .frame(width: 10, height: 10)
-                                    .padding(.top, 5)
-
-                                VStack(alignment: .leading, spacing: 6) {
-                                    HStack {
-                                        Image(systemName: notifications[index].type.systemImage)
-                                            .foregroundColor(notifications[index].isRead ? .gray : .blue)
-
-                                        Text(notifications[index].title)
-                                            .font(.headline)
-                                            .fontWeight(notifications[index].isRead ? .regular : .bold)
-                                            .foregroundColor(.primary)
-                                    }
-
-                                    Text(notifications[index].message)
-                                        .font(.subheadline)
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(2)
-
-                                    Text(notifications[index].createdAt, style: .time)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                        .padding(.top, 2)
-                                }
-                            }
-                            .padding(.vertical, 4)
-                            .opacity(notifications[index].isRead ? 0.6 : 1.0)
-                        }
-                        .buttonStyle(PlainButtonStyle())
+                    ForEach(notifications) { notification in
+                        notificationRow(for: notification)
                     }
+                    .onDelete(perform: deleteFromSwipe)
                 }
                 .listStyle(.insetGrouped)
+                .environment(\.editMode, $editMode)
             }
         }
         .navigationTitle("Notifications")
         .navigationBarTitleDisplayMode(.large)
+        .navigationBarBackButtonHidden(editMode == .active)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                if editMode == .active {
+                    Button {
+                        withAnimation {
+                            editMode = .inactive
+                        }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .fontWeight(.bold)
+                    }
+                }
+            }
+
+            ToolbarItem(placement: .topBarTrailing) {
+                if editMode == .active {
+                    Button(selectedNotifications.count == notifications.count ? "Deselect All" : "Select All") {
+                        if selectedNotifications.count == notifications.count {
+                            selectedNotifications.removeAll()
+                        } else {
+                            selectedNotifications = Set(notifications.map { $0.id })
+                        }
+                    }
+                    .fontWeight(.bold)
+                } else {
+                    Button("Select") {
+                        withAnimation {
+                            editMode = .active
+                        }
+                    }
+                    .fontWeight(.medium)
+                    .disabled(notifications.isEmpty)
+                }
+            }
+
+            if editMode == .active {
+                ToolbarItem(placement: .bottomBar) {
+                    HStack {
+                        Button(role: .destructive) {
+                            Task {
+                                await deleteSelectedNotifications()
+                            }
+                        } label: {
+                            Text("Delete\(selectedNotifications.isEmpty ? "" : " (\(selectedNotifications.count))")")
+                                .foregroundColor(selectedNotifications.isEmpty ? .secondary : .red)
+                        }
+                        .disabled(selectedNotifications.isEmpty)
+                        
+                        Spacer()
+                    }
+                }
+            }
+        }
+        .confirmationDialog(
+            "Clear all notifications?",
+            isPresented: $showingClearConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Clear All", role: .destructive) {
+                Task {
+                    await clearAllNotifications()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This action cannot be undone.")
+        }
         .task {
             await fetchNotifications()
-            await setupRealtimeNotifications()
+            await RealtimeManager.shared.startNotificationsRealtime()
+            
+            // Listen for realtime updates
+            for await notification in NotificationCenter.default.notifications(named: .notificationsUpdated) {
+                guard let action = notification.object as? AnyAction else { continue }
+                
+                // Use the cached user ID — resolvedUserId is set once in fetchNotifications()
+                guard let currentUserId = resolvedUserId else { continue }
+                
+                await MainActor.run {
+                    let decoder = JSONDecoder()
+                    decoder.dateDecodingStrategy = .iso8601
+                    
+                    switch action {
+                    case .insert(let action):
+                        guard action.record["recipient_id"]?.stringValue == currentUserId.uuidString else { return }
+                        if let newNotif = try? action.decodeRecord(as: AppNotification.self, decoder: decoder) {
+                            if !notifications.contains(where: { $0.id == newNotif.id }) {
+                                notifications.insert(newNotif, at: 0)
+                                unreadCount = notifications.filter { !$0.isRead }.count
+                                onUnreadCountChanged?(unreadCount)
+                            }
+                        }
+                    case .update(let action):
+                        guard action.record["recipient_id"]?.stringValue == currentUserId.uuidString else { return }
+                        if let updatedNotif = try? action.decodeRecord(as: AppNotification.self, decoder: decoder) {
+                            if let index = notifications.firstIndex(where: { $0.id == updatedNotif.id }) {
+                                notifications[index] = updatedNotif
+                                unreadCount = notifications.filter { !$0.isRead }.count
+                                onUnreadCountChanged?(unreadCount)
+                            }
+                        }
+                    default: break
+                    }
+                }
+            }
         }
         .refreshable {
             await fetchNotifications()
         }
-        .onDisappear {
-            if let channel = realtimeChannel {
-                Task { await SupabaseManager.shared.client.realtimeV2.removeChannel(channel) }
+        .onChange(of: editMode) { newValue in
+            if newValue == .inactive {
+                selectedNotifications.removeAll()
             }
         }
         .sheet(isPresented: $isRoutingActive) {
@@ -134,6 +178,123 @@ struct FleetManagerNotificationsView: View {
                 fetchError: $fetchError
             )
             .presentationDragIndicator(.visible)
+        }
+    }
+
+    @ViewBuilder
+    private func notificationRow(for notification: AppNotification) -> some View {
+        Button(action: {
+            if editMode == .active {
+                if selectedNotifications.contains(notification.id) {
+                    selectedNotifications.remove(notification.id)
+                } else {
+                    selectedNotifications.insert(notification.id)
+                }
+                return
+            }
+
+            // 1. Handle Unread Status
+            if !notification.isRead {
+                if let index = notifications.firstIndex(where: { $0.id == notification.id }) {
+                    notifications[index].isRead = true
+                }
+                unreadCount = max(0, unreadCount - 1)
+                onUnreadCountChanged?(unreadCount)
+
+                let notifId = notification.id
+                Task {
+                    await markNotificationAsReadInDB(notificationId: notifId)
+                }
+            }
+
+            let currentNotif = notification
+
+            // Check if we should open the modal
+            let destination = notificationDestination(for: currentNotif)
+            if case .none = destination {
+                return
+            }
+
+            // 2. Clear old data and show modal IMMEDIATELY
+            routingWorkOrder = nil
+            routingDriverReport = nil
+            fetchError = nil
+            isRoutingActive = true
+
+            // 3. Fetch the actual data in the background
+            Task {
+                await fetchDataAndRoute(currentNotif)
+            }
+        }) {
+            HStack(alignment: .top, spacing: 12) {
+                Circle()
+                    .fill(notification.isRead ? Color.clear : Color.blue)
+                    .frame(width: 10, height: 10)
+                    .padding(.top, 5)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Image(systemName: notification.type.systemImage)
+                            .foregroundColor(notification.isRead ? .gray : .blue)
+
+                        Text(notification.title)
+                            .font(.headline)
+                            .fontWeight(notification.isRead ? .regular : .bold)
+                            .foregroundColor(.primary)
+                    }
+
+                    Text(notification.message)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+
+                    Text(notification.createdAt, style: .time)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 2)
+                }
+                
+                if editMode == .inactive {
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.bold())
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(.vertical, 4)
+            .opacity(notification.isRead ? 0.6 : 1.0)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(selectedNotifications.contains(notification.id) ? Color.blue.opacity(0.1) : Color.clear)
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func deleteFromSwipe(at offsets: IndexSet) {
+        let notificationsToDelete = offsets.map { notifications[$0] }
+        Task {
+            for notif in notificationsToDelete {
+                await deleteNotificationByID(notif.id)
+            }
+        }
+        notifications.remove(atOffsets: offsets)
+        unreadCount = notifications.filter { !$0.isRead }.count
+        onUnreadCountChanged?(unreadCount)
+    }
+
+    private func deleteNotificationByID(_ id: UUID) async {
+        do {
+            print("🗑️ Attempting to delete notification from DB with ID: \(id)")
+            try await SupabaseManager.shared.client
+                .from("notifications")
+                .delete()
+                .eq("id", value: id)
+                .execute()
+            
+            print("✅ Successfully deleted notification \(id) from Supabase")
+        } catch {
+            print("🚨 Failed to delete notification: \(error)")
         }
     }
 
@@ -148,6 +309,10 @@ struct FleetManagerNotificationsView: View {
                 currentUserId = session.user.id
             }
 
+            // Cache the resolved ID so the realtime loop and other functions don't need to re-fetch it
+            await MainActor.run { resolvedUserId = currentUserId }
+
+            print("📡 Fetching notifications for user: \(currentUserId)")
             let fetched: [AppNotification] = try await SupabaseManager.shared.client
                 .from("notifications")
                 .select()
@@ -168,51 +333,6 @@ struct FleetManagerNotificationsView: View {
         }
     }
 
-    private func setupRealtimeNotifications() async {
-        guard realtimeChannel == nil else { return }
-        do {
-            let currentUserId: UUID
-            if let id = userId { currentUserId = id }
-            else { currentUserId = try await SupabaseManager.shared.client.auth.session.user.id }
-
-            let channel = SupabaseManager.shared.client.realtimeV2.channel("notifications-changes")
-            self.realtimeChannel = channel
-
-            let insertions = channel.postgresChange(AnyAction.self, schema: "public", table: "notifications")
-            try await channel.subscribeWithError()
-
-            Task {
-                let decoder = JSONDecoder()
-                decoder.dateDecodingStrategy = .iso8601
-                for await action in insertions {
-                    await MainActor.run {
-                        switch action {
-                        case .insert(let action):
-                            guard action.record["recipient_id"]?.stringValue == currentUserId.uuidString else { return }
-                            if let newNotif = try? action.decodeRecord(as: AppNotification.self, decoder: decoder) {
-                                if !notifications.contains(where: { $0.id == newNotif.id }) {
-                                    notifications.insert(newNotif, at: 0)
-                                    unreadCount = notifications.filter { !$0.isRead }.count
-                                    onUnreadCountChanged?(unreadCount)
-                                }
-                            }
-                        case .update(let action):
-                            guard action.record["recipient_id"]?.stringValue == currentUserId.uuidString else { return }
-                            if let updatedNotif = try? action.decodeRecord(as: AppNotification.self, decoder: decoder) {
-                                if let index = notifications.firstIndex(where: { $0.id == updatedNotif.id }) {
-                                    notifications[index] = updatedNotif
-                                    unreadCount = notifications.filter { !$0.isRead }.count
-                                    onUnreadCountChanged?(unreadCount)
-                                }
-                            }
-                        default: break
-                        }
-                    }
-                }
-            }
-        } catch { print("🚨 Realtime setup failed: \(error)") }
-    }
-
     private func markNotificationAsReadInDB(notificationId: UUID) async {
         do {
             try await SupabaseManager.shared.client
@@ -221,6 +341,56 @@ struct FleetManagerNotificationsView: View {
                 .eq("id", value: notificationId)
                 .execute()
         } catch { print("🚨 Mark as read failed: \(error)") }
+    }
+
+    private func clearAllNotifications() async {
+        do {
+            // Use the cached user ID — already resolved during fetchNotifications()
+            guard let currentUserId = resolvedUserId else { return }
+
+            print("🗑️ Attempting to clear all notifications for user: \(currentUserId)")
+            try await SupabaseManager.shared.client
+                .from("notifications")
+                .delete()
+                .eq("recipient_id", value: currentUserId)
+                .execute()
+
+            print("✅ Successfully cleared all notifications from Supabase")
+            await MainActor.run {
+                self.notifications = []
+                self.unreadCount = 0
+                onUnreadCountChanged?(0)
+                self.selectedNotifications.removeAll()
+            }
+        } catch {
+            print("🚨 Exception in clearAllNotifications: \(error)")
+        }
+    }
+
+    private func deleteSelectedNotifications() async {
+        guard !selectedNotifications.isEmpty else { return }
+        
+        do {
+            let idsToDelete = Array(selectedNotifications)
+            print("🗑️ Attempting to delete selected notifications: \(idsToDelete)")
+            
+            try await SupabaseManager.shared.client
+                .from("notifications")
+                .delete()
+                .in("id", values: idsToDelete)
+                .execute()
+
+            print("✅ Successfully deleted selected notifications from Supabase")
+            await MainActor.run {
+                self.notifications.removeAll { selectedNotifications.contains($0.id) }
+                self.unreadCount = self.notifications.filter { !$0.isRead }.count
+                onUnreadCountChanged?(self.unreadCount)
+                self.selectedNotifications.removeAll()
+                self.editMode = .inactive
+            }
+        } catch {
+            print("🚨 Exception in deleteSelectedNotifications: \(error)")
+        }
     }
 
     // MARK: - Routing Logic

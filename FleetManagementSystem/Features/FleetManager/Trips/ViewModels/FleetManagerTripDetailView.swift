@@ -4,17 +4,16 @@ import Supabase
 
 struct FleetManagerTripDetailView: View {
     let trip: Trip
-    
+
     @StateObject private var vm: TripDetailViewModel
-    @State private var showingEditSheet = false
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var hasAutoFocusedVehicle = false
-    
+
     init(trip: Trip) {
         self.trip = trip
         _vm = StateObject(wrappedValue: TripDetailViewModel(trip: trip))
     }
-    
+
     var body: some View {
         List {
             // MARK: - Map Section
@@ -26,17 +25,17 @@ struct FleetManagerTripDetailView: View {
                                 Marker("Origin", coordinate: CLLocationCoordinate2D(latitude: originLat, longitude: originLng))
                                     .tint(.green)
                             }
-                            
+
                             if let destLat = trip.destination_latitude, let destLng = trip.destination_longitude {
                                 Marker("Destination", coordinate: CLLocationCoordinate2D(latitude: destLat, longitude: destLng))
                                     .tint(.red)
                             }
-                            
+
                             if !vm.routeCoordinates.isEmpty {
                                 MapPolyline(coordinates: vm.routeCoordinates)
                                     .stroke(Color.TechBlue, lineWidth: 4)
                             }
-                            
+
                             if let driverLoc = vm.driverLocation {
                                 Annotation("Driver", coordinate: driverLoc) {
                                     ZStack {
@@ -44,7 +43,7 @@ struct FleetManagerTripDetailView: View {
                                             .fill(.white)
                                             .frame(width: 38, height: 38)
                                             .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
-                                        
+
                                         Image(systemName: "car.circle.fill")
                                             .font(.system(size: 34))
                                             .foregroundStyle(.blue.gradient)
@@ -68,7 +67,7 @@ struct FleetManagerTripDetailView: View {
                             MapUserLocationButton()
                             MapCompass()
                         }
-                        
+
                         if vm.driverLocation != nil {
                             HStack(spacing: 8) {
                                 if vm.isRouteDeviated {
@@ -114,7 +113,7 @@ struct FleetManagerTripDetailView: View {
                 .listRowInsets(EdgeInsets())
             }
             .listRowBackground(Color.clear)
-            
+
             // MARK: - Route Monitoring Controls
             if vm.trip.normalisedStatus == .inTransit || vm.trip.normalisedStatus == .inProgress {
                 Section("Route Monitoring") {
@@ -127,14 +126,14 @@ struct FleetManagerTripDetailView: View {
                                 Text("\(Int(vm.deviationRadius)) meters")
                                     .font(.subheadline.weight(.semibold))
                             }
-                            
+
                             Spacer()
-                            
+
                             Slider(value: $vm.deviationRadius, in: 100...2000, step: 100)
                                 .frame(width: 150)
                                 .tint(.TechBlue)
                         }
-                        
+
                         if vm.isRouteDeviated {
                             Button(action: { vm.approveCurrentDeviation() }) {
                                 HStack {
@@ -154,7 +153,7 @@ struct FleetManagerTripDetailView: View {
                     .padding(.vertical, 4)
                 }
             }
-            
+
             // MARK: - Status & Key Info
             Section {
                 HStack {
@@ -169,7 +168,7 @@ struct FleetManagerTripDetailView: View {
                     statusBadge
                 }
                 .padding(.vertical, 4)
-                
+
                 HStack(spacing: 0) {
                     TripStatItem(title: "Distance", value: String(format: "%.1f km", trip.distance_travelled ?? 0), icon: "road.lanes")
                     Divider().padding(.vertical, 8)
@@ -179,7 +178,7 @@ struct FleetManagerTripDetailView: View {
                 }
                 .listRowInsets(EdgeInsets(top: 12, leading: 0, bottom: 12, trailing: 0))
             }
-            
+
             // MARK: - Route Details
             Section("Route") {
                 VStack(alignment: .leading, spacing: 0) {
@@ -188,7 +187,7 @@ struct FleetManagerTripDetailView: View {
                 }
                 .padding(.vertical, 4)
             }
-            
+
             // MARK: - Schedule
             Section("Schedule") {
                 LabeledContent {
@@ -197,15 +196,26 @@ struct FleetManagerTripDetailView: View {
                 } label: {
                     Label("Pickup Time", systemImage: "calendar")
                 }
-                
+
                 LabeledContent {
                     Text(trip.formattedEstimatedDate)
                         .foregroundStyle(.primary)
                 } label: {
                     Label("Estimated Arrival", systemImage: "clock.badge.checkmark")
                 }
+
+                // Fuel usage — only shown once the trip is completed and data is available
+                if trip.normalisedStatus == .completed,
+                   let fuelUsed = vm.fullTrip?.fuel_used ?? trip.fuel_used {
+                    LabeledContent {
+                        Text(String(format: "%.2f L", fuelUsed))
+                            .foregroundStyle(.primary)
+                    } label: {
+                        Label("Fuel Used", systemImage: "fuelpump.fill")
+                    }
+                }
             }
-            
+
             // MARK: - Vehicle
             if let vehicle = vm.vehicle {
                 Section("Vehicle") {
@@ -215,7 +225,7 @@ struct FleetManagerTripDetailView: View {
                             .frame(width: 32, height: 32)
                             .background(Color.blue.gradient)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
-                        
+
                         VStack(alignment: .leading, spacing: 2) {
                             Text(vehicle.name)
                                 .font(.subheadline.weight(.semibold))
@@ -224,12 +234,12 @@ struct FleetManagerTripDetailView: View {
                                 .foregroundStyle(.secondary)
                         }
                     }
-                    
+
                     LabeledContent("Type", value: vehicle.vehicleType ?? "N/A")
                     LabeledContent("Fuel", value: vehicle.fuelType ?? "N/A")
                 }
             }
-            
+
             // MARK: - Driver
             if let driver = vm.driver {
                 Section("Driver") {
@@ -238,7 +248,7 @@ struct FleetManagerTripDetailView: View {
                             .resizable()
                             .frame(width: 40, height: 40)
                             .foregroundStyle(.secondary)
-                        
+
                         VStack(alignment: .leading, spacing: 2) {
                             Text(driver.name)
                                 .font(.subheadline.weight(.semibold))
@@ -246,9 +256,9 @@ struct FleetManagerTripDetailView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
-                        
+
                         Spacer()
-                        
+
                         if let phone = driver.phone {
                             Button {
                                 if let url = URL(string: "tel://\(phone)") {
@@ -260,7 +270,7 @@ struct FleetManagerTripDetailView: View {
                                     .foregroundStyle(.green)
                             }
                             .buttonStyle(.plain)
-                            
+
                             Button {
                                 // Message driver
                             } label: {
@@ -277,17 +287,6 @@ struct FleetManagerTripDetailView: View {
         }
         .navigationTitle("Trip Details")
         .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button("Edit") {
-                    showingEditSheet = true
-                }
-                .fontWeight(.semibold)
-            }
-        }
-        .sheet(isPresented: $showingEditSheet) {
-            EditTripSheet(trip: trip, vm: vm)
-        }
         .task {
             hasAutoFocusedVehicle = false
             await vm.loadTripDetails()
@@ -309,7 +308,9 @@ struct FleetManagerTripDetailView: View {
             await vm.refreshVehicleLocation()
         }
     }
-    
+
+    // MARK: - Helpers
+
     private func updateCameraPosition() {
         var coordinates: [CLLocationCoordinate2D] = []
         if let lat = trip.origin_latitude, let lng = trip.origin_longitude {
@@ -318,7 +319,6 @@ struct FleetManagerTripDetailView: View {
         if let lat = trip.destination_latitude, let lng = trip.destination_longitude {
             coordinates.append(CLLocationCoordinate2D(latitude: lat, longitude: lng))
         }
-        
         if !coordinates.isEmpty {
             cameraPosition = .automatic
         }
@@ -335,13 +335,13 @@ struct FleetManagerTripDetailView: View {
             ))
         }
     }
-    
+
     private func formatETA(_ minutes: Double) -> String {
         let hours = Int(minutes) / 60
         let mins = Int(minutes) % 60
         return hours > 0 ? "\(hours)h \(mins)m" : "\(mins)m"
     }
-    
+
     private var statusBadge: some View {
         Text(trip.normalisedStatus.displayTitle)
             .font(.caption.weight(.bold))
@@ -351,15 +351,15 @@ struct FleetManagerTripDetailView: View {
             .foregroundStyle(statusColor)
             .clipShape(Capsule())
     }
-    
+
     private var statusColor: Color {
         switch trip.normalisedStatus {
-        case .inTransit: return .orange
+        case .inTransit:  return .orange
         case .inProgress: return .blue
-        case .scheduled: return .purple
-        case .completed: return .green
-        case .cancelled: return .red
-        default: return .secondary
+        case .scheduled:  return .purple
+        case .completed:  return .green
+        case .cancelled:  return .red
+        default:          return .secondary
         }
     }
 }
@@ -370,7 +370,7 @@ struct TripStatItem: View {
     let title: String
     let value: String
     let icon: String
-    
+
     var body: some View {
         VStack(spacing: 4) {
             Image(systemName: icon)
@@ -393,7 +393,7 @@ struct RoutePointRow: View {
     let icon: String
     let color: Color
     let isLast: Bool
-    
+
     var body: some View {
         HStack(alignment: .top, spacing: 16) {
             VStack(spacing: 0) {
@@ -401,7 +401,7 @@ struct RoutePointRow: View {
                     .font(.system(size: 14))
                     .foregroundStyle(color)
                     .background(Circle().fill(.white))
-                
+
                 if !isLast {
                     Rectangle()
                         .fill(Color.secondary.opacity(0.3))
@@ -409,7 +409,7 @@ struct RoutePointRow: View {
                 }
             }
             .frame(width: 20)
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.caption.weight(.bold))
@@ -430,318 +430,6 @@ struct MapPin: Identifiable {
     let coordinate: CLLocationCoordinate2D
 }
 
-// MARK: - Edit Trip Sheet
-struct EditTripSheet: View {
-    let trip: Trip
-    @ObservedObject var vm: TripDetailViewModel
-    
-    @Environment(\.dismiss) private var dismiss
-    @State private var tripName: String
-    @State private var origin: String
-    @State private var destination: String
-    @State private var originCoordinate: CLLocationCoordinate2D?
-    @State private var destinationCoordinate: CLLocationCoordinate2D?
-    @State private var status: String
-    @State private var pickupDate: Date
-    @State private var expectedEndDate: Date
-    @State private var selectedVehicleID: UUID?
-    @State private var selectedDriverID: UUID?
-    @State private var isUpdating = false
-    @State private var errorMessage: String?
-    @State private var successMessage: String?
-    @State private var activeLocationField: EditLocationField?
-    
-    init(trip: Trip, vm: TripDetailViewModel) {
-        self.trip = trip
-        self.vm = vm
-        _tripName = State(initialValue: trip.trip_name ?? "")
-        _origin = State(initialValue: trip.origin ?? "")
-        _destination = State(initialValue: trip.destination ?? "")
-        _status = State(initialValue: trip.status ?? "assigned")
-        
-        // Initialize coordinates if available
-        if let lat = trip.origin_latitude, let lon = trip.origin_longitude {
-            _originCoordinate = State(initialValue: CLLocationCoordinate2D(latitude: lat, longitude: lon))
-        }
-        if let lat = trip.destination_latitude, let lon = trip.destination_longitude {
-            _destinationCoordinate = State(initialValue: CLLocationCoordinate2D(latitude: lat, longitude: lon))
-        }
-        
-        // Initialize driver and vehicle
-        _selectedVehicleID = State(initialValue: trip.vehicle_id)
-        _selectedDriverID = State(initialValue: trip.driver_id)
-        
-        // Dates
-        let pTime = vm.fullTrip?.pickup_time ?? trip.pickup_time
-        let eTime = vm.fullTrip?.end_time
-        
-        let pDate = pTime.flatMap { vm.parseDatabaseTimestamp($0) } ?? Date()
-        let eDate = eTime.flatMap { vm.parseDatabaseTimestamp($0) } ?? Calendar.current.date(byAdding: .hour, value: 4, to: pDate) ?? pDate
-        
-        _pickupDate = State(initialValue: pDate)
-        _expectedEndDate = State(initialValue: eDate)
-    }
-    
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Trip Information") {
-                    TextField("Route Name", text: $tripName)
-                        .textInputAutocapitalization(.words)
-                    
-                    Picker("Status", selection: $status) {
-                        Text("Assigned").tag("assigned")
-                        Text("In Progress").tag("in_progress")
-                        Text("In Transit").tag("in_transit")
-                        Text("Completed").tag("completed")
-                        Text("Cancelled").tag("cancelled")
-                    }
-                }
-                
-                Section("Route") {
-                    Button(action: {
-                        activeLocationField = .origin
-                    }) {
-                        HStack(alignment: .center, spacing: 12) {
-                            Image(systemName: "mappin.and.ellipse")
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(.blue)
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Origin / Pickup Location")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-
-                                Text(origin.isEmpty ? "Tap to choose on map" : origin)
-                                    .font(.body)
-                                    .foregroundStyle(origin.isEmpty ? .secondary : .primary)
-                                    .multilineTextAlignment(.leading)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    
-                    Button(action: {
-                        activeLocationField = .destination
-                    }) {
-                        HStack(alignment: .center, spacing: 12) {
-                            Image(systemName: "mappin.and.ellipse")
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(.blue)
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("Destination")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-
-                                Text(destination.isEmpty ? "Tap to choose on map" : destination)
-                                    .font(.body)
-                                    .foregroundStyle(destination.isEmpty ? .secondary : .primary)
-                                    .multilineTextAlignment(.leading)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-                
-                Section("Schedule") {
-                    DatePicker("Pickup Time", selection: $pickupDate)
-                        .onChange(of: pickupDate) { _ in
-                            Task { await vm.loadAssignmentOptions(pickupDate: pickupDate, expectedEndDate: expectedEndDate) }
-                        }
-                    DatePicker("Expected End", selection: $expectedEndDate)
-                        .onChange(of: expectedEndDate) { _ in
-                            Task { await vm.loadAssignmentOptions(pickupDate: pickupDate, expectedEndDate: expectedEndDate) }
-                        }
-                }
-                
-                Section("Assignment") {
-                    if vm.isLoadingAssignments {
-                        HStack {
-                            ProgressView()
-                            Text("Checking availability...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                    
-                    Picker("Vehicle", selection: $selectedVehicleID) {
-                        Text("Select Vehicle").tag(nil as UUID?)
-                        ForEach(vm.availableVehicles) { v in
-                            Text(v.displayName).tag(v.id as UUID?)
-                        }
-                    }
-                    
-                    Picker("Driver", selection: $selectedDriverID) {
-                        Text("Select Driver").tag(nil as UUID?)
-                        ForEach(vm.availableDrivers) { d in
-                            Text(d.name).tag(d.id as UUID?)
-                        }
-                    }
-                }
-                
-                if let error = errorMessage {
-                    Section {
-                        Text(error)
-                            .foregroundColor(.red)
-                            .font(.caption)
-                    }
-                }
-                
-                if let success = successMessage {
-                    Section {
-                        Text(success)
-                            .foregroundColor(.green)
-                            .font(.caption)
-                    }
-                }
-            }
-            .task {
-                await vm.loadAssignmentOptions(pickupDate: pickupDate, expectedEndDate: expectedEndDate)
-            }
-            .hideKeyboardOnTap()
-            .navigationTitle("Edit Trip")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-                
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task {
-                            await updateTrip()
-                        }
-                    }
-                    .disabled(isUpdating || tripName.isEmpty || origin.isEmpty || destination.isEmpty)
-                }
-            }
-            .sheet(item: $activeLocationField) { field in
-                switch field {
-                case .origin:
-                    LocationPickerView(
-                        selectedAddress: $origin,
-                        selectedCoordinate: $originCoordinate,
-                        title: "Select Pickup Location"
-                    )
-                case .destination:
-                    LocationPickerView(
-                        selectedAddress: $destination,
-                        selectedCoordinate: $destinationCoordinate,
-                        title: "Select Destination"
-                    )
-                }
-            }
-            .overlay {
-                if isUpdating {
-                    ProgressView()
-                        .scaleEffect(1.5)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.black.opacity(0.2))
-                }
-            }
-        }
-    }
-    
-    private func updateTrip() async {
-        isUpdating = true
-        errorMessage = nil
-        successMessage = nil
-        
-        guard let vehicleID = selectedVehicleID, let driverID = selectedDriverID else {
-            errorMessage = "Please select both a vehicle and a driver."
-            isUpdating = false
-            return
-        }
-        
-        do {
-            let isoFormatter = ISO8601DateFormatter()
-            isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            isoFormatter.timeZone = TimeZone(identifier: "UTC")
-            
-            let pickupISO = isoFormatter.string(from: pickupDate)
-            let endISO = isoFormatter.string(from: expectedEndDate)
-            
-            struct TripUpdate: Encodable {
-                let trip_name: String
-                let origin: String
-                let destination: String
-                let start_location: String
-                let end_location: String
-                let status: String
-                let origin_latitude: Double?
-                let origin_longitude: Double?
-                let destination_latitude: Double?
-                let destination_longitude: Double?
-                let vehicle_id: UUID
-                let driver_id: UUID
-                let pickup_time: String
-                let end_time: String
-                let start_time: String
-            }
-            
-            let updateData = TripUpdate(
-                trip_name: tripName,
-                origin: origin,
-                destination: destination,
-                start_location: origin,
-                end_location: destination,
-                status: status,
-                origin_latitude: originCoordinate?.latitude,
-                origin_longitude: originCoordinate?.longitude,
-                destination_latitude: destinationCoordinate?.latitude,
-                destination_longitude: destinationCoordinate?.longitude,
-                vehicle_id: vehicleID,
-                driver_id: driverID,
-                pickup_time: pickupISO,
-                end_time: endISO,
-                start_time: pickupISO
-            )
-            
-            try await SupabaseManager.shared.client
-                .from("trips")
-                .update(updateData)
-                .eq("trip_id", value: trip.id)
-                .execute()
-            
-            successMessage = "Trip updated successfully!"
-            
-            // Wait a moment to show success message
-            try? await Task.sleep(for: .seconds(1))
-            
-            isUpdating = false
-            dismiss()
-            
-            // Reload trip details
-            await vm.loadTripDetails()
-            
-        } catch {
-            errorMessage = "Failed to update trip: \(error.localizedDescription)"
-            isUpdating = false
-        }
-    }
-}
-
-private enum EditLocationField: String, Identifiable {
-    case origin
-    case destination
-    var id: String { rawValue }
-}
-
 #Preview {
     NavigationStack {
         FleetManagerTripDetailView(trip: Trip(
@@ -752,9 +440,10 @@ private enum EditLocationField: String, Identifiable {
             origin: "Mumbai, Maharashtra",
             destination: "Pune, Maharashtra",
             pickup_time: "2026-04-22T10:00:00Z",
-            status: "in_progress",
+            status: "completed",
             trip_number: "TR-001",
             distance_travelled: 150.5,
+            fuel_used: 12.4,
             fleet_manager_id: UUID(),
             origin_latitude: 19.0760,
             origin_longitude: 72.8777,

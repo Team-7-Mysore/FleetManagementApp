@@ -18,6 +18,7 @@ struct Trip: Codable, Identifiable {
     let status: String?
     let trip_number: String?
     let distance_travelled: Double?
+    let fuel_used: Double?
     let fleet_manager_id: UUID?
     let origin_latitude: Double?
     let origin_longitude: Double?
@@ -37,6 +38,7 @@ struct Trip: Codable, Identifiable {
         case status
         case trip_number
         case distance_travelled
+        case fuel_used
         case fleet_manager_id
         case origin_latitude
         case origin_longitude

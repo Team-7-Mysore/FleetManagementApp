@@ -11,6 +11,7 @@ struct WorkOrdersView: View {
     @State private var selectedDetailOrder: WorkOrder?
     @State private var selectedReportOrder: WorkOrder?
     @State private var showingProfile = false
+    @AppStorage("selectedLanguage") private var selectedLanguage: String = "en"
 
     var body: some View {
         NavigationStack {
@@ -258,6 +259,7 @@ struct WorkOrdersView: View {
                 )
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
+                .environment(\.locale, .init(identifier: selectedLanguage))
             }
         }
     }

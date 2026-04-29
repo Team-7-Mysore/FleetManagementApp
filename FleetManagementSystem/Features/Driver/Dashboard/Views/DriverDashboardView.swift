@@ -6,6 +6,7 @@ struct DriverDashboardView: View {
     @StateObject private var vm: DriverDashboardViewModel
     @EnvironmentObject private var router: AppRouter
     @Environment(\.scenePhase) private var scenePhase
+    @AppStorage("selectedLanguage") private var selectedLanguage: String = "en"
     @State private var showNotifications = false
     @State private var showProfile = false
 
@@ -92,10 +93,12 @@ struct DriverDashboardView: View {
         }
         .sheet(isPresented: $showNotifications) {
             NotificationListView(user: user)
+                .environment(\.locale, .init(identifier: selectedLanguage))
         }
         .sheet(isPresented: $showProfile) {
             DriverProfileView(user: user)
                 .environmentObject(router)
+                .environment(\.locale, .init(identifier: selectedLanguage))
         }
         .onAppear {
             vm.loadData()
@@ -190,7 +193,7 @@ struct DriverDashboardView: View {
                         Text("DISTANCE").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
                         HStack(alignment: .firstTextBaseline, spacing: 2) {
                             Text("\(Int(trip.distance))").font(.title3.weight(.bold))
-                            Text("mi").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+                              Text("km").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
                         }
                     }
                 }

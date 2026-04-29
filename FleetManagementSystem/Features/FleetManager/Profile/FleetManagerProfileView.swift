@@ -45,6 +45,16 @@ struct FleetManagerProfileView: View {
                     profileRow(icon: "envelope", title: "Email", value: profile?.email ?? "Not Available")
                 }
 
+                // MARK: - Preferences
+                Section("Preferences") {
+                    HStack {
+                        Label("Language", systemImage: "globe")
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        LanguagePickerView()
+                    }
+                }
+
                 // MARK: - App & Security Info
                 Section("App Information") {
                     HStack {

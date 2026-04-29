@@ -86,6 +86,16 @@ struct DriverProfileView: View {
                                value: String(format: "%.0f mi", avgDistance))
                 }
 
+                // MARK: - Preferences
+                Section("Preferences") {
+                    HStack {
+                        Label("Language", systemImage: "globe")
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        LanguagePickerView()
+                    }
+                }
+
                 // MARK: - App Info
                 Section("App") {
                     HStack {

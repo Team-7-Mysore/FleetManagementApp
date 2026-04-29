@@ -75,10 +75,14 @@ struct ChatListView: View {
         .task {
             await viewModel.fetchUsers(currentUserId: currentUserId)
             await viewModel.fetchChatRooms(userId: currentUserId)
+            await viewModel.startChatRoomsRealtime(userId: currentUserId)
         }
         .refreshable {
             await viewModel.fetchUsers(currentUserId: currentUserId)
             await viewModel.fetchChatRooms(userId: currentUserId)
+        }
+        .onDisappear {
+            Task { await viewModel.stopChatRoomsRealtime() }
         }
     }
 
