@@ -20,7 +20,7 @@ struct CustomDropdown: View {
                         Text(option).tag(option)
                     }
                 }
-                .pickerStyle(.menu) // Handles the native iOS chevron automatically
+                .pickerStyle(.menu) 
                 .tint(.blue)
                 .labelsHidden()
             }

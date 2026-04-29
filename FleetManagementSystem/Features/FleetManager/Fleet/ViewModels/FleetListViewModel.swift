@@ -3,7 +3,7 @@ import Combine
 import Foundation
 import Supabase
 
-// MARK: - UI Models (Renamed to avoid conflict with MaintenanceTask)
+
 struct MaintenanceAlert: Identifiable {
     let id: UUID
     let unitNumber: String
@@ -15,7 +15,7 @@ struct MaintenanceAlert: Identifiable {
     let timeRemaining: String
 }
 
-// Renamed from MaintenanceStatus to MaintenanceAlertStatus
+
 enum MaintenanceAlertStatus: String {
     case overdue = "OVERDUE"
     case dueSoon = "DUE SOON"
@@ -50,7 +50,7 @@ final class FleetListViewModel: ObservableObject {
 
             let data = try JSONSerialization.jsonObject(with: response.data) as? [[String: Any]]
 
-            // 🚫 STEP 2: If assigned → block delete
+            
             if let data = data, !data.isEmpty {
                 DispatchQueue.main.async {
                     self.errorMessage = "Vehicle is currently assigned to an active trip"
@@ -58,7 +58,7 @@ final class FleetListViewModel: ObservableObject {
                 return
             }
 
-            // ✅ STEP 3: Safe to delete
+
             try await SupabaseManager.shared.client
                 .from("vehicles")
                 .delete()
@@ -150,23 +150,19 @@ func fetchVehicles() async {
                 )
             }
 
-            return nil // Return nil if the vehicle is not at a 6-month milestone
+            return nil
         }
     }
 
     func completeWorkOrder(workOrderId: UUID) async {
         do {
-            // 1. Update the Work Order Status
-            // This triggers the SQL 'tr_on_work_order_completed' on the server
+      
             try await SupabaseManager.shared.client
                 .from("work_orders")
-                .update(["status": "Completed"]) // ✅ Ensure casing matches your SQL ('Completed')
+                .update(["status": "Completed"])
                 .eq("work_order_id", value: workOrderId)
                 .execute()
 
-            // 2. Refresh Local UI
-            // Since the SQL Trigger modified the 'vehicles' and 'maintenance_issues' tables,
-            // we re-fetch everything to show the vehicle as 'Active' and remove the alert.
             await fetchVehicles()
             await fetchMaintenanceAlerts()
 
@@ -191,8 +187,7 @@ func fetchVehicles() async {
                         number_plate
                     )
                 """)
-                // CHANGE: Now we ONLY pull "pending" items.
-                // This ignores "in_progress" and "completed".
+               
                 .eq("status", value: "pending")
                 .order("created_at", ascending: false)
                 .execute()
@@ -223,7 +218,7 @@ func fetchVehicles() async {
     }
 }
 
-// MARK: - Parsing Helpers
+
 private extension FleetListViewModel {
     static func parseVehicles(from data: Data) throws -> [Vehicle] {
         guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {

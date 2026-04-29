@@ -6,7 +6,7 @@ import UIKit
 struct VehicleDocument: Identifiable, Hashable {
     let id: String
     let type: String
-    var fileURL: String = ""  // Now optional but defaults to empty - lazy loaded
+    var fileURL: String = ""
     var fileName: String? = nil
 
     var title: String {
@@ -124,7 +124,6 @@ class VehicleDetailViewModel: ObservableObject {
         return (plate, nil, manufacturer, model, year)
     }
     func fetchVehicle(vehicleId: UUID) async {
-        // Only show loading if we don't have the vehicle yet
         if self.vehicle == nil {
             isLoading = true
         }
@@ -339,7 +338,6 @@ class VehicleDetailViewModel: ObservableObject {
             .execute()
     }
 
-    // MARK: - IMAGE UPLOAD
     func uploadImage(image: UIImage, type: String = "VEHICLE") async {
         guard let data = image.jpegData(compressionQuality: 0.7) else { return }
 
@@ -354,7 +352,6 @@ class VehicleDetailViewModel: ObservableObject {
                 options: FileOptions(cacheControl: "3600", contentType: "image/jpeg")
             )
 
-            // Get public URL
             let publicURL = "\(SUPABASE_URL)/storage/v1/object/public/\(bucket)/\(fileName)"
 
             if type == "VEHICLE" {
@@ -447,7 +444,6 @@ extension VehicleDetailViewModel {
         }
 
         components.queryItems = [
-            // Fetch metadata only - NOT the actual file_url (lazy load on tap)
             URLQueryItem(name: "select", value: "document_id,document_type,file_name,uploaded_at"),
             URLQueryItem(name: "vehicle_id", value: "eq.\(vehicleId.uuidString.lowercased())")
         ]
@@ -459,7 +455,6 @@ extension VehicleDetailViewModel {
         var request = URLRequest(url: url)
         request.addValue(SUPABASE_ANON_KEY, forHTTPHeaderField: "apikey")
         request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
-        // Prevent caching - always fetch fresh metadata
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -479,7 +474,6 @@ extension VehicleDetailViewModel {
         return data
     }
     
-    // MARK: - Lazy load document URL when user taps on it
     func fetchDocumentURL(for type: String, vehicleId: UUID) async -> String? {
         do {
             let response = try await SupabaseManager.shared.client
@@ -566,14 +560,12 @@ extension VehicleDetailViewModel {
             return []
         }
 
-        // Now parses metadata only - file_url can be empty (lazy loaded)
         let parsed: [VehicleDocument] = rows.compactMap { row in
             guard let type = stringValue(row["document_type"])?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !type.isEmpty else {
                 return nil
             }
 
-            // file_url is now optional - fetched on tap
             let fileURL = stringValue(row["file_url"])?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
             return VehicleDocument(
@@ -626,10 +618,8 @@ extension VehicleDetailViewModel {
         }
     }
     
-    // MARK: - Fetch Maintenance Reports
     func fetchMaintenanceReports(vehicleId: UUID) async {
         do {
-            // Step 1: Find all work orders for this vehicle
             struct WOId: Decodable { let work_order_id: UUID }
             
             let woResponse = try await SupabaseManager.shared.client
@@ -640,22 +630,19 @@ extension VehicleDetailViewModel {
             
             let woIds = try JSONDecoder().decode([WOId].self, from: woResponse.data).map { $0.work_order_id.uuidString }
             
-            // If the vehicle has no work orders, exit early
             guard !woIds.isEmpty else {
                 await MainActor.run { self.maintenanceReports = [] }
                 return
             }
             
-            // Step 2: Fetch the completed reports for those work orders
             let reportsResponse = try await SupabaseManager.shared.client
                 .from("work_order_reports")
                 .select()
-                .in("work_order_id", values: woIds) // Fetch all in one batch!
+                .in("work_order_id", values: woIds)
                 .execute()
             
             let reports = try JSONDecoder().decode([WorkOrderReportRecord].self, from: reportsResponse.data)
             
-            // Update the UI
             await MainActor.run {
                 self.maintenanceReports = reports
             }

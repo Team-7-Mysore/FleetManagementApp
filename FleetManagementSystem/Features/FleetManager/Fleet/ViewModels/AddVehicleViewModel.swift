@@ -153,7 +153,7 @@ class AddVehicleViewModel: ObservableObject {
     @Published var insuranceFileName: String?
     @Published var pucFileName: String?
 
-    // MARK: - Validation Checkers
+
 
     var isPlateValidCheck: Bool {
         isValidPlate(licensePlate)
@@ -167,7 +167,7 @@ class AddVehicleViewModel: ObservableObject {
         return isNameValid && isVinValid && isPlateValid && !isLoading
     }
 
-    // MARK: - Formatting Helpers
+
 
     func formatPlate(_ input: String) -> String {
         let raw = input.uppercased().replacingOccurrences(of: "-", with: "").replacingOccurrences(of: " ", with: "").replacingOccurrences(of: "[^A-Z0-9]", with: "", options: .regularExpression)
@@ -195,7 +195,7 @@ class AddVehicleViewModel: ObservableObject {
         return NSPredicate(format: "SELF MATCHES %@", rcRegex).evaluate(with: input.uppercased())
     }
 
-    // MARK: - Persistence (Save to Supabase)
+    
     func decodeVIN(_ vin: String) -> (manufacturer: String?, brand: String?) {
 
         let wmi = String(vin.prefix(3))
@@ -246,10 +246,10 @@ class AddVehicleViewModel: ObservableObject {
             }
             if let yearFound = result.modelYear {
                         self.modelYear = yearFound
-                        self.autofilledFields.insert("modelYear") // Track for autofill
+                        self.autofilledFields.insert("modelYear")
                     }
 
-            // 2. Generate Vehicle Name (e.g., "MARUTI SWIFT")
+            
             let brandName = self.brand.isEmpty ? "" : self.brand
             let modelName = self.model.isEmpty ? "" : self.model
             let generatedName = "\(brandName) \(modelName)".trimmingCharacters(in: .whitespaces)
@@ -260,7 +260,7 @@ class AddVehicleViewModel: ObservableObject {
                 self.autofilledFields.insert("vehicleName")
             }
 
-            // 3. Handle Plate
+       
             if let plate = result.plate {
                 self.licensePlate = self.formatPlate(plate)
                 self.autofilledFields.insert("licensePlate")
@@ -271,13 +271,13 @@ class AddVehicleViewModel: ObservableObject {
                 self.autofilledFields.insert("vehicleType")
             }
 
-            // 4. Handle VIN
+
             if let vinFound = result.vin {
                 self.vin = vinFound
                 self.autofilledFields.insert("vin")
             }
 
-            // 5. Handle Dates
+
             let parsed = parseDates(result.dates)
             if let reg = parsed.registration {
                 self.registrationDate = reg
@@ -449,7 +449,7 @@ class AddVehicleViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Upload Methods
+
     func uploadImage(image: UIImage, type: String) async {
         guard let data = image.jpegData(compressionQuality: 0.7) else { return }
         let fileName = "\(UUID().uuidString).jpg"
@@ -476,19 +476,18 @@ class AddVehicleViewModel: ObservableObject {
     ) {
         let rawCleaned = text.uppercased()
         
-        // Normalize ONLY for Plate/VIN (turning letters that look like numbers into numbers)
+      
         let normalizedForRegex = rawCleaned
             .replacingOccurrences(of: "O", with: "0")
             .replacingOccurrences(of: "I", with: "1")
 
-        // MARK: - Regex Definitions
+  
         let plateRegex = "[A-Z]{2}[0-9]{2}[A-Z]{1,2}[0-9]{4}"
         let vinRegex = "[A-HJ-NPR-Z0-9]{17}"
         let dateRegex = "\\b\\d{2}[-/]\\d{2}[-/]\\d{4}\\b"
         let yearRegex = "\\b(19|20)\\d{2}\\b"
 
-        // MARK: - Regex Extraction
-        // Note: Added .regularExpression to fix the contextual base error
+     
         let plateRange = normalizedForRegex.range(of: plateRegex, options: .regularExpression)
         let vinRange = normalizedForRegex.range(of: vinRegex, options: .regularExpression)
 

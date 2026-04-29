@@ -13,7 +13,7 @@ class VehicleOCRService {
 
     static let shared = VehicleOCRService()
 
-    // MAIN OCR FUNCTION - handles both images and PDFs
+  
     func recognizeText(from source: Any) async -> String {
         if let image = source as? UIImage {
             return await recognizeTextFromImage(image)
@@ -23,7 +23,6 @@ class VehicleOCRService {
         return ""
     }
 
-    // Handle UIImage (scanned documents)
     func recognizeTextFromImage(_ image: UIImage) async -> String {
         guard let cgImage = image.cgImage else { return "" }
 
@@ -50,7 +49,7 @@ class VehicleOCRService {
         }
     }
 
-    // Handle PDF files - extract text directly
+
     func recognizeTextFromPDF(url: URL) async -> String {
         guard let document = PDFDocument(url: url) else { 
             print("PDF: Could not load PDF document")
@@ -90,7 +89,7 @@ class VehicleOCRService {
         return ocrText
     }
 
-    // Also support file URL from tmp directory
+
     func recognizeText(from fileURL: URL) async -> String {
         let fileExtension = fileURL.pathExtension.lowercased()
 

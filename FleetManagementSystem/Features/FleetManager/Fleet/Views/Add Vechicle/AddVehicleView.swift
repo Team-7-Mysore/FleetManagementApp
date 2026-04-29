@@ -17,7 +17,6 @@ struct AddVehicleView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // MARK: - 1. Vehicle Photo
                 Section {
                     HStack {
                         Spacer()
@@ -34,7 +33,6 @@ struct AddVehicleView: View {
                     documentRow(title: "PUC", isUploaded: vm.pucURL != nil, fileName: vm.pucFileName, type: "PUC")
                 }
 
-                // MARK: - 3. Vehicle Identification
                 Section(header: sectionHeader("Vehicle Identification")) {
 
                     VStack(alignment: .leading, spacing: 6) {
@@ -72,7 +70,6 @@ struct AddVehicleView: View {
                     }.padding(.vertical, 4)
                 }
 
-                // MARK: - 4. Specs
                 Section(header: sectionHeader("Manufacturer & Specs")) {
                     VStack(alignment: .leading, spacing: 6) {
                         fieldLabel("Manufacturer")
@@ -103,8 +100,6 @@ struct AddVehicleView: View {
                 }
 
 
-                // MARK: - 5. Validity (Individual Conditional Visibility)
-                // Section header only shows if at least one doc is present
                 if vm.rcURL != nil || vm.pucURL != nil {
                     Section(header: sectionHeader("Validity")) {
                         if vm.rcURL != nil {
@@ -123,7 +118,6 @@ struct AddVehicleView: View {
             .navigationTitle("Add Vehicle")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-
                 ToolbarItem(placement: .navigationBarLeading) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .navigationBarTrailing) {
 
@@ -144,7 +138,6 @@ struct AddVehicleView: View {
         }
     }
 
-    // MARK: - Aligned Document Row
     private func documentRow(title: String, isUploaded: Bool, fileName: String?, type: String) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {

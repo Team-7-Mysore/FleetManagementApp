@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 import AVFoundation
 import Photos
 
-// MARK: - Performance Helpers
+
 private enum DetailViewCache {
     static let formatter: DateFormatter = {
         let df = DateFormatter()
@@ -48,7 +48,7 @@ struct VehicleDetailView: View {
                 .listRowBackground(Color.clear)
             } else if let currentVehicle = vm.vehicle {
                 
-                // MARK: - Header Image Section
+            
                 Section {
                     vehicleImage(currentVehicle)
                         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
@@ -56,7 +56,7 @@ struct VehicleDetailView: View {
                 }
                 .listRowBackground(Color.clear)
                 
-                // MARK: - Required Documents
+          
                 Section(header: Text("Required Documents")) {
                     let requiredTypes = ["RC", "INSURANCE", "PUC"]
                     ForEach(requiredTypes, id: \.self) { type in
@@ -64,14 +64,14 @@ struct VehicleDetailView: View {
                     }
                 }
                 
-                // MARK: - Vehicle Identification
+            
                 Section(header: Text("Vehicle Identification")) {
                     InfoRow(title: "Name", value: currentVehicle.name, isEditing: isEditing, text: binding(\.name))
                     InfoRow(title: "Plate", value: currentVehicle.registrationNumber, isEditing: false, text: nil)
                         .textCase(.uppercase)
                 }
                 
-                // MARK: - Basic Info (Locked Specs)
+          
                 Section(header: Text("Basic Info")) {
                     InfoRow(title: "Brand", value: currentVehicle.brand ?? "—", isEditing: false, text: nil)
                     InfoRow(title: "Model", value: currentVehicle.model ?? "—", isEditing: false, text: nil)
@@ -79,7 +79,7 @@ struct VehicleDetailView: View {
                     InfoRow(title: "Fuel", value: currentVehicle.fuelType ?? "—", isEditing: false, text: nil)
                 }
                 
-                // MARK: - Registration Details
+                
                 Section(header: Text("Registration Details")) {
                     InfoRow(title: "VIN", value: currentVehicle.vin.isEmpty ? "—" : currentVehicle.vin, isEditing: false, text: nil)
                     
@@ -89,7 +89,7 @@ struct VehicleDetailView: View {
                     InfoRow(title: "PUC Expiry", value: currentVehicle.pucExpiryDate.isEmpty ? "—" : currentVehicle.pucExpiryDate, isEditing: isEditing, text: binding(\.pucExpiryDate))
                 }
                 
-                // MARK: - Actions & Reports
+               
                 Section(header: Text("Actions")) {
                     Button {
                         showStaffSelection = true
@@ -207,7 +207,7 @@ struct VehicleDetailView: View {
         }
     }
     
-    // MARK: - Subcomponents
+  
     
     private func vehicleImage(_ vehicle: Vehicle) -> some View {
         ZStack(alignment: .bottomTrailing) {
@@ -404,7 +404,6 @@ struct VehicleDetailView: View {
     }
 }
 
-// MARK: - Internal Components
 struct InfoRow: View {
     let title: String
     let value: String
