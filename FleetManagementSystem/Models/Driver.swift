@@ -12,6 +12,7 @@ struct Driver: Identifiable, Codable {
     let userId: UUID?
     let licenseNo: String
     let licenseExpiry: String
+    let licenseImageURL: String?
     
     var id: UUID { driverId }
     
@@ -20,5 +21,6 @@ struct Driver: Identifiable, Codable {
         case userId = "user_id"
         case licenseNo = "license_no"
         case licenseExpiry = "license_expiry"
+        case licenseImageURL = "license_image_url"
     }
 }

@@ -1,4 +1,7 @@
 import SwiftUI
+import Combine
+import Supabase
+import WebKit
 
 // MARK: - Driver Dashboard View
 struct DriverDashboardView: View {
@@ -22,14 +25,21 @@ struct DriverDashboardView: View {
                 routeSummaryCard
 
                 // MARK: - Quick Actions
-                quickActionsRow
+                if vm.activeTrip != nil || !vm.upcomingTrips.isEmpty {
+                    quickActionsRow
+                }
 
                 // MARK: - Vehicle Info
                 VStack(alignment: .leading, spacing: 12) {
                     AppTheme.sectionHeader("Assigned Vehicle")
                     if (vm.activeTrip != nil || !vm.upcomingTrips.isEmpty),
                        let vehicle = vm.assignedVehicle {
-                        vehicleCard(vehicle)
+                        NavigationLink {
+                            DriverVehicleDocumentsView(vehicle: vehicle)
+                        } label: {
+                            vehicleCard(vehicle)
+                        }
+                        .buttonStyle(.plain)
                     } else {
                         vehicleEmptyCard
                     }
@@ -45,7 +55,7 @@ struct DriverDashboardView: View {
         .background(AppTheme.pageBackground)
         .overlay(alignment: .bottomTrailing) {
             NavigationLink {
-                ChatListView(currentUserId: user.id)
+                ChatListView(currentUserId: user.id, accentColor: AppTheme.primaryGreen)
             } label: {
                 Image(systemName: "message.fill")
                     .font(.system(size: 22, weight: .semibold))
@@ -110,7 +120,14 @@ struct DriverDashboardView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 vm.loadData()
+                vm.startAutoRefresh()
+            } else if newPhase == .background {
+                vm.stopAutoRefresh()
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .driverTripCompleted)) { notification in
+            let tripId = notification.userInfo?["tripId"] as? UUID
+            vm.handleTripCompleted(tripId: tripId)
         }
         .refreshable {
             vm.loadData(forceRefresh: true)
@@ -223,9 +240,14 @@ struct DriverDashboardView: View {
             HStack {
                 StatusBadge(text: "Next Trip", color: AppTheme.statusInfo)
                 Spacer()
-                Text(trip.scheduledStartTime, style: .time)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("START TIME")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Text(trip.scheduledStartTime, style: .time)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                }
             }
 
             HStack(alignment: .top) {
@@ -260,7 +282,7 @@ struct DriverDashboardView: View {
                         Text("DISTANCE").font(.caption2.weight(.medium)).foregroundStyle(.secondary)
                         HStack(alignment: .firstTextBaseline, spacing: 2) {
                             Text("\(Int(trip.distance))").font(.title3.weight(.bold))
-                            Text("mi").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
+                            Text("km").font(.subheadline.weight(.medium)).foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -497,5 +519,279 @@ struct DriverDashboardView: View {
         }
         .padding(14)
         .cardStyle()
+    }
+}
+
+@MainActor
+private final class DriverVehicleDocumentsViewModel: ObservableObject {
+    @Published var documents: [VehicleDocument] = []
+    @Published var isLoading = false
+    @Published var errorMessage: String?
+
+    func loadDocuments(for vehicleId: UUID) async {
+        guard !isLoading else { return }
+        isLoading = true
+        errorMessage = nil
+
+        defer { isLoading = false }
+
+        do {
+            let response = try await SupabaseManager.shared.client
+                .from("vehicle_documents")
+                .select("document_id, document_type, file_url, file_name")
+                .eq("vehicle_id", value: vehicleId.uuidString)
+                .execute()
+
+            documents = try Self.parseDocuments(from: response.data)
+        } catch {
+            documents = []
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private static func parseDocuments(from data: Data) throws -> [VehicleDocument] {
+        guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+            return []
+        }
+
+        let documents = rows.compactMap { row -> VehicleDocument? in
+            guard let type = stringValue(row["document_type"])?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !type.isEmpty,
+                  let fileURL = stringValue(row["file_url"])?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !fileURL.isEmpty else {
+                return nil
+            }
+
+            let documentId = stringValue(row["document_id"])?.trimmingCharacters(in: .whitespacesAndNewlines)
+                ?? UUID().uuidString
+
+            return VehicleDocument(
+                id: documentId,
+                type: type.uppercased(),
+                fileURL: fileURL,
+                fileName: stringValue(row["file_name"])?.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        }
+
+        let ordering = ["RC": 0, "INSURANCE": 1, "PUC": 2]
+        return documents.sorted { lhs, rhs in
+            let lhsOrder = ordering[lhs.type.uppercased()] ?? 99
+            let rhsOrder = ordering[rhs.type.uppercased()] ?? 99
+            if lhsOrder == rhsOrder {
+                return lhs.title < rhs.title
+            }
+            return lhsOrder < rhsOrder
+        }
+    }
+
+    private static func stringValue(_ value: Any?) -> String? {
+        switch value {
+        case let string as String:
+            return string
+        case let number as NSNumber:
+            return number.stringValue
+        case is NSNull, nil:
+            return nil
+        default:
+            return String(describing: value!)
+        }
+    }
+}
+
+private struct DriverVehicleDocumentsView: View {
+    let vehicle: Vehicle
+
+    @StateObject private var vm = DriverVehicleDocumentsViewModel()
+    @State private var selectedDocument: VehicleDocument?
+
+    var body: some View {
+        List {
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(vehicle.name)
+                        .font(.headline.weight(.semibold))
+                    Text(vehicle.licensePlate)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+            }
+
+            if vm.isLoading {
+                Section {
+                    HStack(spacing: 12) {
+                        ProgressView()
+                            .tint(AppTheme.primaryGreen)
+                        Text("Loading vehicle documents...")
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 8)
+                }
+            } else if !vm.documents.isEmpty {
+                Section("Vehicle Documents") {
+                    ForEach(vm.documents) { document in
+                        HStack(spacing: 12) {
+                            Image(systemName: iconName(for: document))
+                                .foregroundStyle(AppTheme.primaryGreen)
+                                .frame(width: 28)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(document.title)
+                                    .font(.subheadline.weight(.semibold))
+                                Text(document.fileName ?? "Uploaded document")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+
+                            Spacer()
+
+                            Button {
+                                selectedDocument = document
+                            } label: {
+                                Text("View")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 18)
+                                    .padding(.vertical, 8)
+                                    .background(AppTheme.primaryGreen)
+                                    .clipShape(Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            } else {
+                Section {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("No documents uploaded")
+                            .font(.subheadline.weight(.semibold))
+                        Text("Vehicle documents uploaded by the fleet manager will appear here.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 6)
+                }
+            }
+
+            if let errorMessage = vm.errorMessage, !errorMessage.isEmpty {
+                Section {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.statusDanger)
+                }
+            }
+        }
+        .navigationTitle("Vehicle Documents")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            await vm.loadDocuments(for: vehicle.id)
+        }
+        .sheet(item: $selectedDocument) { document in
+            DriverVehicleDocumentViewer(document: document)
+        }
+    }
+
+    private func iconName(for document: VehicleDocument) -> String {
+        switch document.type.uppercased() {
+        case "RC":
+            return "doc.text.fill"
+        case "INSURANCE":
+            return "shield.fill"
+        case "PUC":
+            return "checkmark.seal.fill"
+        default:
+            return "doc.fill"
+        }
+    }
+}
+
+private struct DriverVehicleDocumentViewer: View {
+    let document: VehicleDocument
+    @Environment(\.dismiss) private var dismiss
+
+    private var documentURL: URL? {
+        guard !document.fileURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        return URL(string: document.fileURL)
+    }
+
+    private var isImageDocument: Bool {
+        guard let pathExtension = documentURL?.pathExtension.lowercased() else { return false }
+        return ["png", "jpg", "jpeg", "heic", "webp"].contains(pathExtension)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color.white.ignoresSafeArea()
+
+                if let url = documentURL {
+                    if isImageDocument {
+                        CachedAsyncImage(url: url) { phase in
+                            switch phase {
+                            case .success(let image):
+                                image
+                                    .resizable()
+                                    .scaledToFit()
+                                    .padding()
+                            case .failure:
+                                documentErrorState
+                            case .empty:
+                                ProgressView()
+                                    .tint(AppTheme.primaryGreen)
+                            }
+                        }
+                    } else {
+                        DriverVehicleDocumentWebView(url: url)
+                    }
+                } else {
+                    documentErrorState
+                }
+            }
+            .navigationTitle(document.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .foregroundStyle(AppTheme.primaryGreen)
+                    }
+                }
+            }
+        }
+    }
+
+    private var documentErrorState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.title2)
+                .foregroundStyle(AppTheme.statusWarning)
+            Text("Unable to load this document")
+                .foregroundStyle(.primary)
+        }
+    }
+}
+
+private struct DriverVehicleDocumentWebView: UIViewRepresentable {
+    let url: URL
+
+    func makeUIView(context: Context) -> WKWebView {
+        let webView = WKWebView()
+        webView.backgroundColor = .white
+        webView.scrollView.backgroundColor = .white
+        webView.isOpaque = false
+        webView.load(URLRequest(url: url))
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        if webView.url != url {
+            webView.load(URLRequest(url: url))
+        }
     }
 }

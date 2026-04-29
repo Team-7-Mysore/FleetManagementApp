@@ -1,7 +1,6 @@
 import SwiftUI
 import Combine
 
-
 // MARK: - Local Issue Entry Model
 struct IssueEntry: Identifiable {
     let id = UUID()
@@ -14,10 +13,13 @@ struct IssueEntry: Identifiable {
 struct ReportIssueView: View {
     let user: User
     let vehicle: Vehicle?
+
     let prefilledDescription: String?
     let prefilledCategory: String?
     let prefilledSeverity: String?
-    let showsCloseButton: Bool = true
+
+    let showsCloseButton: Bool
+    var onReportSubmitted: (() -> Void)? = nil
 
     @Environment(\.dismiss) private var dismiss
 
@@ -30,13 +32,17 @@ struct ReportIssueView: View {
         activeTripId: UUID? = nil,
         prefilledDescription: String? = nil,
         prefilledCategory: String? = nil,
-        prefilledSeverity: String? = nil
+        prefilledSeverity: String? = nil,
+        showsCloseButton: Bool = true,
+        onReportSubmitted: (() -> Void)? = nil
     ) {
         self.user = user
         self.vehicle = vehicle
         self.prefilledDescription = prefilledDescription
         self.prefilledCategory = prefilledCategory
         self.prefilledSeverity = prefilledSeverity
+        self.showsCloseButton = showsCloseButton
+        self.onReportSubmitted = onReportSubmitted
 
         let viewModel = ReportIssueViewModel(user: user, vehicle: vehicle)
         viewModel.activeTripId = activeTripId
@@ -122,142 +128,41 @@ struct ReportIssueView: View {
             .toolbar {
                 if showsCloseButton {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            dismiss()
-                        } label: {
+                        Button { dismiss() } label: {
                             Image(systemName: "xmark")
                                 .foregroundStyle(AppTheme.primaryGreen)
-                                .fontWeight(.medium)
                         }
                     }
                 }
             }
-
             .alert("Issues Reported ✓", isPresented: $vm.submitSuccess) {
                 Button("Done") {
                     dismiss()
+                    onReportSubmitted?()
                 }
             } message: {
-                Text(issues.count > 1
-                     ? "\(issues.count) issues have been submitted to the fleet manager. They will follow up shortly."
-                     : "Your issue has been submitted to the fleet manager. They will follow up shortly.")
+                Text("Issues submitted successfully.")
             }
-
-            .alert("Submission Failed", isPresented: Binding(
-                get: { vm.errorMessage != nil },
-                set: { if !$0 { vm.errorMessage = nil } }
-            )) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                if let error = vm.errorMessage {
-                    Text(error)
-                }
-            }        }
+        }
     }
 
-    // MARK: - Vehicle Banner
+    private var submitBar: some View {
+        VStack {
+            Divider()
+            Button("Submit") {
+                Task { await vm.submitReports(issues: issues) }
+            }
+            .disabled(!canSubmit)
+            .padding()
+        }
+    }
+
     @ViewBuilder
     private func vehicleBanner(_ vehicle: Vehicle) -> some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(AppTheme.primaryGreen.opacity(0.15))
-                    .frame(width: 44, height: 44)
-
-                Image(systemName: vehicle.imageSystemName)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(AppTheme.primaryGreen)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(vehicle.name)
-                    .font(.system(size: 15, weight: .semibold))
-
-                Text(vehicle.licensePlate)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            Image(systemName: "checkmark.shield.fill")
-                .font(.system(size: 18))
-                .foregroundStyle(AppTheme.primaryGreen.opacity(0.7))
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(.background)
-        )
-        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
-        .padding(.horizontal, 16)
-    }
-
-    // MARK: - Submit Bar
-    private var submitBar: some View {
-        VStack(spacing: 0) {
-            Divider()
-
-            HStack(spacing: 12) {
-
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 13))
-                        .foregroundStyle(AppTheme.statusWarning)
-
-                    Text(issues.count == 1 ? "1 Issue" : "\(issues.count) Issues")
-                        .font(.system(size: 13, weight: .semibold))
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(AppTheme.statusWarning.opacity(0.12), in: Capsule())
-
-                Spacer()
-
-                Button {
-                    Task {
-                        await vm.submitReports(issues: issues)
-                        DispatchQueue.main.async {
-                            vm.objectWillChange.send()
-                        }
-                    }
-                } label: {
-                    Group {
-                        if vm.isSubmitting {
-                            HStack(spacing: 8) {
-                                ProgressView()
-                                    .tint(.white)
-                                    .scaleEffect(0.85)
-
-                                Text("Submitting…")
-                                    .font(.system(size: 15, weight: .semibold))
-                            }
-                        } else {
-                            Text(issues.count > 1 ? "Submit All" : "Submit Report")
-                                .font(.system(size: 15, weight: .semibold))
-                        }
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 13)
-                    .background(
-                        canSubmit ? AppTheme.primaryGreen : Color.secondary.opacity(0.4),
-                        in: Capsule()
-                    )
-                }
-                .disabled(!canSubmit)
-                .animation(.easeInOut(duration: 0.2), value: canSubmit)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .padding(.bottom, 4)
-            .background(.background)
-        }
+        Text(vehicle.name)
     }
 }
 
-// MARK: - Issue Card
 private struct IssueCard: View {
     @Binding var issue: IssueEntry
     let index: Int
@@ -270,6 +175,7 @@ private struct IssueCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+
             // Header
             HStack {
                 HStack(spacing: 7) {
@@ -402,7 +308,6 @@ private struct IssueCard: View {
     }
 }
 
-// MARK: - Category Chip
 private struct CategoryChip: View {
     let title: String
     let isSelected: Bool
@@ -426,7 +331,6 @@ private struct CategoryChip: View {
     }
 }
 
-// MARK: - Severity Chip
 private struct SeverityChip: View {
     let severity: String
     let isSelected: Bool

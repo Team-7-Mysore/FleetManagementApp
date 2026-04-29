@@ -6,7 +6,14 @@ struct TripListView: View {
     @StateObject private var vm: DriverTripViewModel
     @Environment(\.scenePhase) private var scenePhase
     @State private var showDateFilterSheet = false
-    @State private var draftFilterDate = Date()
+    @State private var draftRangeStartDate = Date()
+    @State private var draftRangeEndDate = Date()
+    @State private var activeRangeField: RangeField = .start
+
+    private enum RangeField {
+        case start
+        case end
+    }
 
     init(user: User) {
         self.user = user
@@ -69,9 +76,9 @@ struct TripListView: View {
                     showDateFilterSheet = true
                 } label: {
                     Image(
-                        systemName: vm.filterDate(for: vm.selectedFilter) == nil
-                            ? "line.3.horizontal.decrease.circle"
-                            : "line.3.horizontal.decrease.circle.fill"
+                        systemName: vm.hasActiveFilter(for: vm.selectedFilter)
+                            ? "line.3.horizontal.decrease.circle.fill"
+                            : "line.3.horizontal.decrease.circle"
                     )
                     .foregroundStyle(AppTheme.primaryGreen)
                 }
@@ -80,15 +87,38 @@ struct TripListView: View {
         .sheet(isPresented: $showDateFilterSheet) {
             NavigationStack {
                 VStack(spacing: 0) {
-                    DatePicker(
-                        "Trip Date",
-                        selection: $draftFilterDate,
-                        displayedComponents: [.date]
-                    )
-                    .datePickerStyle(.graphical)
-                    .labelsHidden()
-                    .padding(.horizontal)
-                    .padding(.top, 8)
+                    VStack(spacing: 16) {
+                        HStack(spacing: 12) {
+                            rangeFieldCard(
+                                title: "Start Date",
+                                date: draftRangeStartDate,
+                                field: .start
+                            )
+
+                            rangeFieldCard(
+                                title: "End Date",
+                                date: draftRangeEndDate,
+                                field: .end
+                            )
+                        }
+                        .padding(.horizontal)
+                        .padding(.top, 16)
+
+                        Text(filterDescription)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal)
+
+                        DatePicker(
+                            "Trip Range",
+                            selection: activeRangeDateBinding,
+                            displayedComponents: [.date]
+                        )
+                        .datePickerStyle(.graphical)
+                        .labelsHidden()
+                        .padding(.horizontal)
+                    }
 
                     Spacer(minLength: 0)
                 }
@@ -107,8 +137,11 @@ struct TripListView: View {
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Apply") {
-                            let selectedDate = Calendar.current.startOfDay(for: draftFilterDate)
-                            vm.setFilterDate(selectedDate, for: vm.selectedFilter)
+                            vm.setFilterRange(
+                                start: draftRangeStartDate,
+                                end: draftRangeEndDate,
+                                for: vm.selectedFilter
+                            )
                             showDateFilterSheet = false
                         }
                         .foregroundStyle(AppTheme.primaryGreen)
@@ -133,19 +166,84 @@ struct TripListView: View {
         }
     }
 
+    private var filterDescription: String {
+        switch vm.selectedFilter {
+        case .upcoming:
+            return "Show all upcoming trips scheduled between the selected dates."
+        case .completed:
+            return "Show all completed trips finished between the selected dates."
+        }
+    }
+
     private var emptyStateMessage: String {
-        if let date = vm.filterDate(for: vm.selectedFilter) {
-            return "No \(vm.selectedFilter.rawValue.lowercased()) trips for \(date.formatted(date: .abbreviated, time: .omitted))."
+        if let range = vm.filterRange(for: vm.selectedFilter) {
+            return "No \(vm.selectedFilter.rawValue.lowercased()) trips between \(range.start.formatted(date: .abbreviated, time: .omitted)) and \(range.end.formatted(date: .abbreviated, time: .omitted))."
         }
         return "No \(vm.selectedFilter.rawValue.lowercased()) trips to show."
     }
 
     private func prepareFilterSheet() {
-        if let selectedDate = vm.filterDate(for: vm.selectedFilter) {
-            draftFilterDate = selectedDate
+        if let range = vm.filterRange(for: vm.selectedFilter) {
+            draftRangeStartDate = range.start
+            draftRangeEndDate = range.end
         } else {
-            draftFilterDate = Date()
+            let today = Calendar.current.startOfDay(for: Date())
+            draftRangeStartDate = today
+            draftRangeEndDate = today
         }
+        activeRangeField = .start
+    }
+
+    private var activeRangeDateBinding: Binding<Date> {
+        Binding(
+            get: {
+                activeRangeField == .start ? draftRangeStartDate : draftRangeEndDate
+            },
+            set: { newValue in
+                let normalizedDate = Calendar.current.startOfDay(for: newValue)
+                switch activeRangeField {
+                case .start:
+                    draftRangeStartDate = normalizedDate
+                    if draftRangeEndDate < normalizedDate {
+                        draftRangeEndDate = normalizedDate
+                    }
+                case .end:
+                    draftRangeEndDate = normalizedDate
+                    if normalizedDate < draftRangeStartDate {
+                        draftRangeStartDate = normalizedDate
+                    }
+                }
+            }
+        )
+    }
+
+    private func rangeFieldCard(title: String, date: Date, field: RangeField) -> some View {
+        Button {
+            activeRangeField = field
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+                Text(date.formatted(date: .abbreviated, time: .omitted))
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(14)
+            .background(Color(.systemBackground))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(
+                        activeRangeField == field
+                            ? AppTheme.primaryGreen
+                            : Color.secondary.opacity(0.12),
+                        lineWidth: activeRangeField == field ? 2 : 1
+                    )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Active Trip Banner

@@ -69,6 +69,7 @@ class ChatViewModel: ObservableObject {
         do {
             try await channel.subscribeWithError()
         } catch {
+            if error is CancellationError { return }
             print("❌ Chat rooms realtime subscribe failed: \(error)")
             roomsRealtimeChannel = nil
             return
@@ -121,6 +122,7 @@ class ChatViewModel: ObservableObject {
         do {
             try await channel.subscribeWithError()
         } catch {
+            if error is CancellationError { return }
             print("❌ Chat room realtime subscribe failed: \(error)")
             roomMessagesChannel = nil
             return
@@ -269,9 +271,19 @@ class ChatViewModel: ObservableObject {
     private func decodeChatMessage(from action: AnyAction, decoder: JSONDecoder) -> ChatMessage? {
         switch action {
         case .insert(let action):
-            return try? action.decodeRecord(as: ChatMessage.self, decoder: decoder)
+            do {
+                return try action.decodeRecord(as: ChatMessage.self, decoder: decoder)
+            } catch {
+                print("❌ Realtime ChatMessage Insert Decode Error: \(error)")
+                return nil
+            }
         case .update(let action):
-            return try? action.decodeRecord(as: ChatMessage.self, decoder: decoder)
+            do {
+                return try action.decodeRecord(as: ChatMessage.self, decoder: decoder)
+            } catch {
+                print("❌ Realtime ChatMessage Update Decode Error: \(error)")
+                return nil
+            }
         default:
             return nil
         }
@@ -434,12 +446,18 @@ class ChatViewModel: ObservableObject {
         return result
     }
     
+    func clearMessages() {
+        self.messages = []
+    }
+
     // MARK: - Fetch Messages (with 48h limit + Cache)
     func fetchMessages(chatRoomId: UUID) async {
         activeChatRoomId = chatRoomId
         // ⚡ LOAD FROM CACHE FIRST (INSTANT UI)
         if let cached = messageCache[chatRoomId] {
             self.messages = cached
+        } else {
+            self.messages = []
         }
         
         // Don't show loading spinner if we have cached data for smoother UX

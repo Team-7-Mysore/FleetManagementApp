@@ -8,7 +8,6 @@ struct ActiveTripView: View {
     let user: User
     @EnvironmentObject private var router: AppRouter
 
-    @State private var elapsedTime: TimeInterval = 0
     @State private var showEndTripConfirmation = false
     @State private var showReportIssue = false
     @State private var timer: Timer?
@@ -152,8 +151,6 @@ struct ActiveTripView: View {
                     tripInfoItem(value: formattedDistance, label: "Distance")
                     Divider().frame(height: 36)
                     tripInfoItem(value: formattedETA, label: "ETA")
-                    Divider().frame(height: 36)
-                    tripInfoItem(value: formattedElapsed, label: "Elapsed")
                 }
                 .padding(.horizontal)
                 .padding(.top, 8)
@@ -173,6 +170,7 @@ struct ActiveTripView: View {
                         .background(Color.blue)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
+
 
                     HStack(spacing: 12) {
                         Button { showReportIssue = true } label: {
@@ -216,9 +214,6 @@ struct ActiveTripView: View {
                             .font(.subheadline.weight(.semibold))
                     }
                     Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 8)
@@ -267,7 +262,10 @@ struct ActiveTripView: View {
                 user: user,
                 vehicle: tripVehicle,
                 activeTripId: trip.id,
-                prefilledDescription: voiceIssueText   // 👈 ADD THIS
+                prefilledDescription: voiceIssueText,
+                prefilledCategory: detectedCategory,
+                prefilledSeverity: detectedSeverity,
+                showsCloseButton: true
             )
         }
         .sheet(isPresented: $showVoiceUI) {
@@ -303,12 +301,15 @@ struct ActiveTripView: View {
                 .padding()
                 .presentationDetents([.fraction(0.3), .medium])
             }
+
+                //showsCloseButton: true
+            //)
+
         }
         .onAppear {
             // Seed emergency contact (replace with user-configurable value later)
             UserDefaults.standard.set("+918408880436", forKey: "emergency_contact")
             savedRouteId = trip.routeId   // carry any already-stored route_id
-            startTimer()
             createRoute()
             locationManager.requestLocation()
             
@@ -316,7 +317,6 @@ struct ActiveTripView: View {
                 await fetchGeofences()
             }
         }
-        .onDisappear { stopTimer() }
     }
 
     private func fetchGeofences() async {
@@ -371,32 +371,6 @@ struct ActiveTripView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private var formattedElapsed: String {
-        let hours = Int(elapsedTime) / 3600
-        let minutes = (Int(elapsedTime) % 3600) / 60
-        let seconds = Int(elapsedTime) % 60
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        }
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-
-    private func startTimer() {
-        if let startTime = trip.startTime {
-            elapsedTime = Date().timeIntervalSince(startTime)
-        }
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-            if let startTime = trip.startTime {
-                elapsedTime = Date().timeIntervalSince(startTime)
-            }
-        }
-    }
-
-    private func stopTimer() {
-        timer?.invalidate()
-        timer = nil
     }
 
     // MARK: - Map Logic
