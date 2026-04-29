@@ -43,7 +43,7 @@ struct PartDetailView: View {
                         .frame(width: 120, height: 120)
                     
                     if let urlString = currentItem.imageUrl, let url = URL(string: urlString) {
-                        AsyncImage(url: url) { phase in
+                        CachedAsyncImage(url: url) { phase in
                             switch phase {
                             case .empty:
                                 ProgressView()

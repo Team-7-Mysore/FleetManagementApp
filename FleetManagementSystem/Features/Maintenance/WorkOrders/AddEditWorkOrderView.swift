@@ -131,7 +131,8 @@ struct AddEditWorkOrderView: View {
         .hideKeyboardOnTap()
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(sourceType: .photoLibrary) { image in
-                if let imageData = image.jpegData(compressionQuality: 0.7) {
+                let resizedImage = image.resized(toMaxDimension: 1024) ?? image
+                if let imageData = resizedImage.jpegData(compressionQuality: 0.6) {
                     let filename = UUID().uuidString + ".jpg"
                     Task {
                         do {
@@ -389,7 +390,7 @@ struct AddEditWorkOrderView: View {
                         ZStack(alignment: .topTrailing) {
                             RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .systemGray6)).frame(width: 110, height: 110)
                             if let url = URL(string: photoUrlString) {
-                                AsyncImage(url: url) { phase in
+                                CachedAsyncImage(url: url) { phase in
                                     switch phase {
                                     case .empty: ProgressView()
                                     case .success(let image): image.resizable().scaledToFill().frame(width: 110, height: 110).clipShape(RoundedRectangle(cornerRadius: 16))

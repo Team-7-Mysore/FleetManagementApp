@@ -817,7 +817,7 @@ struct WorkEntryAndDocumentationView: View {
 
                     ForEach(photos, id: \.self) { urlString in
                         if let url = URL(string: urlString) {
-                            AsyncImage(url: url) { phase in
+                            CachedAsyncImage(url: url) { phase in
                                 switch phase {
                                 case .empty: ZStack { RoundedRectangle(cornerRadius: 16).fill(Color(uiColor: .systemGray6)).frame(width: 110, height: 110); ProgressView() }
                                 case .success(let image): image.resizable().scaledToFill().frame(width: 110, height: 110).clipShape(RoundedRectangle(cornerRadius: 16))
