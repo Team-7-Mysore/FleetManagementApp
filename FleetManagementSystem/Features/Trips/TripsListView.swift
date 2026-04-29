@@ -8,6 +8,7 @@ struct TripsListView: View {
     @State private var navigateToNotifications = false
 
     @StateObject private var vm = TripListViewModel()
+    @AppStorage("selectedLanguage") private var selectedLanguage: String = "en"
     @State private var showingProfile = false
     @State private var selectedWorkOrder: WorkOrder? = nil
 
@@ -95,6 +96,7 @@ struct TripsListView: View {
                     FleetManagerProfileView(profile: profile, onSignOut: onSignOut)
                         .presentationDetents([.large])
                         .presentationDragIndicator(.visible)
+                        .environment(\.locale, .init(identifier: selectedLanguage))
                 }
                 .navigationDestination(isPresented: $navigateToNotifications) {
                     FleetManagerNotificationsView(userId: profile?.userId)
