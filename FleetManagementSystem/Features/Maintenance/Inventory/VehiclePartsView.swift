@@ -7,10 +7,10 @@ struct VehiclePartsView: View {
     @State private var showDeleteAlert = false
     @State private var itemToDelete: InventoryItem?
     @State private var showInsightsCard = false
-
-    private var displayedMostUsedPart: InventoryItem? {
-        guard viewModel.activeMostUsedCategory == category else { return nil }
-        return viewModel.mostUsedPart
+    
+    private var displayedTopUsedParts: [(item: InventoryItem, count: Int)] {
+        guard viewModel.activeMostUsedCategory == category else { return [] }
+        return viewModel.topUsedParts
     }
     
     var body: some View {
@@ -128,46 +128,46 @@ struct VehiclePartsView: View {
                 .font(.headline)
                 .fontWeight(.bold)
 
-            if let item = displayedMostUsedPart {
-                HStack(spacing: 12) {
-                    ZStack {
-                        Circle()
-                            .fill(Color(hex: "#A3352A").opacity(0.12))
-                            .frame(width: 42, height: 42)
+            if !displayedTopUsedParts.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(displayedTopUsedParts.enumerated()), id: \.element.item.id) { index, entry in
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color(hex: "#A3352A").opacity(0.12))
+                                    .frame(width: 40, height: 40)
 
-                        Image(systemName: "chart.line.uptrend.xyaxis")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundColor(Color(hex: "#A3352A"))
+                                Image(systemName: index == 0 ? "chart.line.uptrend.xyaxis" : "shippingbox.fill")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(Color(hex: "#A3352A"))
+                            }
+
+                            Text(entry.item.partName)
+                                .font(.subheadline)
+                                .fontWeight(index == 0 ? .semibold : .regular)
+                                .foregroundColor(.primary)
+                                .lineLimit(2)
+
+                            Spacer(minLength: 12)
+
+                            Text("\(entry.count)")
+                                .font(.subheadline)
+                                .fontWeight(.bold)
+                                .foregroundColor(Color(hex: "#A3352A"))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Color(hex: "#A3352A").opacity(0.12))
+                                .clipShape(Capsule())
+                        }
                     }
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(item.partName)
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundColor(.primary)
-                            .lineLimit(2)
-
-                        Text("Used \(viewModel.mostUsedQuantity) time\(viewModel.mostUsedQuantity == 1 ? "" : "s") in the last 7 days")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-
-                    Spacer(minLength: 12)
-
-                    Text("\(viewModel.mostUsedQuantity)")
-                        .font(.subheadline)
-                        .fontWeight(.bold)
-                        .foregroundColor(Color(hex: "#A3352A"))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .background(Color(hex: "#A3352A").opacity(0.12))
-                        .clipShape(Capsule())
                 }
 
-                Text("This part is frequently used. Consider restocking regularly.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let first = displayedTopUsedParts.first, first.count > 0 {
+                    Text("This part is frequently used. Consider restocking regularly.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } else {
                 HStack(spacing: 10) {
                     Image(systemName: "calendar.badge.exclamationmark")
