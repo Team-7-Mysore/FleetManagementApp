@@ -109,7 +109,14 @@ struct DriverDashboardView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .active {
                 vm.loadData()
+                vm.startAutoRefresh()
+            } else if newPhase == .background {
+                vm.stopAutoRefresh()
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .driverTripCompleted)) { notification in
+            let tripId = notification.userInfo?["tripId"] as? UUID
+            vm.handleTripCompleted(tripId: tripId)
         }
         .refreshable {
             vm.loadData(forceRefresh: true)

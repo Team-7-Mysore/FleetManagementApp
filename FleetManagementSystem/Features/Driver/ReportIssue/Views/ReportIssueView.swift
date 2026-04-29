@@ -12,15 +12,25 @@ struct IssueEntry: Identifiable {
 struct ReportIssueView: View {
     let user: User
     let vehicle: Vehicle?
+    let showsCloseButton: Bool
+    var onReportSubmitted: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     @StateObject private var vm: ReportIssueViewModel
     @State private var issues: [IssueEntry] = [IssueEntry()]
     @State private var showDeleteConfirm: UUID? = nil
 
-    init(user: User, vehicle: Vehicle?, activeTripId: UUID? = nil) {
+    init(
+        user: User,
+        vehicle: Vehicle?,
+        activeTripId: UUID? = nil,
+        showsCloseButton: Bool = false,
+        onReportSubmitted: (() -> Void)? = nil
+    ) {
         self.user = user
         self.vehicle = vehicle
+        self.showsCloseButton = showsCloseButton
+        self.onReportSubmitted = onReportSubmitted
         let viewModel = ReportIssueViewModel(user: user, vehicle: vehicle)
         viewModel.activeTripId = activeTripId
         _vm = StateObject(wrappedValue: viewModel)
@@ -92,9 +102,25 @@ struct ReportIssueView: View {
             }
             .navigationTitle(issues.count > 1 ? "Report \(issues.count) Issues" : "Report Issue")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if showsCloseButton {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .foregroundStyle(AppTheme.primaryGreen)
+                                .fontWeight(.medium)
+                        }
+                    }
+                }
+            }
 
             .alert("Issues Reported ✓", isPresented: $vm.submitSuccess) {
-                Button("Done") { dismiss() }
+                Button("Done") { 
+                    dismiss()
+                    onReportSubmitted?()
+                }
             } message: {
                 Text(issues.count > 1
                      ? "\(issues.count) issues have been submitted to the fleet manager. They will follow up shortly."

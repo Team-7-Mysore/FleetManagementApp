@@ -9,6 +9,8 @@ struct VehicleInspectionView: View {
     @State private var overallNotes = ""
     @State private var showSubmissionConfirmation = false
     @State private var showReportIssue = false
+    @State private var showTripCompletionError = false
+    @State private var inspectionSnapshot: Inspection?
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var router: AppRouter
 
@@ -33,7 +35,7 @@ struct VehicleInspectionView: View {
         .navigationTitle("Vehicle Inspection")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if vm.currentInspection == nil {
+            if displayedInspection == nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showNewInspectionSheet = true } label: {
                         Image(systemName: "plus")
@@ -59,18 +61,73 @@ struct VehicleInspectionView: View {
         } message: {
             Text(confirmationMessage)
         }
+        .alert("Couldn’t End Trip", isPresented: $showTripCompletionError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Trip could not be marked completed. Please try again.")
+        }
         .sheet(isPresented: $showReportIssue) {
-            ReportIssueView(user: user, vehicle: nil)
+            let vehicleToReport: Vehicle? = trip.map { trip in
+                Vehicle(
+                    id: trip.vehicleId,
+                    name: trip.startLocation,
+                    registrationNumber: "",
+                    vehicleType: "unknown"
+                )
+            }
+            ReportIssueView(
+                user: user,
+                vehicle: vehicleToReport,
+                activeTripId: trip?.id,
+                showsCloseButton: true
+            ) {
+                // If it's a trip-based inspection, go back to dashboard
+                if let trip {
+                    if isPostTripFlow {
+                        Task {
+                            let didComplete = await vm.submitAndCompleteTrip(notes: overallNotes, trip: trip)
+                            await MainActor.run {
+                                if didComplete {
+                                    NotificationCenter.default.post(
+                                        name: .driverTripCompleted,
+                                        object: nil,
+                                        userInfo: ["tripId": trip.id]
+                                    )
+                                    NotificationCenter.default.post(name: NSNotification.Name("TripStatusChanged"), object: nil)
+                                    router.resetPath()
+                                } else {
+                                    showTripCompletionError = true
+                                }
+                            }
+                        }
+                    } else {
+                        vm.submitInspection(notes: overallNotes)
+                        router.resetPath()
+                    }
+                } else {
+                    vm.submitInspection(notes: overallNotes)
+                    dismiss()
+                }
+            }
         }
         .onAppear {
             vm.loadDataAndAutoStart(for: trip, type: defaultType)
         }
+        .onChange(of: showReportIssue) { _, isPresented in
+            if !isPresented {
+                inspectionSnapshot = nil
+            }
+        }
+    }
+
+    private var displayedInspection: Inspection? {
+        vm.currentInspection ?? inspectionSnapshot
     }
 
     // MARK: - Current Inspection
     @ViewBuilder
     private var currentInspectionContent: some View {
-        if let inspection = vm.currentInspection {
+        if let inspection = displayedInspection {
             // Progress header
             VStack(spacing: 12) {
                 HStack {
@@ -153,7 +210,7 @@ struct VehicleInspectionView: View {
             .padding(.top, 4)
 
             // Action Button
-            if vm.canSubmit {
+            if inspection.pendingCount == 0 {
                 if inspection.failCount > 0 {
                     VStack(spacing: 10) {
                         HStack(spacing: 8) {
@@ -169,7 +226,7 @@ struct VehicleInspectionView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                         Button {
-                            vm.submitInspection(notes: overallNotes)
+                            inspectionSnapshot = inspection
                             showReportIssue = true
                         } label: {
                             HStack(spacing: 8) {
@@ -349,8 +406,18 @@ struct VehicleInspectionView: View {
             if isPostTripFlow {
                 Task {
                     let didComplete = await vm.submitAndCompleteTrip(notes: overallNotes, trip: trip)
-                    if didComplete {
-                        router.resetPath()
+                    await MainActor.run {
+                        if didComplete {
+                            NotificationCenter.default.post(
+                                name: .driverTripCompleted,
+                                object: nil,
+                                userInfo: ["tripId": trip.id]
+                            )
+                            NotificationCenter.default.post(name: NSNotification.Name("TripStatusChanged"), object: nil)
+                            router.resetPath()
+                        } else {
+                            showTripCompletionError = true
+                        }
                     }
                 }
             } else {

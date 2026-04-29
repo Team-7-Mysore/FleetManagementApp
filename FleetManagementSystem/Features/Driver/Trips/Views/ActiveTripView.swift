@@ -207,7 +207,12 @@ struct ActiveTripView: View {
                 registrationNumber: "",
                 vehicleType: "unknown"
             )
-            ReportIssueView(user: user, vehicle: tripVehicle, activeTripId: trip.id)
+            ReportIssueView(
+                user: user,
+                vehicle: tripVehicle,
+                activeTripId: trip.id,
+                showsCloseButton: true
+            )
         }
         .onAppear {
             // Seed emergency contact (replace with user-configurable value later)
