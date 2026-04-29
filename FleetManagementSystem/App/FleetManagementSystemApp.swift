@@ -5,7 +5,7 @@ import Supabase
 
 @main
 struct FleetManagementSystemApp: App {
-    
+
     @StateObject private var appSession = AppSession()
     @State private var showSetPassword = false
     @State private var isLoading = true

@@ -5,6 +5,8 @@ struct FleetManagerNotificationsView: View {
     @State private var notifications: [AppNotification] = []
     @State private var isLoading = true
     @State private var unreadCount: Int = 0
+    // Cached once during fetchNotifications() — avoids auth.session calls in the realtime loop
+    @State private var resolvedUserId: UUID?
 
     // MARK: - Routing State for Modal
     @State private var routingWorkOrder: WorkOrder? = nil
@@ -86,6 +88,7 @@ struct FleetManagerNotificationsView: View {
                         }
                     }
                     .fontWeight(.medium)
+                    .disabled(notifications.isEmpty)
                 }
             }
 
@@ -129,12 +132,8 @@ struct FleetManagerNotificationsView: View {
             for await notification in NotificationCenter.default.notifications(named: .notificationsUpdated) {
                 guard let action = notification.object as? AnyAction else { continue }
                 
-                let currentUserId: UUID
-                if let id = userId { currentUserId = id }
-                else { 
-                    guard let id = try? await SupabaseManager.shared.client.auth.session.user.id else { continue }
-                    currentUserId = id
-                }
+                // Use the cached user ID — resolvedUserId is set once in fetchNotifications()
+                guard let currentUserId = resolvedUserId else { continue }
                 
                 await MainActor.run {
                     let decoder = JSONDecoder()
@@ -310,6 +309,9 @@ struct FleetManagerNotificationsView: View {
                 currentUserId = session.user.id
             }
 
+            // Cache the resolved ID so the realtime loop and other functions don't need to re-fetch it
+            await MainActor.run { resolvedUserId = currentUserId }
+
             print("📡 Fetching notifications for user: \(currentUserId)")
             let fetched: [AppNotification] = try await SupabaseManager.shared.client
                 .from("notifications")
@@ -343,13 +345,8 @@ struct FleetManagerNotificationsView: View {
 
     private func clearAllNotifications() async {
         do {
-            let currentUserId: UUID
-            if let id = userId {
-                currentUserId = id
-            } else {
-                let session = try await SupabaseManager.shared.client.auth.session
-                currentUserId = session.user.id
-            }
+            // Use the cached user ID — already resolved during fetchNotifications()
+            guard let currentUserId = resolvedUserId else { return }
 
             print("🗑️ Attempting to clear all notifications for user: \(currentUserId)")
             try await SupabaseManager.shared.client
