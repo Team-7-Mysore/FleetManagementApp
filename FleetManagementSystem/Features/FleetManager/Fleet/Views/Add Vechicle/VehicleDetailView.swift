@@ -180,6 +180,7 @@ struct VehicleDetailView: View {
         ZStack(alignment: .bottomTrailing) {
             Group {
                 if let urlString = vehicle.imageURL, let url = URL(string: urlString) {
+<<<<<<< HEAD
                     AsyncImage(url: url, transaction: .init(animation: .easeInOut)) { phase in
                         if let image = phase.image {
                             image.resizable().scaledToFill()
@@ -187,6 +188,13 @@ struct VehicleDetailView: View {
                             Rectangle().fill(Color(.systemGray5))
                                 .overlay(Image(systemName: vehicle.imageSystemName).font(.largeTitle).foregroundColor(.gray))
                         }
+=======
+                    CachedAsyncImage(url: url) { image in
+                        image.resizable().scaledToFill()
+                    } placeholder: {
+                        Rectangle().fill(Color(.systemGray5))
+                            .overlay(Image(systemName: vehicle.imageSystemName).font(.largeTitle).foregroundColor(.gray))
+>>>>>>> 95b3f99 (Optimized entire code base to reduce supabase workload)
                     }
                 } else {
                     Rectangle().fill(Color(.systemGray5))
