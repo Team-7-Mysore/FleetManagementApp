@@ -41,6 +41,7 @@ final class DriverDashboardViewModel: ObservableObject {
     @Published private(set) var totalMiles: Double = 0
     @Published private(set) var totalTrips: Int = 0
     @Published private(set) var fuelEfficiency: Double?
+    @Published private(set) var hasLoadedData: Bool = false
 
     private let user: User
     private var isLoading = false
@@ -50,8 +51,9 @@ final class DriverDashboardViewModel: ObservableObject {
         self.user = user
     }
 
-    func loadData() {
+    func loadData(forceRefresh: Bool = false) {
         guard !isLoading else { return }
+        if !forceRefresh && hasLoadedData { return }
         isLoading = true
         print("🚀 loadData called")
 
@@ -63,15 +65,18 @@ final class DriverDashboardViewModel: ObservableObject {
                     .from("drivers")
                     .select("driver_id")
                     .eq("user_id", value: user.id)
-                    .single()
                     .execute()
 
-                let driverData = try JSONDecoder().decode(
-                    [String: String].self,
+                let driverDataList = try JSONDecoder().decode(
+                    [[String: String]].self,
                     from: driverResponse.data
                 )
-                guard let driverId = driverData["driver_id"] else {
-                    print("❌ driver_id not found")
+                
+                guard let driverId = driverDataList.first?["driver_id"] else {
+                    print("⚠️ No driver record found for user_id: \(user.id). User might not be fully onboarded as a driver.")
+                    self.assignedVehicle = nil
+                    self.upcomingTrips = []
+                    self.activeTrip = nil
                     return
                 }
 
@@ -130,6 +135,7 @@ final class DriverDashboardViewModel: ObservableObject {
                     print("⚠️ No vehicle_id found in trips")
                 }
 
+                self.hasLoadedData = true
             } catch {
                 self.assignedVehicle = nil
                 print("❌ FETCH ERROR:", error)
@@ -137,11 +143,11 @@ final class DriverDashboardViewModel: ObservableObject {
         }
     }
 
-    func startAutoRefresh(interval: TimeInterval = 5) {
+    func startAutoRefresh(interval: TimeInterval = 60) {
         guard refreshTimer == nil else { return }
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                self?.loadData()
+                self?.loadData(forceRefresh: true)
             }
         }
         timer.tolerance = 1.0
