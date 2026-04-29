@@ -99,9 +99,16 @@ struct VehicleDetailView: View {
                     Button {
                         showReportsSheet = true
                     } label: {
-                        Label("View Reports", systemImage: "chart.bar.doc.horizontal.fill")
+                        Label("Maintaince Reports", systemImage: "chart.bar.doc.horizontal.fill")
                             .foregroundColor(.purple)
                     }
+                    Button {
+                            // Action for Vehicle Usage Reports
+                            print("Navigate to Usage Reports")
+                        } label: {
+                            Label("Vehicle Usage Reports", systemImage: "fuelpump.fill")
+                                .foregroundColor(.blue)
+                        }
                 }
             }
         }
