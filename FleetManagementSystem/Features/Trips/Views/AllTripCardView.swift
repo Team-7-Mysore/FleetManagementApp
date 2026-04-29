@@ -71,18 +71,12 @@ struct AllTripCardView: View {
 
     private var statusColor: Color {
         switch trip.normalisedStatus {
-        case .inTransit:
-            return Color.orange
-        case .inProgress:
-            return Color.green
-        case .scheduled:
-            return Color.blue
-        case .completed:
-            return Color.green
-        case .cancelled:
-            return Color.red
-        default:
-            return Color.gray
+        case .inTransit:  return Color(hex: "#F59E0B")  // Amber
+        case .inProgress: return Color(hex: "#3B82F6")  // Blue
+        case .scheduled:  return Color(hex: "#8B5CF6")  // Purple
+        case .completed:  return Color(hex: "#10B981")  // Emerald
+        case .cancelled:  return Color(hex: "#EF4444")  // Red
+        default:          return Color(.systemGray)
         }
     }
 }

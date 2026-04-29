@@ -354,12 +354,12 @@ struct FleetManagerTripDetailView: View {
 
     private var statusColor: Color {
         switch trip.normalisedStatus {
-        case .inTransit:  return .orange
-        case .inProgress: return .blue
-        case .scheduled:  return .purple
-        case .completed:  return .green
-        case .cancelled:  return .red
-        default:          return .secondary
+        case .inTransit:  return Color(hex: "#F59E0B")  // Amber
+        case .inProgress: return Color(hex: "#3B82F6")  // Blue
+        case .scheduled:  return Color(hex: "#8B5CF6")  // Purple
+        case .completed:  return Color(hex: "#10B981")  // Emerald
+        case .cancelled:  return Color(hex: "#EF4444")  // Red
+        default:          return Color(.systemGray)
         }
     }
 }
