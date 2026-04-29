@@ -19,7 +19,8 @@ struct TripsListView: View {
 
     // MARK: - Computed Properties for Separation
     private var pendingApprovals: [WorkOrder] {
-        vm.vehiclesInMaintenance.filter { $0.status == .pending }
+        // Only show pending work orders that haven't been approved yet
+        vm.vehiclesInMaintenance.filter { $0.status == .pending && $0.isApproved == false }
     }
 
     private var activeMaintenance: [WorkOrder] {
@@ -195,24 +196,47 @@ struct TripsListView: View {
     private var pendingApprovalsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Pending Approvals")
-                    .font(.title3.weight(.semibold))
-                    .foregroundColor(.primary)
+                HStack(spacing: 8) {
+                    Text("Pending Approvals")
+                        .font(.title3.weight(.semibold))
+                        .foregroundColor(.primary)
+
+                    // Count badge
+                    Text("\(pendingApprovals.count)")
+                        .font(.caption.weight(.bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Color.orange)
+                        .clipShape(Capsule())
+                }
 
                 Spacer()
 
-                // You can build an AllPendingApprovalsView later if needed
-                // NavigationLink("View All", destination: AllPendingApprovalsView())
-                //     .font(.subheadline.weight(.semibold))
-                //     .foregroundColor(.TechBlue)
+                NavigationLink("View All", destination: AllMaintenanceView())
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.TechBlue)
             }
 
             ForEach(Array(pendingApprovals.prefix(3))) { workOrder in
                 Button(action: {
-                    // This sets the state, opening the sheet with manager mode
                     selectedWorkOrder = workOrder
                 }) {
                     MaintenanceVehicleCard(workOrder: workOrder)
+                }
+                .buttonStyle(.plain)
+            }
+
+            // Show overflow hint if more than 3
+            if pendingApprovals.count > 3 {
+                NavigationLink(destination: AllMaintenanceView()) {
+                    Text("+ \(pendingApprovals.count - 3) more awaiting approval")
+                        .font(.subheadline)
+                        .foregroundColor(.TechBlue)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color.orange.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
             }
