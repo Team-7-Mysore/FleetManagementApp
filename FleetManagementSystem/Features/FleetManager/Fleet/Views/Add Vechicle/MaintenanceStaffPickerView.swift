@@ -137,12 +137,13 @@ struct MaintenanceStaffPickerView: View {
                 .eq("vehicle_id", value: vehicle.id)
                 .execute()
             
-           
+            
+            let session = try await SupabaseManager.shared.client.auth.session
+            let currentUserId = session.user.id
+            
             let notificationData: [String: AnyEncodable] = [
                 "recipient_id": AnyEncodable(technician.id),
-                
-                "sender_id": AnyEncodable("3695958a-2a6e-4cac-a311-7541e5c03a2f"),
-                
+                "sender_id": AnyEncodable(currentUserId),
                 "type": AnyEncodable("Maintenance"),
                 "title": AnyEncodable("New Task: \(issueSummary)"),
                 "message": AnyEncodable("You have been assigned to repair \(vehicle.name)"),
