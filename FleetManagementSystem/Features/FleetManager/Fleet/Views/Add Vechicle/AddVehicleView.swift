@@ -133,7 +133,14 @@ struct AddVehicleView: View {
             }
             .sheet(isPresented: $showDocumentPicker) { DocumentPicker { url in handleDocumentSelected(url) } }
             .sheet(isPresented: $showImagePicker) { ImagePicker(sourceType: sourceType) { image in handleImageSelected(image) } }
-            .onChange(of: vm.isSuccess) { if $0 { Task { await fleetVM.fetchVehicles() }; dismiss() } }
+            .onChange(of: vm.isSuccess) { _, newValue in
+                if newValue {
+                    dismiss()
+                    Task {
+                        await fleetVM.fetchVehicles()
+                    }
+                }
+            }
         }
     }
 
@@ -271,8 +278,8 @@ struct AddVehicleView: View {
         let uploadType = self.selectedType
         Task {
             await vm.uploadFile(fileURL: url, type: uploadType)
-            if uploadType == "RC", let image = UIImage(contentsOfFile: url.path) {
-                await vm.processVehicleOCR(from: image)
+            if uploadType == "RC" {
+                await vm.processVehicleOCR(from: url)
             }
         }
     }

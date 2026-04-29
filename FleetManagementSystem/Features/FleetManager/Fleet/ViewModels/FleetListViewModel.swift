@@ -76,7 +76,7 @@ final class FleetListViewModel: ObservableObject {
             }
         }
     }
-    func fetchVehicles() async {
+func fetchVehicles() async {
         isLoading = true
         do {
             let response = try await SupabaseManager.shared.client
@@ -97,20 +97,23 @@ final class FleetListViewModel: ObservableObject {
                     registration_date,
                     rc_expiry_date,
                     puc_expiry_date,
-                     created_at
+                    has_rc,
+                    has_insurance,
+                    has_puc,
+                    created_at
                 """)
                 .order("created_at", ascending: false)
                 .execute()
 
             let parsedVehicles = try Self.parseVehicles(from: response.data)
 
-                    // 1. Update the vehicle list
-                    self.vehicles = parsedVehicles
+            // 1. Update the vehicle list
+            self.vehicles = parsedVehicles
 
-                    // 2. TRIGGER THE CALCULATION (This was missing)
-                    self.calculateMonthlyReminders(from: parsedVehicles)
+            // 2. TRIGGER THE CALCULATION (This was missing)
+            self.calculateMonthlyReminders(from: parsedVehicles)
 
-                    isLoading = false
+            isLoading = false
         } catch {
             print("❌ Supabase Fetch Error: \(error)")
             isLoading = false
@@ -227,7 +230,7 @@ private extension FleetListViewModel {
             throw NSError(domain: "FleetList", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid JSON"])
         }
 
-        return rows.compactMap { row in
+        return rows.compactMap { row -> Vehicle? in
             guard let idString = stringValue(row["vehicle_id"]),
                   let id = UUID(uuidString: idString) else { return nil }
 
@@ -248,6 +251,9 @@ private extension FleetListViewModel {
             vehicle.registrationDate = stringValue(row["registration_date"]) ?? ""
             vehicle.rcExpiryDate = stringValue(row["rc_expiry_date"]) ?? ""
             vehicle.pucExpiryDate = stringValue(row["puc_expiry_date"]) ?? ""
+            vehicle.hasRC = row["has_rc"] as? Bool ?? false
+            vehicle.hasInsurance = row["has_insurance"] as? Bool ?? false
+            vehicle.hasPUC = row["has_puc"] as? Bool ?? false
             return vehicle
         }
     }

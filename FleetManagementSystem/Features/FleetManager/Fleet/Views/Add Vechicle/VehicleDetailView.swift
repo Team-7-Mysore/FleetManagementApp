@@ -170,6 +170,17 @@ struct VehicleDetailView: View {
                         if let newURL = vm.vehicle?.imageURL { draftVehicle?.imageURL = newURL }
                     }
                 }
+            } onPDFPicked: { pdfURL in
+                Task {
+                    if let type = activeDocumentType {
+                        await vm.uploadDocument(fileURL: pdfURL, type: type)
+                        if type == "RC" {
+                            await vm.processVehicleOCR(from: pdfURL)
+                            if isEditing { draftVehicle = vm.vehicle }
+                        }
+                        activeDocumentType = nil
+                    }
+                }
             }
         }
     }
@@ -289,7 +300,21 @@ struct VehicleDetailView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
-            if !isEditing, let fileURL = doc?.fileURL, let url = URL(string: fileURL) {
+            // Lazy load: fetch document URL when user taps (if not already fetched)
+            guard !isEditing, let doc = doc, let vehicleId = vm.vehicle?.id else { return }
+            
+            if doc.fileURL.isEmpty {
+                Task {
+                    if let url = await vm.fetchDocumentURL(for: type, vehicleId: vehicleId) {
+                        await MainActor.run {
+                            vm.setDocumentURL(url, for: type)
+                            if let openedURL = URL(string: url) {
+                                UIApplication.shared.open(openedURL)
+                            }
+                        }
+                    }
+                }
+            } else if doc.fileURL.count > 5, let url = URL(string: doc.fileURL) {
                 UIApplication.shared.open(url)
             }
         }

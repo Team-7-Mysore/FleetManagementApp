@@ -6,7 +6,7 @@ import UIKit
 struct VehicleDocument: Identifiable, Hashable {
     let id: String
     let type: String
-    var fileURL: String
+    var fileURL: String = ""  // Now optional but defaults to empty - lazy loaded
     var fileName: String? = nil
 
     var title: String {
@@ -69,9 +69,12 @@ class VehicleDetailViewModel: ObservableObject {
 
 
 
-    func processVehicleOCR(from image: UIImage) async {
-        let rawText = await VehicleOCRService.shared.recognizeText(from: image)
+    func processVehicleOCR(from source: Any) async {
+        let rawText = await VehicleOCRService.shared.recognizeText(from: source)
+        print("OCR Raw Text: \(rawText)")
+        
         let result = extractVehicleData(from: rawText)
+        print("OCR Result: \(result)")
 
         await MainActor.run {
             guard var currentVehicle = self.vehicle else { return }
@@ -106,9 +109,9 @@ class VehicleDetailViewModel: ObservableObject {
         
         let plate = normalized.range(of: plateRegex, options: .regularExpression).map { String(normalized[$0]) }
         let year = raw.range(of: yearRegex, options: .regularExpression).map { String(raw[$0]) }
-        let brands = ["MARUTI", "HYUNDAI", "TATA", "HONDA", "TOYOTA", "MAHINDRA"]
+        let brands = ["MARUTI", "HYUNDAI", "TATA", "HONDA", "TOYOTA", "MAHINDRA", "ASHOK LEYLAND", "KIA", "MG", "BMW", "MERCEDES", "AUDI", "JEEP", "SKODA", "VOLKSWAGEN", "FIAT", "RENAULT", "NISSAN", "MITSUBISHI", "FORD", "CHEVROLET"]
         let manufacturer = brands.first(where: { raw.contains($0) })
-        let models = ["SWIFT", "DZIRE", "BALENO", "CRETA", "NEXON", "THAR"]
+        let models = ["SWIFT", "DZIRE", "BALENO", "CRETA", "NEXON", "THAR", "I20", "VITARA", "BREZZA", "ERTIGA", "INNOVA", "FORTUNER", "ALTO", "WAGONR", "CELERIO", "DZIRE", "Tiago", "TIGOR", "PUNCH", "HARRIER", "SAFARI", "SCORPIO", "XUV700", "XUV300", "ALTROZ", "NEXON EV", "TIGOR EV", "ACTIVA", "DESTINI", "DIO", "NAVAGER"]
         let model = models.first(where: { raw.contains($0) })
 
         return (plate, nil, manufacturer, model, year)
@@ -200,6 +203,18 @@ class VehicleDetailViewModel: ObservableObject {
                 .execute()
 
             try await syncDocuments(for: vehicle.id)
+            
+            var components = URLComponents(string: "\(SUPABASE_URL)/rest/v1/vehicle_documents")!
+            components.queryItems = [
+                URLQueryItem(name: "select", value: "document_id,document_type,file_name,file_url,uploaded_at"),
+                URLQueryItem(name: "vehicle_id", value: "eq.\(vehicle.id.uuidString.lowercased())")
+            ]
+            guard let url = components.url else { throw URLError(.badURL) }
+            var request = URLRequest(url: url)
+            request.addValue(SUPABASE_ANON_KEY, forHTTPHeaderField: "apikey")
+            request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
+            let (data, _) = try await URLSession.shared.data(for: request)
+            documents = try Self.parseDocuments(from: data)
             return true
         } catch {
             print("Update failed:", error)
@@ -215,18 +230,15 @@ class VehicleDetailViewModel: ObservableObject {
         let fileName = UUID().uuidString + ".jpg"
         let bucket = type == "VEHICLE" ? "vehicle-images" : "vehicle-documents"
 
-        let url = URL(string: "\(SUPABASE_URL)/storage/v1/object/\(bucket)/\(fileName)")!
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
-        request.addValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-
         do {
-            let (_, res) = try await URLSession.shared.upload(for: request, from: data)
+            let storage = SupabaseManager.shared.client.storage
+            let uploaded = try await storage.from(bucket).upload(
+                path: fileName,
+                file: data,
+                options: FileOptions(cacheControl: "3600", contentType: "image/jpeg")
+            )
 
-            guard (res as? HTTPURLResponse)?.statusCode == 200 else { return }
-
+            // Get public URL
             let publicURL = "\(SUPABASE_URL)/storage/v1/object/public/\(bucket)/\(fileName)"
 
             if type == "VEHICLE" {
@@ -247,20 +259,14 @@ class VehicleDetailViewModel: ObservableObject {
             let fileExtension = fileURL.pathExtension.isEmpty ? "pdf" : fileURL.pathExtension
             let uniqueName = "\(UUID().uuidString).\(fileExtension)"
 
-            guard let url = URL(string: "\(SUPABASE_URL)/storage/v1/object/vehicle-documents/\(uniqueName)") else {
-                throw URLError(.badURL)
-            }
-
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
-            request.addValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-
-            let (_, response) = try await URLSession.shared.upload(for: request, from: data)
-            guard let httpResponse = response as? HTTPURLResponse,
-                  200..<300 ~= httpResponse.statusCode else {
-                throw URLError(.badServerResponse)
-            }
+            let storage = SupabaseManager.shared.client.storage
+            let contentType = fileExtension == "pdf" ? "application/pdf" : "application/octet-stream"
+            
+            let uploaded = try await storage.from("vehicle-documents").upload(
+                path: uniqueName,
+                file: data,
+                options: FileOptions(cacheControl: "3600", contentType: contentType)
+            )
 
             let publicURL = "\(SUPABASE_URL)/storage/v1/object/public/vehicle-documents/\(uniqueName)"
             setDocumentURL(publicURL, for: type, fileName: originalName)
@@ -296,14 +302,14 @@ class VehicleDetailViewModel: ObservableObject {
         try await SupabaseManager.shared.client
             .from("vehicle_documents")
             .delete()
-            .eq("vehicle_id", value: vehicleID)
+            .eq("vehicle_id", value: vehicleID.uuidString.lowercased())
             .execute()
 
         let records = documents
             .filter { !$0.fileURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .map {
             [
-                "vehicle_id": vehicleID.uuidString,
+                "vehicle_id": vehicleID.uuidString.lowercased(),
                 "document_type": $0.type,
                 "file_url": $0.fileURL
             ]
@@ -325,7 +331,8 @@ extension VehicleDetailViewModel {
         }
 
         components.queryItems = [
-            URLQueryItem(name: "select", value: "document_id,document_type,file_url,file_name,uploaded_at"),
+            // Fetch metadata only - NOT the actual file_url (lazy load on tap)
+            URLQueryItem(name: "select", value: "document_id,document_type,file_name,uploaded_at"),
             URLQueryItem(name: "vehicle_id", value: "eq.\(vehicleId.uuidString.lowercased())")
         ]
 
@@ -336,6 +343,8 @@ extension VehicleDetailViewModel {
         var request = URLRequest(url: url)
         request.addValue(SUPABASE_ANON_KEY, forHTTPHeaderField: "apikey")
         request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
+        // Prevent caching - always fetch fresh metadata
+        request.cachePolicy = .reloadIgnoringLocalCacheData
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -352,6 +361,29 @@ extension VehicleDetailViewModel {
         }
 
         return data
+    }
+    
+    // MARK: - Lazy load document URL when user taps on it
+    func fetchDocumentURL(for type: String, vehicleId: UUID) async -> String? {
+        do {
+            let response = try await SupabaseManager.shared.client
+                .from("vehicle_documents")
+                .select("file_url")
+                .eq("vehicle_id", value: vehicleId.uuidString.lowercased())
+                .eq("document_type", value: type.uppercased())
+                .limit(1)
+                .execute()
+            
+            let rows = try JSONSerialization.jsonObject(with: response.data) as? [[String: Any]] ?? []
+            guard let row = rows.first,
+                  let fileUrl = row["file_url"] as? String else {
+                return nil
+            }
+            return fileUrl
+        } catch {
+            print("Error fetching document URL: \(error)")
+            return nil
+        }
     }
 
     static func parseVehicleDetail(from data: Data) throws -> (vehicle: Vehicle, documents: [VehicleDocument]) {
@@ -418,19 +450,21 @@ extension VehicleDetailViewModel {
             return []
         }
 
+        // Now parses metadata only - file_url can be empty (lazy loaded)
         let parsed: [VehicleDocument] = rows.compactMap { row in
             guard let type = stringValue(row["document_type"])?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !type.isEmpty,
-                  let fileURL = stringValue(row["file_url"])?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !fileURL.isEmpty else {
+                  !type.isEmpty else {
                 return nil
             }
+
+            // file_url is now optional - fetched on tap
+            let fileURL = stringValue(row["file_url"])?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
             return VehicleDocument(
                 id: type.uppercased(),
                 type: type.uppercased(),
                 fileURL: fileURL,
-                fileName: row["file_name"] as? String ?? URL(string: fileURL)?.lastPathComponent
+                fileName: row["file_name"] as? String ?? stringValue(row["document_type"])
             )
         }
 
