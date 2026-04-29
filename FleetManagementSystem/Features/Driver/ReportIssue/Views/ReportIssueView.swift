@@ -17,6 +17,7 @@ struct ReportIssueView: View {
     let prefilledDescription: String?
     let prefilledCategory: String?
     let prefilledSeverity: String?
+    let showsCloseButton: Bool = true
 
     @Environment(\.dismiss) private var dismiss
 
@@ -118,6 +119,19 @@ struct ReportIssueView: View {
             }
             .navigationTitle(issues.count > 1 ? "Report \(issues.count) Issues" : "Report Issue")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if showsCloseButton {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .foregroundStyle(AppTheme.primaryGreen)
+                                .fontWeight(.medium)
+                        }
+                    }
+                }
+            }
 
             .alert("Issues Reported ✓", isPresented: $vm.submitSuccess) {
                 Button("Done") {
@@ -142,13 +156,42 @@ struct ReportIssueView: View {
     }
 
     // MARK: - Vehicle Banner
+    @ViewBuilder
     private func vehicleBanner(_ vehicle: Vehicle) -> some View {
-        HStack {
-            Text(vehicle.name)
-                .font(.headline)
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.primaryGreen.opacity(0.15))
+                    .frame(width: 44, height: 44)
+
+                Image(systemName: vehicle.imageSystemName)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(AppTheme.primaryGreen)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(vehicle.name)
+                    .font(.system(size: 15, weight: .semibold))
+
+                Text(vehicle.licensePlate)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+
             Spacer()
+
+            Image(systemName: "checkmark.shield.fill")
+                .font(.system(size: 18))
+                .foregroundStyle(AppTheme.primaryGreen.opacity(0.7))
         }
-        .padding()
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(.background)
+        )
+        .shadow(color: Color.black.opacity(0.06), radius: 8, x: 0, y: 2)
+        .padding(.horizontal, 16)
     }
 
     // MARK: - Submit Bar
