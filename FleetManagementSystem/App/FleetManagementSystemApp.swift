@@ -7,6 +7,7 @@ import Supabase
 struct FleetManagementSystemApp: App {
     
     @StateObject private var appSession = AppSession()
+    @StateObject private var notificationManager = NotificationManager()
     @State private var showSetPassword = false
     @State private var isLoading = true
     
@@ -40,8 +41,9 @@ struct FleetManagementSystemApp: App {
                 }
             }
             .tint(AppTheme.accentColor(for: appSession.profile?.role))
+            .environmentObject(notificationManager)
             .onAppear {
-                NotificationManager.shared.requestPermission()
+                notificationManager.requestPermission()
                 Task {
                     await checkSession()
                 }
