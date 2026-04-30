@@ -43,10 +43,11 @@ struct WorkOrderDetailView: View {
     @State private var saveTask: Task<Void, Never>?
     
     var isManagerApprovalMode: Bool = false
-    
-    // MARK: - New UI State for Editing & Re-approval
+   
     @State private var isEditing: Bool = false
     @State private var originalCost: Double = 0.0
+    @StateObject private var aiService = OnDeviceAIService()
+    @State private var typingTask: Task<Void, Never>? = nil
     
     // MARK: - Live Cost Calculations
     private var parsedHours: Double {
@@ -81,7 +82,8 @@ struct WorkOrderDetailView: View {
         } else if isSaving {
             return Color.blue.opacity(0.7)
         } else {
-            return .blue
+            return Color(hex: "A3352A")
+
         }
     }
     
@@ -119,12 +121,16 @@ struct WorkOrderDetailView: View {
                     Image(systemName: "xmark").fontWeight(.semibold).foregroundColor(Color(hex: "#A3352A"))
                 }
             }
-            // Only show Edit/Done button if not in Manager Approval Mode
+            
             if !isManagerApprovalMode {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(isEditing ? "Done" : "Edit") {
+                    Button(isEditing ? "Save" : "Edit") {
                         if isEditing {
-                            handleSaveWithReapprovalCheck()
+                            if (finalTotalCost - originalCost) > 500 {
+                                workOrder.isApproved = false
+                                workOrder.status = .pending
+                            }
+                            Task { await performSilentSave() }
                         }
                         isEditing.toggle()
                     }
@@ -145,18 +151,65 @@ struct WorkOrderDetailView: View {
             WorkOrderCompletionReportView(workOrder: workOrder)
                 .presentationDragIndicator(.visible)
         }
-        .onChange(of: editedIssueTitle) { _, _ in scheduleAutosave() }
-        .onChange(of: editedIssueDescription) { _, _ in scheduleAutosave() }
+        .onChange(of: editedIssueDescription) { _, newValue in
+            // Always trigger the normal autosave for the description change
+            scheduleAutosave()
+            
+            guard isEditing else { return }
+            
+            // Cancel previous AI generation
+            typingTask?.cancel()
+            
+            // Only generate if there is enough context
+            guard newValue.count > 10 else { return }
+            
+            typingTask = Task {
+                // Wait for 1.5 seconds of silence (debounce)
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                guard !Task.isCancelled else { return }
+                
+                let generatedTasks = await aiService.generateTasks(from: newValue)
+    
+                let existingDescriptions = Set(tasks.map {
+                    $0.description.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                })
+                
+                var addedNew = false
+                
+                for taskDescription in generatedTasks {
+                    let normalizedDesc = taskDescription.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+                    
+                    // If this task isn't already in our list, add it!
+                    if !existingDescriptions.contains(normalizedDesc) {
+                        let newTask = WorkOrderTask(
+                            taskId: UUID(),
+                            workOrderId: workOrder.workOrderId,
+                            description: taskDescription,
+                            isCompleted: false,
+                            createdAt: Date()
+                        )
+                        tasks.append(newTask)
+                        addedNew = true
+                    }
+                }
+                
+                // If we successfully added new AI tasks, force an autosave!
+                if addedNew {
+                    scheduleAutosave()
+                }
+            }
+        }
+        //.onChange(of: editedIssueDescription) { _, _ in scheduleAutosave() }
         .onChange(of: editedHoursWorked) { _, _ in scheduleAutosave() }
         .onChange(of: editedLabourRate) { _, _ in scheduleAutosave() }
         .onChange(of: editedLabourCost) { _, _ in scheduleAutosave() }
         .onChange(of: editedMaintenanceNotes) { _, _ in scheduleAutosave() }
         .onDisappear {
             UIApplication.shared.endEditing()
-            if !showingCompletionReport && !showingCompletionAlert {
-                saveTask?.cancel()
-                Task { await performSilentSave() }
-            }
+//            if !showingCompletionReport && !showingCompletionAlert {
+//                saveTask?.cancel()
+//                Task { await performSilentSave() }
+//            }
         }
         .task {
             await fetchWorkOrderDetails()
@@ -168,6 +221,7 @@ struct WorkOrderDetailView: View {
     private var mainContent: some View {
         VStack(spacing: 24) {
             WorkOrderHeaderView(workOrder: workOrder)
+            
             issueSummarySection
             tasksSection
             partsSection
@@ -222,7 +276,18 @@ struct WorkOrderDetailView: View {
     
     private var tasksSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionHeaderView(title: "MAINTENANCE TASKS")
+            HStack {
+                SectionHeaderView(title: "TASK CHECKLIST")
+                if aiService.isGenerating {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                        .padding(.leading, 4)
+                    Text("AI Generating...")
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                }
+            }
+            
             CardView {
                 VStack(alignment: .leading, spacing: 12) {
                     if tasks.isEmpty {
@@ -231,8 +296,9 @@ struct WorkOrderDetailView: View {
                             .foregroundColor(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
-                        ForEach($tasks) { $task in
-                            HStack(spacing: 12) {
+                        ForEach($tasks, id: \.taskId) { $task in
+                            HStack(alignment: .top, spacing: 12) {
+                                // Checkmark Button
                                 Button(action: {
                                     task.isCompleted.toggle()
                                     scheduleAutosave()
@@ -240,29 +306,52 @@ struct WorkOrderDetailView: View {
                                     Image(systemName: task.isCompleted ? "checkmark.circle.fill" : "circle")
                                         .foregroundColor(task.isCompleted ? .blue : Color(uiColor: .systemGray4))
                                         .font(.title3)
+                                        .padding(.top, isEditing ? 8 : 2) // Accounts for TextField padding
                                 }
                                 
-                                Text(task.description)
-                                    .font(.subheadline)
-                                    .foregroundColor(task.isCompleted ? .secondary : .primary)
-                                    .strikethrough(task.isCompleted)
+                                if isEditing {
+                                    TextField("Task description", text: $task.description, axis: .vertical)
+                                        .font(.subheadline)
+                                        .padding(.vertical, 8)
+                                        .padding(.horizontal, 10)
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 6)
+                                                .stroke(Color(uiColor: .systemGray4), lineWidth: 1)
+                                        )
+                                        .onChange(of: task.description) { _, _ in scheduleAutosave() }
+                                } else {
+                                    Text(task.description)
+                                        .font(.subheadline)
+                                        .strikethrough(task.isCompleted)
+                                        .padding(.vertical, 2)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
                                 
-                                Spacer()
+                                Spacer(minLength: 0)
                                 
-                                // Only allow task deletion in Edit Mode
                                 if isEditing {
                                     Button(action: {
-                                        tasks.removeAll { $0.taskId == task.taskId }
+                                        let idToDelete = task.taskId
+                                        
+                                        tasks.removeAll { $0.taskId == idToDelete }
+                                        
+                                        // Delete from Supabase in the background
+                                        Task {
+                                            try? await viewModel.deleteTask(taskId: idToDelete)
+                                        }
+                                        
+                                        // Trigger normal autosave for everything else
                                         scheduleAutosave()
                                     }) {
-                                        Image(systemName: "trash")
-                                            .foregroundColor(.red.opacity(0.8))
-                                            .font(.subheadline)
+                                        Image(systemName: "trash").foregroundColor(.red.opacity(0.8))
+                                            .padding(.top, 8) // align vertically with text box
                                     }
                                 }
                             }
-                            .padding(.vertical, 4)
-                            Divider()
+                            
+                            if task.taskId != tasks.last?.taskId || isEditing {
+                                Divider()
+                            }
                         }
                     }
                     if isEditing {
@@ -274,13 +363,20 @@ struct WorkOrderDetailView: View {
     }
     
     private var addTaskRow: some View {
-        HStack {
+        HStack(alignment: .top, spacing: 12) {
             Image(systemName: "plus.circle.fill")
                 .foregroundColor(.blue)
+                .font(.title3)
+                .padding(.top, 8)
             
-            TextField("Add Task...", text: $newTaskName)
+            TextField("Add Task...", text: $newTaskName, axis: .vertical)
                 .font(.subheadline)
                 .padding(.vertical, 8)
+                .padding(.horizontal, 10)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6)
+                        .stroke(Color(uiColor: .systemGray4), lineWidth: 1)
+                )
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .onSubmit {
                     guard !newTaskName.isEmpty else { return }
@@ -316,12 +412,26 @@ struct WorkOrderDetailView: View {
                                 onQuantityChange: {
                                     scheduleAutosave()
                                 }, onDelete: {
+                                    // 1. Grab the inventory ID
+                                    let inventoryIdToDelete = part.inventoryId
+                                    
+                                    // 2. Remove from UI
                                     partsUI.removeAll { $0.id == part.id }
+                                    
+                                    // 3. Delete from Supabase
+                                    Task {
+                                        try? await viewModel.deletePart(
+                                            workOrderId: workOrder.workOrderId,
+                                            inventoryId: inventoryIdToDelete
+                                        )
+                                    }
+                                    
                                     scheduleAutosave()
                                 }
                             )
-                            .padding(.vertical, 4)
-                            Divider()
+                            if part.id != partsUI.last?.id || isEditing {
+                                Divider()
+                            }
                         }
                     }
                     if isEditing {
@@ -467,9 +577,24 @@ struct WorkOrderDetailView: View {
                         if workOrder.status == .completed {
                             showingCompletionReport = true
                         } else {
-                            Text(workOrder.status == .completed ? "View Report" : "Complete Work Order")
-                                .font(.headline)
+                            showingCompletionAlert = true
                         }
+                    } label: {
+                        HStack {
+                            if isSaving {
+                                ProgressView()
+                                    .progressViewStyle(.circular)
+                                    .tint(.white)
+                            } else {
+                                Text(workOrder.status == .completed ? "View Report" : "Complete Work Order")
+                                    .font(.headline)
+                            }
+                        }
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color(red: 163/255, green: 53/255, blue: 42/255))
+                        .cornerRadius(12)
                     }
                     
                     .disabled(isSaving || (workOrder.status != .completed && !areAllTasksCompleted))
@@ -482,8 +607,6 @@ struct WorkOrderDetailView: View {
                             .foregroundColor(.red)
                     }
                 }
-                .disabled(isSaving)
-                .padding(.top, 10)
             }
         }
     }
@@ -590,13 +713,14 @@ struct WorkOrderDetailView: View {
                     workOrderId: workOrder.workOrderId,
                     inventoryId: uiPart.inventoryId,
                     quantityRequired: uiPart.quantity,
-                    costAtTime: uiPart.unitCost,
-                    createdAt: Date(),
-                    usedAt: Date()
+                    costAtTime: uiPart.unitCost
                 )
             }
             try await viewModel.upsertParts(workOrderParts)
         } catch {
+            if (error as NSError).code == -999 || error is CancellationError {
+                return // Exit silently
+            }
             print("🚨 Autosave failed: \(error)")
         }
     }
@@ -611,7 +735,11 @@ struct WorkOrderDetailView: View {
         editedHoursWorked = String(format: "%.1f", initialHours)
         
         // Save initial cost to track increases later
-        self.originalCost = workOrder.estCost ?? 0.0
+        await MainActor.run {
+            self.originalCost = workOrder.estCost ?? 0.0 // Capture baseline
+            self.isLoading = false
+        }
+
         
         let currentRate = Double(editedLabourRate) ?? 125.0
         editedLabourCost = String(format: "%.2f", initialHours * currentRate)
@@ -641,6 +769,7 @@ struct WorkOrderDetailView: View {
             await MainActor.run {
                 self.tasks = fetchedTasks
                 self.partsUI = mappedParts
+        
                 self.isLoading = false
             }
         } catch {
@@ -648,6 +777,7 @@ struct WorkOrderDetailView: View {
             await MainActor.run { self.isLoading = false }
         }
     }
+    
     
     // MARK: - Decline & Delete Work Order
     private func declineAndDeleteWorkOrder() async {
@@ -827,28 +957,77 @@ struct WorkEntryAndDocumentationView: View {
     private var workEntrySection: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionHeaderView(title: "WORK ENTRY")
+            
             CardView {
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("HOURS").font(.caption2).fontWeight(.medium).foregroundColor(.secondary)
+                HStack(spacing: 16) {
+                    // MARK: - HOURS COLUMN
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("HOURS")
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                            .foregroundColor(.secondary)
+                        
                         if isEditing {
-                            TextField("0.0", text: $editedHoursWorked).font(.subheadline).keyboardType(.decimalPad).textFieldStyle(.roundedBorder).onChange(of: editedHoursWorked) { _, _ in recalculateLabourCost() }
+                            TextField("0.0", text: $editedHoursWorked)
+                                .font(.subheadline)
+                                .keyboardType(.decimalPad)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color(uiColor: .systemGray4), lineWidth: 1)
+                                )
+                                .onChange(of: editedHoursWorked) { _, _ in recalculateLabourCost() }
                         } else {
-                            Text(editedHoursWorked).font(.subheadline).fontWeight(.semibold).padding(.vertical, 8)
+                            Text(editedHoursWorked)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .padding(.vertical, 4)
                         }
                     }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("RATE/HR (₹)").font(.caption2).fontWeight(.medium).foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    
+                    // MARK: - RATE COLUMN
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("RATE/HR (₹)")
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                            .foregroundColor(.secondary)
+                        
                         if isEditing {
-                            TextField("0.0", text: $editedLabourRate).font(.subheadline).keyboardType(.decimalPad).textFieldStyle(.roundedBorder).onChange(of: editedLabourRate) { _, _ in recalculateLabourCost() }
+                            TextField("0.0", text: $editedLabourRate)
+                                .font(.subheadline)
+                                .keyboardType(.decimalPad)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 6)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(Color(uiColor: .systemGray4), lineWidth: 1)
+                                )
+                                .onChange(of: editedLabourRate) { _, _ in recalculateLabourCost() }
                         } else {
-                            Text(editedLabourRate).font(.subheadline).fontWeight(.semibold).padding(.vertical, 8)
+                            Text(editedLabourRate)
+                                .font(.subheadline)
+                                .fontWeight(.semibold)
+                                .padding(.vertical, 4)
                         }
                     }
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("TOTAL (₹)").font(.caption2).fontWeight(.medium).foregroundColor(.secondary)
-                        Text(editedLabourCost).font(.subheadline).fontWeight(.bold).padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading) // Forces equal width
+                    
+                    // MARK: - TOTAL COLUMN
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("TOTAL (₹)")
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                            .foregroundColor(.secondary)
+                        
+                        Text(editedLabourCost)
+                            .font(.subheadline)
+                            .fontWeight(.bold)
+                        // Keep it vertically aligned with the textfields when editing
+                            .padding(.vertical, isEditing ? 7 : 4)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading) // Forces equal width
                 }
             }
         }

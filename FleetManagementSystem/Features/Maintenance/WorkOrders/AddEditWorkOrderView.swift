@@ -30,6 +30,7 @@ struct AddEditWorkOrderView: View {
 
     // MARK: - ViewModel Injection
     @StateObject private var viewModel = WorkOrderViewModel()
+    @StateObject private var aiService = OnDeviceAIService()
     @State private var activeUserId: UUID? = nil
 
     // MARK: - Cascading Vehicle Selection States
@@ -66,6 +67,7 @@ struct AddEditWorkOrderView: View {
     // Tasks State
     @State private var tasks: [String] = []
     @State private var newTaskName: String = ""
+    @State private var typingTask: Task<Void, Never>? = nil
 
     // Parts State
     @State private var parts: [PartSelectionUI] = []
@@ -87,6 +89,8 @@ struct AddEditWorkOrderView: View {
     @State private var estimatedHours: String = ""
     @State private var labourRate: String = "0.0"
     @State private var labourCost: String = ""
+    
+    
     
     // Add this helper function inside the View
     private func recalculateLabour() {
@@ -128,6 +132,7 @@ struct AddEditWorkOrderView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     vehicleIdentificationSection
+                    
                     issueSummarySection
                     taskChecklistSection
                     partsRequiredSection
@@ -141,6 +146,33 @@ struct AddEditWorkOrderView: View {
             }
         }
         .hideKeyboardOnTap()
+        .onChange(of: issueDescription) { _, newValue in
+            // Cancel the previous task if the user is still typing
+            typingTask?.cancel()
+            
+            // Only generate if there is enough context
+            guard newValue.count > 10 else { return }
+            
+            typingTask = Task {
+                // Wait for 1.5 seconds of no typing (Debounce)
+                try? await Task.sleep(nanoseconds: 1_500_000_000)
+                
+                // If the user started typing again, this task was cancelled, so abort
+                guard !Task.isCancelled else { return }
+                
+                // Call the AI Service
+                let generatedTasks = await aiService.generateTasks(from: newValue)
+                
+                // Append the new tasks without overwriting user-added ones
+                if !generatedTasks.isEmpty {
+                    for task in generatedTasks {
+                        if !self.tasks.contains(task) {
+                            self.tasks.append(task)
+                        }
+                    }
+                }
+            }
+        }
         .sheet(isPresented: $showImagePicker) {
             ImagePicker(sourceType: .photoLibrary) { image in
                 let resizedImage = image.resized(toMaxDimension: 1024) ?? image
@@ -220,7 +252,7 @@ struct AddEditWorkOrderView: View {
                                 Text("Category").font(.subheadline).foregroundColor(.primary)
                                 Spacer()
                                 Picker("Category", selection: $selectedCategory) {
-                                    Text("Select Category...").tag(String?.none)
+                                    Text("Select Category").tag(String?.none)
                                     ForEach(availableCategories, id: \.self) { cat in
                                         Text(cat).tag(String?.some(cat))
                                     }
@@ -241,11 +273,11 @@ struct AddEditWorkOrderView: View {
                                 Text("Model").font(.subheadline).foregroundColor(selectedCategory == nil ? .gray : .primary)
                                 Spacer()
                                 Picker("Model", selection: $selectedModel) {
-                                    Text("Select Model...").tag(String?.none)
+                                    Text("Select Model").tag(String?.none)
                                     ForEach(availableModels, id: \.self) { mod in
                                         Text(mod).tag(String?.some(mod))
                                     }
-                                }
+                                } 
                                 .pickerStyle(.menu)
                                 .tint(.blue)
                                 .disabled(selectedCategory == nil)
@@ -262,7 +294,7 @@ struct AddEditWorkOrderView: View {
                                 Text("License Plate").font(.subheadline).foregroundColor(selectedModel == nil ? .gray : .primary)
                                 Spacer()
                                 Picker("Plate", selection: $selectedVehicleId) {
-                                    Text("Select Plate...").tag(UUID?.none)
+                                    Text("Select Plate").tag(UUID?.none)
                                     ForEach(availablePlates, id: \.id) { vehicle in
                                         Text(vehicle.number_plate ?? "Unknown").tag(UUID?.some(vehicle.id))
                                     }
@@ -316,15 +348,42 @@ struct AddEditWorkOrderView: View {
 
     private var taskChecklistSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SectionHeaderView(title: "TASK CHECKLIST")
+            HStack {
+                SectionHeaderView(title: "TASK CHECKLIST")
+                if aiService.isGenerating {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                        .padding(.leading, 4)
+                    Text("AI Generating...")
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                }
+            }
+            
             CardView {
                 VStack(alignment: .leading, spacing: 16) {
-                    ForEach(tasks, id: \.self) { task in
+                    ForEach(tasks.indices, id: \.self) { taskIndex in
                         HStack {
                             Image(systemName: "circle.grid.2x2.fill").foregroundColor(Color(uiColor: .systemGray4)).font(.caption)
-                            Text(task).font(.subheadline)
+                            TextField("Task description", text: Binding(
+                                get: {
+                                    taskIndex < tasks.count ? tasks[taskIndex] : ""
+                                },
+                                set: { newValue in
+                                    if taskIndex < tasks.count {
+                                        tasks[taskIndex] = newValue
+                                    }
+                                }
+                            ))
+                            .font(.subheadline)
                             Spacer()
-                            Button(action: { tasks.removeAll { $0 == task } }) { Image(systemName: "minus.circle.fill").foregroundColor(.red.opacity(0.8)) }
+                            Button(action: {
+                                if taskIndex < tasks.count {
+                                    tasks.remove(at: taskIndex)
+                                }
+                            }) {
+                                Image(systemName: "minus.circle.fill").foregroundColor(.red.opacity(0.8))
+                            }
                         }
                         Divider()
                     }
