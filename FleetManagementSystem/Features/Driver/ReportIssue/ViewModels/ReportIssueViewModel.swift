@@ -153,14 +153,18 @@ class ReportIssueViewModel: ObservableObject {
                 print("No managers found. Skipping notification insertion.")
             }
 
-            self.submitSuccess = true
+            await MainActor.run {
+                self.submitSuccess = true
+            }
 
         } catch {
             print("❌ Report submission error:", error)
             self.errorMessage = "Error: \(error.localizedDescription)"
         }
 
-        isSubmitting = false
+        await MainActor.run {
+            self.isSubmitting = false
+        }
     }
 
     // MARK: - Single-report convenience (kept for backward compatibility)

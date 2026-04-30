@@ -53,6 +53,7 @@ struct TripsListView: View {
                     notificationToolbarButton
                     profileToolbarButton
                 }
+
             }
             .task { if vm.trips.isEmpty { await vm.fetchTrips() } }
             .refreshable { await vm.fetchTrips() }
@@ -68,6 +69,7 @@ struct TripsListView: View {
             .sheet(item: $selectedWorkOrder) { workOrder in
                 NavigationStack {
                     WorkOrderDetailView(workOrder: workOrder, isManagerApprovalMode: true)
+
                 }
             }
             .overlay(alignment: .bottomTrailing) {

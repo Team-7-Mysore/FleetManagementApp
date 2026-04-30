@@ -1,5 +1,5 @@
-
-import UIKit
+import Foundation
+import Combine
 import UserNotifications
 
 /// Manages all local (iOS-native) notification concerns.
@@ -11,8 +11,19 @@ import UserNotifications
 ///   3. RealtimeManager calls NotificationManager.shared.sendInAppNotification().
 ///   4. UNUserNotificationCenter delivers a banner — even while the app is in the foreground
 ///      because this class sets itself as the UNUserNotificationCenterDelegate.
-final class NotificationManager: NSObject {
+@MainActor
+final class NotificationManager: NSObject, ObservableObject {
+
     static let shared = NotificationManager()
+
+    // MARK: - Published Properties
+
+    @Published var notifications: [NotificationItem] = []
+    @Published var isLoading: Bool = false
+    @Published var unreadCount: Int = 0
+    @Published var isPermissionGranted: Bool = false
+
+    // MARK: - Initialization
 
     private override init() {
         super.init()
@@ -22,16 +33,31 @@ final class NotificationManager: NSObject {
 
     // MARK: - Permission
 
-
     func requestPermission() {
         UNUserNotificationCenter.current().requestAuthorization(
             options: [.alert, .sound, .badge]
-
-        ) { granted, error in
+        ) { [weak self] granted, error in
             if let error {
                 print("❌ Notification permission error:", error.localizedDescription)
             }
+
+            Task { @MainActor in
+                self?.isPermissionGranted = granted
+            }
+
             print("🔔 Notification permission granted:", granted)
+        }
+    }
+
+    // MARK: - Fetch Notifications
+
+    func fetchNotifications() {
+        isLoading = true
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self else { return }
+            self.notifications = []
+            self.isLoading = false
         }
     }
 
@@ -58,12 +84,13 @@ final class NotificationManager: NSObject {
         UNUserNotificationCenter.current().add(request) { error in
             if let error {
                 print("❌ Failed to deliver in-app notification:", error.localizedDescription)
+            } else {
+                print("✅ In-app notification delivered: \(title)")
             }
         }
     }
 
     // MARK: - Low Stock Local Notification
-
 
     func sendLowStockNotification(partName: String, quantity: Int) {
         let content = UNMutableNotificationContent()
@@ -79,9 +106,9 @@ final class NotificationManager: NSObject {
 
         UNUserNotificationCenter.current().add(request) { error in
             if let error {
-
-                print("❌ Failed to add notification:", error.localizedDescription)
-
+                print("❌ Failed to schedule low stock notification:", error.localizedDescription)
+            } else {
+                print("✅ Low stock notification sent: \(partName)")
             }
         }
     }
@@ -93,7 +120,7 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
 
     /// Show banners even when the app is in the foreground.
     /// Without this, iOS silently drops local notifications while the app is active.
-    func userNotificationCenter(
+    nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
@@ -102,11 +129,17 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
     }
 
     /// Handle tap on a notification banner (brings app to foreground if backgrounded).
-    func userNotificationCenter(
+    nonisolated func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        // You can handle notification tap actions here
+        // For example, navigate to a specific screen based on notification data
+
+        let userInfo = response.notification.request.content.userInfo
+        print("📱 User tapped notification:", userInfo)
+
         completionHandler()
     }
 }

@@ -1,16 +1,18 @@
 import SwiftUI
 import MapKit
 import Supabase
+import Combine
 // MARK: - Active Trip View
 struct ActiveTripView: View {
     let trip: TripMap
     let user: User
     @EnvironmentObject private var router: AppRouter
 
-    @State private var elapsedTime: TimeInterval = 0
     @State private var showEndTripConfirmation = false
     @State private var showReportIssue = false
     @State private var timer: Timer?
+    @State private var detectedCategory: String? = nil
+    @State private var detectedSeverity: String? = nil
 
     // SOS State
     @State private var showSOSConfirmation = false
@@ -25,6 +27,23 @@ struct ActiveTripView: View {
 
     // Route persistence — tracks the routes table row for this trip
     @State private var savedRouteId: UUID?
+
+    // Voice State
+    @StateObject private var voiceManager = VoiceManager()
+    @State private var detectedIntent: VoiceIntent? = nil
+    @State private var showVoiceUI = false
+    @State private var voiceIssueText = ""
+    @StateObject private var viewModel: DriverTripViewModel
+    
+    
+    @State private var recordingTimer: Timer?
+    @State private var remainingTime: Int = 10
+
+    init(trip: TripMap, user: User) {
+        self.trip = trip
+        self.user = user
+        self._viewModel = StateObject(wrappedValue: DriverTripViewModel(user: user))
+    }
 
     // Database points with fallbacks to demonstration points
     var startPoint: CLLocationCoordinate2D {
@@ -97,6 +116,33 @@ struct ActiveTripView: View {
                 .padding(.trailing, 20)
                 .padding(.bottom, 20)
             }
+            .overlay(alignment: .bottomLeading) {
+                Button {
+                    if voiceManager.isListening {
+                        stopAndProcessVoice()
+                    } else {
+                        startListening()
+                    }
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(voiceManager.isListening ? Color.red : Color.blue)
+                            .frame(width: 60, height: 60)
+
+                        if voiceManager.isListening {
+                            Text("\(remainingTime)")
+                                .foregroundColor(.white)
+                                .font(.caption)
+                        } else {
+                            Image(systemName: "mic.fill")
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .shadow(radius: 4)
+                }
+                .padding(.leading, 20)
+                .padding(.bottom, 20)
+            }
 
             // MARK: - Bottom Panel
             VStack(spacing: 16) {
@@ -105,8 +151,6 @@ struct ActiveTripView: View {
                     tripInfoItem(value: formattedDistance, label: "Distance")
                     Divider().frame(height: 36)
                     tripInfoItem(value: formattedETA, label: "ETA")
-                    Divider().frame(height: 36)
-                    tripInfoItem(value: formattedElapsed, label: "Elapsed")
                 }
                 .padding(.horizontal)
                 .padding(.top, 8)
@@ -170,9 +214,6 @@ struct ActiveTripView: View {
                             .font(.subheadline.weight(.semibold))
                     }
                     Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 8)
@@ -200,6 +241,15 @@ struct ActiveTripView: View {
         } message: {
             Text("This will immediately dial emergency contact. Only proceed in a genuine emergency.")
         }
+//        .sheet(isPresented: $showReportIssue) {
+//            let tripVehicle = Vehicle(
+//                id: trip.vehicleId,
+//                name: trip.startLocation,
+//                registrationNumber: "",
+//                vehicleType: "unknown"
+//            )
+//            ReportIssueView(user: user, vehicle: tripVehicle, activeTripId: trip.id)
+//        }
         .sheet(isPresented: $showReportIssue) {
             let tripVehicle = Vehicle(
                 id: trip.vehicleId,
@@ -207,13 +257,59 @@ struct ActiveTripView: View {
                 registrationNumber: "",
                 vehicleType: "unknown"
             )
-            ReportIssueView(user: user, vehicle: tripVehicle, activeTripId: trip.id)
+
+            ReportIssueView(
+                user: user,
+                vehicle: tripVehicle,
+                activeTripId: trip.id,
+                prefilledDescription: voiceIssueText,
+                prefilledCategory: detectedCategory,
+                prefilledSeverity: detectedSeverity,
+                showsCloseButton: true
+            )
+        }
+        .sheet(isPresented: $showVoiceUI) {
+            if let intent = detectedIntent {
+                VStack(spacing: 20) {
+                    Text("Detected Action")
+                        .font(.headline)
+                    Text(intent.displayText)
+                        .font(.title)
+                        .bold()
+                        .multilineTextAlignment(.center)
+                    HStack(spacing: 16) {
+                        Button("Retry") {
+                            showVoiceUI = false
+                            voiceManager.startListening()
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.gray.opacity(0.2))
+                        .cornerRadius(12)
+
+                        Button("Confirm") {
+                            showVoiceUI = false
+                            executeVoiceIntent(intent)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                    }
+                }
+                .padding()
+                .presentationDetents([.fraction(0.3), .medium])
+            }
+
+                //showsCloseButton: true
+            //)
+
         }
         .onAppear {
             // Seed emergency contact (replace with user-configurable value later)
             UserDefaults.standard.set("+918408880436", forKey: "emergency_contact")
             savedRouteId = trip.routeId   // carry any already-stored route_id
-            startTimer()
             createRoute()
             locationManager.requestLocation()
             
@@ -221,7 +317,6 @@ struct ActiveTripView: View {
                 await fetchGeofences()
             }
         }
-        .onDisappear { stopTimer() }
     }
 
     private func fetchGeofences() async {
@@ -276,32 +371,6 @@ struct ActiveTripView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-    }
-
-    private var formattedElapsed: String {
-        let hours = Int(elapsedTime) / 3600
-        let minutes = (Int(elapsedTime) % 3600) / 60
-        let seconds = Int(elapsedTime) % 60
-        if hours > 0 {
-            return String(format: "%d:%02d:%02d", hours, minutes, seconds)
-        }
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-
-    private func startTimer() {
-        if let startTime = trip.startTime {
-            elapsedTime = Date().timeIntervalSince(startTime)
-        }
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-            if let startTime = trip.startTime {
-                elapsedTime = Date().timeIntervalSince(startTime)
-            }
-        }
-    }
-
-    private func stopTimer() {
-        timer?.invalidate()
-        timer = nil
     }
 
     // MARK: - Map Logic
@@ -363,7 +432,50 @@ struct ActiveTripView: View {
             MKLaunchOptionsDirectionsModeKey: MKLaunchOptionsDirectionsModeDriving
         ])
     }
+    
+    func startListening() {
+        remainingTime = 10
 
+        recordingTimer?.invalidate()
+
+        voiceManager.requestAuthorization()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            voiceManager.startListening()
+        }
+        print("🎤 isListening:", voiceManager.isListening)
+
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { timer in
+            if remainingTime > 0 {
+                remainingTime -= 1
+            } else {
+                timer.invalidate()
+                stopAndProcessVoice()
+            }
+        }
+    }
+    
+    func stopAndProcessVoice() {
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+
+        voiceManager.stopListening()
+
+        let text = voiceManager.recognizedText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        print("🧠 Final voice:", text)
+
+        // ✅ ADD THIS CHECK
+        guard !text.isEmpty else {
+            print("⚠️ Empty voice input")
+            return
+        }
+
+        let intent = IntentParser.parse(text)
+
+        detectedIntent = intent
+        showVoiceUI = true
+    }
     // MARK: - Route Persistence
 
     /// Encodes the MKDirections result and upserts it into the `routes` table.
@@ -468,6 +580,25 @@ struct ActiveTripView: View {
 
         if UIApplication.shared.canOpenURL(url) {
             UIApplication.shared.open(url)
+        }
+    }
+
+    private func executeVoiceIntent(_ intent: VoiceIntent) {
+        switch intent {
+        case .startTrip:
+            viewModel.startTrip(trip)
+        case .endTrip(let mileage):
+            viewModel.storeMileage(mileage)
+            router.path.append(AppRoute.vehicleInspection(trip, type: .postTrip))
+        case .fuel(let amount):
+            viewModel.storeFuel(amount)
+        case .issue(let desc, let category, let severity):
+            voiceIssueText = desc
+            detectedCategory = category
+            detectedSeverity = severity
+            showReportIssue = true
+        case .unknown:
+            break
         }
     }
 }

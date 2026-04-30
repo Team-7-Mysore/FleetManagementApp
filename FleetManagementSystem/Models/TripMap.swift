@@ -88,7 +88,7 @@ struct TripMap: Identifiable, Codable, Hashable {
     var startTime: Date?
     var endTime: Date?
     var scheduledStartTime: Date
-    var distance: Double          // miles
+    var distance: Double          // kilometers
     var estimatedDuration: TimeInterval // seconds
     var fuelUsed: Double?         // gallons
     var status: TripStatus
@@ -101,7 +101,7 @@ struct TripMap: Identifiable, Codable, Hashable {
     var isActive: Bool { status == .inProgress }
 
     var formattedDistance: String {
-        String(format: "%.0f mi", distance)
+        String(format: "%.0f km", distance)
     }
 
     var formattedETA: String {

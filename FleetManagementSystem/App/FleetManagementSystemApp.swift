@@ -7,11 +7,12 @@ import Supabase
 struct FleetManagementSystemApp: App {
 
 
+
     @AppStorage("hasSelectedLanguage") private var hasSelectedLanguage: Bool = false
     @AppStorage("selectedLanguage") private var selectedLanguage: String = "en"
 
     @StateObject private var appSession = AppSession()
-    @StateObject private var notificationManager = NotificationManager()
+    @ObservedObject private var notificationManager = NotificationManager.shared
     @State private var showSetPassword = false
     @State private var isLoading = true
     

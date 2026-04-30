@@ -9,9 +9,15 @@ final class DriverTripViewModel: ObservableObject {
     @Published private(set) var upcomingTrips: [TripMap] = []
     @Published private(set) var completedTrips: [TripMap] = []
     @Published var selectedFilter: TripFilter = .upcoming
-    @Published var upcomingFilterDate: Date?
-    @Published var completedFilterDate: Date?
+    @Published var upcomingFilterStartDate: Date?
+    @Published var upcomingFilterEndDate: Date?
+    @Published var completedFilterStartDate: Date?
+    @Published var completedFilterEndDate: Date?
     @Published private(set) var hasLoadedData = false
+    
+    // Voice intent properties
+    @Published var pendingMileage: Double? = nil
+    @Published var pendingFuel: Double? = nil
 
     private let user: User
     private var driverId: String?
@@ -107,16 +113,24 @@ final class DriverTripViewModel: ObservableObject {
         switch selectedFilter {
         case .upcoming:
             let source = upcomingTrips + (activeTrip.map { [$0] } ?? [])
-            guard let filterDate = upcomingFilterDate else { return source }
-            return source.filter { trip in
-                Calendar.current.isDate(tripDate(for: trip), inSameDayAs: filterDate)
-            }
+            guard let range = upcomingFilterRange() else { return source }
+            return filter(source, within: range)
         case .completed:
-            guard let filterDate = completedFilterDate else { return completedTrips }
-            return completedTrips.filter { trip in
-                Calendar.current.isDate(tripDate(for: trip), inSameDayAs: filterDate)
-            }
+            guard let range = completedFilterRange() else { return completedTrips }
+            return filter(completedTrips, within: range)
 //        case .all:       return upcomingTrips + completedTrips + (activeTrip.map { [$0] } ?? [])
+        }
+    }
+
+    private func filter(_ trips: [TripMap], within range: (start: Date, end: Date)) -> [TripMap] {
+        let calendar = Calendar.current
+        let rangeStart = calendar.startOfDay(for: range.start)
+        let rangeEnd = calendar.date(byAdding: DateComponents(day: 1, second: -1), to: calendar.startOfDay(for: range.end))
+            ?? range.end
+
+        return trips.filter { trip in
+            let tripDate = tripDate(for: trip)
+            return tripDate >= rangeStart && tripDate <= rangeEnd
         }
     }
 
@@ -130,18 +144,95 @@ final class DriverTripViewModel: ObservableObject {
     func filterDate(for segment: TripFilter) -> Date? {
         switch segment {
         case .upcoming:
-            return upcomingFilterDate
+            return upcomingFilterStartDate
         case .completed:
-            return completedFilterDate
+            return completedFilterStartDate
         }
     }
 
     func setFilterDate(_ date: Date?, for segment: TripFilter) {
         switch segment {
         case .upcoming:
-            upcomingFilterDate = date
+            upcomingFilterStartDate = date
+            upcomingFilterEndDate = date
         case .completed:
-            completedFilterDate = date
+            completedFilterStartDate = date
+            completedFilterEndDate = date
+        }
+    }
+
+    func upcomingFilterRange() -> (start: Date, end: Date)? {
+        guard let start = upcomingFilterStartDate,
+              let end = upcomingFilterEndDate else {
+            return nil
+        }
+
+        let normalizedStart = Calendar.current.startOfDay(for: min(start, end))
+        let normalizedEnd = Calendar.current.startOfDay(for: max(start, end))
+        return (start: normalizedStart, end: normalizedEnd)
+    }
+
+    func setUpcomingFilterRange(start: Date?, end: Date?) {
+        guard let start, let end else {
+            upcomingFilterStartDate = nil
+            upcomingFilterEndDate = nil
+            return
+        }
+
+        let normalizedStart = Calendar.current.startOfDay(for: min(start, end))
+        let normalizedEnd = Calendar.current.startOfDay(for: max(start, end))
+        upcomingFilterStartDate = normalizedStart
+        upcomingFilterEndDate = normalizedEnd
+    }
+
+    func completedFilterRange() -> (start: Date, end: Date)? {
+        guard let start = completedFilterStartDate,
+              let end = completedFilterEndDate else {
+            return nil
+        }
+
+        let normalizedStart = Calendar.current.startOfDay(for: min(start, end))
+        let normalizedEnd = Calendar.current.startOfDay(for: max(start, end))
+        return (start: normalizedStart, end: normalizedEnd)
+    }
+
+    func setCompletedFilterRange(start: Date?, end: Date?) {
+        guard let start, let end else {
+            completedFilterStartDate = nil
+            completedFilterEndDate = nil
+            return
+        }
+
+        let normalizedStart = Calendar.current.startOfDay(for: min(start, end))
+        let normalizedEnd = Calendar.current.startOfDay(for: max(start, end))
+        completedFilterStartDate = normalizedStart
+        completedFilterEndDate = normalizedEnd
+    }
+
+    func filterRange(for segment: TripFilter) -> (start: Date, end: Date)? {
+        switch segment {
+        case .upcoming:
+            return upcomingFilterRange()
+        case .completed:
+            return completedFilterRange()
+        }
+    }
+
+    func setFilterRange(start: Date?, end: Date?, for segment: TripFilter) {
+        switch segment {
+        case .upcoming:
+            setUpcomingFilterRange(start: start, end: end)
+        case .completed:
+            setCompletedFilterRange(start: start, end: end)
+        }
+    }
+
+    func hasActiveFilter(for segment: TripFilter) -> Bool {
+        switch segment {
+        case .upcoming:
+            return upcomingFilterStartDate != nil && upcomingFilterEndDate != nil
+        case .completed:
+            return completedFilterStartDate != nil && completedFilterEndDate != nil
         }
     }
 
@@ -209,5 +300,14 @@ final class DriverTripViewModel: ObservableObject {
                 print("❌ cancelTrip error:", error)
             }
         }
+    }
+    
+    // Voice intent methods
+    func storeMileage(_ value: Double?) {
+        pendingMileage = value
+    }
+
+    func storeFuel(_ value: Double?) {
+        pendingFuel = value
     }
 }
