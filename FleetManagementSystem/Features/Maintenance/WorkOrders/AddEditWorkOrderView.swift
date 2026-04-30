@@ -349,7 +349,7 @@ struct AddEditWorkOrderView: View {
     private var taskChecklistSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                SectionHeaderView(title: "TASK CHECKLIST")
+                SectionHeaderView(title: "MAINTENANCE TASKS")
                 if aiService.isGenerating {
                     ProgressView()
                         .scaleEffect(0.8)
@@ -361,42 +361,69 @@ struct AddEditWorkOrderView: View {
             }
             
             CardView {
-                VStack(alignment: .leading, spacing: 16) {
-                    ForEach(tasks.indices, id: \.self) { taskIndex in
-                        HStack {
-                            Image(systemName: "circle.grid.2x2.fill").foregroundColor(Color(uiColor: .systemGray4)).font(.caption)
-                            TextField("Task description", text: Binding(
-                                get: {
-                                    taskIndex < tasks.count ? tasks[taskIndex] : ""
-                                },
-                                set: { newValue in
-                                    if taskIndex < tasks.count {
-                                        tasks[taskIndex] = newValue
-                                    }
-                                }
-                            ))
+                VStack(alignment: .leading, spacing: 12) {
+                    if tasks.isEmpty {
+                        Text("No tasks added.")
                             .font(.subheadline)
-                            Spacer()
-                            Button(action: {
-                                if taskIndex < tasks.count {
-                                    tasks.remove(at: taskIndex)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        ForEach(tasks.indices, id: \.self) { index in
+                            // Top alignment keeps the trash icon perfectly lined up with the first row
+                            HStack(alignment: .top, spacing: 12) {
+                                
+                                // 👇 No box! Just clean, wrapping text.
+                                TextField("Task description", text: Binding(
+                                    get: { index < tasks.count ? tasks[index] : "" },
+                                    set: { newValue in
+                                        if index < tasks.count {
+                                            tasks[index] = newValue
+                                        }
+                                    }
+                                ), axis: .vertical)
+                                .font(.subheadline)
+                                .padding(.vertical, 2)
+                                
+                                Spacer(minLength: 0)
+                                
+                                // Trash Button
+                                Button(action: {
+                                    if index < tasks.count {
+                                        tasks.remove(at: index)
+                                    }
+                                }) {
+                                    Image(systemName: "trash")
+                                        .foregroundColor(.red.opacity(0.8))
+                                        .padding(.top, 2)
                                 }
-                            }) {
-                                Image(systemName: "minus.circle.fill").foregroundColor(.red.opacity(0.8))
+                            }
+                            
+                            if index < tasks.count - 1 {
+                                Divider()
                             }
                         }
+                    }
+                    
+                    if !tasks.isEmpty {
                         Divider()
                     }
-                    HStack {
-                        Image(systemName: "plus.circle.fill").foregroundColor(.blue)
-                        TextField("Add new task...", text: $newTaskName)
+                    
+                    // Add Task Row (also no box)
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "plus.circle.fill")
+                            .foregroundColor(.blue)
+                            .font(.title3)
+                            .padding(.top, 2)
+                        
+                        TextField("Add new task...", text: $newTaskName, axis: .vertical)
                             .font(.subheadline)
+                            .padding(.vertical, 2)
                             .onSubmit {
                                 guard !newTaskName.isEmpty else { return }
                                 tasks.append(newTaskName)
                                 newTaskName = ""
                             }
-                    }.padding(.vertical, 8)
+                    }
                 }
             }
         }

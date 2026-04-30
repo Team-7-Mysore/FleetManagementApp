@@ -1,5 +1,6 @@
 //vehiclepartsview
 import SwiftUI
+import Supabase
 
 struct VehiclePartsView: View {
     @ObservedObject var viewModel: InventoryViewModel
@@ -114,7 +115,29 @@ struct VehiclePartsView: View {
             }
         }
         .task(id: category) {
+            // 1. Existing logic: Fetch usage insights
             await viewModel.fetchMostUsedPart(for: category)
+            
+            // 2. Initial Inventory Fetch if empty
+            if viewModel.items.isEmpty {
+                await viewModel.fetchInventory()
+            }
+            
+            // 3. REAL-TIME LISTENER: Listen for inventory table changes
+            let channel = SupabaseManager.shared.client.channel("inventory_changes_\(category)")
+            let changes = channel.postgresChange(
+                AnyAction.self,
+                schema: "public",
+                table: "inventory"
+            )
+            
+            await channel.subscribe()
+            
+            // 4. Update UI instantly when quantity or details change in DB
+            for await _ in changes {
+                print("📦 Inventory update detected for \(category). Refreshing...")
+                await viewModel.fetchInventory()
+            }
         }
         .sheet(item: $selectedItem) { item in
             NavigationStack {

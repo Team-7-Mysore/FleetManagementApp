@@ -1,4 +1,5 @@
 import SwiftUI
+import Supabase
 
 struct InventoryView: View {
     @ObservedObject var viewModel: InventoryViewModel
@@ -37,7 +38,7 @@ struct InventoryView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Categories")
                             .font(.title3)
-                            .fontWeight(.bold)
+                            .fontWeight(.semibold)
                             .padding(.horizontal, 16)
                         
                         CategoryGridView(
@@ -57,7 +58,7 @@ struct InventoryView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Low in Stock")
                                 .font(.title3)
-                                .fontWeight(.bold)
+                                .fontWeight(.semibold)
                                 .foregroundColor(.primary)
                                 .padding(.horizontal, 16)
                             
@@ -267,7 +268,24 @@ struct InventoryView: View {
                 viewModel.searchText = "" // Ensure search is cleared when returning to main screen
             }
             .task {
+                // 1. Initial Fetch
                 await viewModel.fetchInventory()
+                
+                // 2. Setup Global Real-Time Listener for Inventory
+                let channel = SupabaseManager.shared.client.channel("global_inventory_changes")
+                let changes = channel.postgresChange(
+                    AnyAction.self,
+                    schema: "public",
+                    table: "inventory"
+                )
+                
+                await channel.subscribe()
+                
+                // 3. Listen and Refresh
+                for await _ in changes {
+                    print("📦 Global Inventory update detected! Refreshing main dashboard...")
+                    await viewModel.fetchInventory()
+                }
             }
         }
     }

@@ -157,7 +157,7 @@ struct FleetListView: View {
     private var categoriesSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Categories")
-                .font(.title2.weight(.bold))
+                .font(.title3.weight(.semibold))
                 .padding(.horizontal, 20)
 
             LazyVGrid(columns: columns, spacing: 16) {
@@ -176,7 +176,7 @@ struct FleetListView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .center) {
                 Text("Upcoming Maintenance")
-                    .font(.title2.weight(.bold))
+                    .font(.title3.weight(.semibold))
 
                 Spacer()
 
