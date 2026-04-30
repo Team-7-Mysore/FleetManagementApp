@@ -1,3 +1,5 @@
+//partdetailview
+
 import SwiftUI
 
 struct PartDetailView: View {
@@ -424,11 +426,9 @@ private struct PartUsageDetailView: View {
 
                                     Spacer()
 
-                                    if let usedAt = entry.usedAt {
-                                        Text(usedAt, style: .date)
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
+                                    Text(entry.usageTimestamp, style: .date)
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
                                 }
                             }
                             .padding(.vertical, 6)

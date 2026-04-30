@@ -1,3 +1,4 @@
+//vehiclepartsview
 import SwiftUI
 
 struct VehiclePartsView: View {
@@ -7,16 +8,16 @@ struct VehiclePartsView: View {
     @State private var showDeleteAlert = false
     @State private var itemToDelete: InventoryItem?
     @State private var showInsightsCard = false
-    
-    private var displayedTopUsedParts: [(item: InventoryItem, count: Int)] {
+
+    private var displayedTopUsedParts: [InventoryViewModel.PartUsageSummary] {
         guard viewModel.activeMostUsedCategory == category else { return [] }
         return viewModel.topUsedParts
     }
-    
+
     var body: some View {
         ZStack {
             Color(.systemGroupedBackground).ignoresSafeArea()
-            
+
             VStack(spacing: 0) {
                 // Search Bar
                 InventorySearchBar(text: $viewModel.searchText)
@@ -27,18 +28,18 @@ struct VehiclePartsView: View {
                     .padding(.bottom, 12)
                     .opacity(showInsightsCard ? 1 : 0)
                     .offset(y: showInsightsCard ? 0 : -8)
-                
+
                 if viewModel.filteredItems.isEmpty {
                     Spacer()
                     VStack(spacing: 20) {
                         Image(systemName: "magnifyingglass")
                             .font(.system(size: 60))
                             .foregroundColor(.gray.opacity(0.4))
-                        
+
                         Text("No parts found")
                             .font(.headline)
                             .foregroundColor(.secondary)
-                        
+
                         Text("Try searching for something else or add a new part.")
                             .font(.subheadline)
                             .foregroundColor(.secondary.opacity(0.8))
@@ -87,7 +88,7 @@ struct VehiclePartsView: View {
                     }
                 }
             }
-            Button("Cancel", role: .cancel) { 
+            Button("Cancel", role: .cancel) {
                 itemToDelete = nil
             }
         } message: {
@@ -130,27 +131,27 @@ struct VehiclePartsView: View {
 
             if !displayedTopUsedParts.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
-                    ForEach(Array(displayedTopUsedParts.enumerated()), id: \.element.item.id) { index, entry in
+                    ForEach(displayedTopUsedParts, id: \.item.id) { entry in
                         HStack(spacing: 12) {
                             ZStack {
                                 Circle()
                                     .fill(Color(hex: "#A3352A").opacity(0.12))
                                     .frame(width: 40, height: 40)
 
-                                Image(systemName: index == 0 ? "chart.line.uptrend.xyaxis" : "shippingbox.fill")
+                                Image(systemName: entry.item.id == displayedTopUsedParts.first?.item.id ? "chart.line.uptrend.xyaxis" : "shippingbox.fill")
                                     .font(.system(size: 16, weight: .semibold))
                                     .foregroundColor(Color(hex: "#A3352A"))
                             }
 
                             Text(entry.item.partName)
                                 .font(.subheadline)
-                                .fontWeight(index == 0 ? .semibold : .regular)
+                                .fontWeight(entry.item.id == displayedTopUsedParts.first?.item.id ? .semibold : .regular)
                                 .foregroundColor(.primary)
                                 .lineLimit(2)
 
                             Spacer(minLength: 12)
 
-                            Text("\(entry.count)")
+                            Text("\(entry.usageCount)")
                                 .font(.subheadline)
                                 .fontWeight(.bold)
                                 .foregroundColor(Color(hex: "#A3352A"))
@@ -160,13 +161,6 @@ struct VehiclePartsView: View {
                                 .clipShape(Capsule())
                         }
                     }
-                }
-
-                if let first = displayedTopUsedParts.first, first.count > 0 {
-                    Text("This part is frequently used. Consider restocking regularly.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             } else {
                 HStack(spacing: 10) {

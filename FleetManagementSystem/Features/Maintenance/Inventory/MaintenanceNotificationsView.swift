@@ -78,6 +78,7 @@ struct MaintenanceNotificationsView: View {
                         }
                         .buttonStyle(.plain)
                     }
+                    .onDelete(perform: deleteNotification)
                 }
                 .listStyle(.insetGrouped)
             }
@@ -125,6 +126,36 @@ struct MaintenanceNotificationsView: View {
                 )
             }
             .presentationDetents([.large])
+        }
+    }
+
+    private func deleteNotification(at offsets: IndexSet) {
+        // 1. Identify the items to delete
+        let notificationsToDelete = offsets.map { notifications[$0] }
+
+        // 2. Optimistically remove from local UI array
+        // This makes the app feel snappy
+        notifications.remove(atOffsets: offsets)
+
+        // 3. Update the unread count if we deleted unread messages
+        unreadCount = notifications.filter { !$0.isRead }.count
+
+        // 4. Delete from Supabase
+        Task {
+            for notification in notificationsToDelete {
+                do {
+                    try await SupabaseManager.shared.client
+                        .from("notifications")
+                        .delete()
+                        .eq("id", value: notification.id.uuidString)
+                        .execute()
+                    print("✅ Notification deleted from DB")
+                } catch {
+                    print("🚨 Error deleting notification: \(error)")
+                    // Optional: Re-fetch if deletion fails to restore the UI
+                    await fetchNotifications()
+                }
+            }
         }
     }
 
