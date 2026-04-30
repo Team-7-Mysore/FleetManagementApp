@@ -1,6 +1,6 @@
 import SwiftUI
 import Combine
-// MARK: - Models
+
 struct VehicleCategory: Identifiable {
     let id = UUID()
     let name: String
@@ -9,12 +9,12 @@ struct VehicleCategory: Identifiable {
     let iconColor: Color
     let iconBG: Color
 }
-// MARK: - Image Cache (One-time cache)
+
 final class ImageCache {
     static let shared = NSCache<NSString, UIImage>()
 }
 
-// MARK: - Image Loader
+
 @MainActor
 class ImageLoader: ObservableObject {
     @Published var image: UIImage?
@@ -23,7 +23,7 @@ class ImageLoader: ObservableObject {
         guard let urlString = urlString,
               let url = URL(string: urlString) else { return }
 
-        // ✅ Check cache first
+      
         if let cached = ImageCache.shared.object(forKey: urlString as NSString) {
             self.image = cached
             return
@@ -40,7 +40,7 @@ class ImageLoader: ObservableObject {
         }
     }
 }
-// MARK: - Main Fleet View
+
 struct FleetListView: View {
     @StateObject private var vm = FleetListViewModel()
     @State private var showingAddVehicle = false
@@ -109,7 +109,7 @@ struct FleetListView: View {
             }
         }
     }
-    // This builds the list sections (Repairs and Monthly)
+
     @ViewBuilder
     private func maintenanceListSection(title: String, alerts: [MaintenanceAlert], emptyText: String?, badgeColor: Color) -> some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -153,7 +153,7 @@ struct FleetListView: View {
         .padding(.horizontal, 20)
     }
 
-    // MARK: - Extracted Subviews
+
     private var categoriesSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Categories")
@@ -238,7 +238,7 @@ struct FleetListView: View {
     }
 }
 
-// MARK: - Category Card Component
+
 struct CategoryCardView: View {
     let category: VehicleCategory
 
@@ -268,7 +268,7 @@ struct CategoryCardView: View {
     }
 }
 
-// MARK: - Maintenance Alert Card
+
 struct MaintenanceAlertCard: View {
     let alert: MaintenanceAlert
 
@@ -313,7 +313,7 @@ struct MaintenanceAlertCard: View {
     }
 }
 
-// MARK: - Detail View Components
+
 struct VehicleCategoryDetailView: View {
     let category: VehicleCategory
     @ObservedObject var vm: FleetListViewModel
@@ -383,7 +383,7 @@ struct VehicleCategoryDetailView: View {
     }
 }
 
-// MARK: - Compact Vehicle Row
+
 struct CompactVehicleRow: View {
     let vehicle: Vehicle
     @StateObject private var loader = ImageLoader()
@@ -422,11 +422,11 @@ struct CompactVehicleRow: View {
 
             Spacer()
 
-            Text(vehicle.statusDisplayName) // Uses "Maintenance" or "Active" (Title Case)
-                .font(.system(size: 11, weight: .bold)) // Cleaned up weight and size
+            Text(vehicle.statusDisplayName)
+                .font(.system(size: 11, weight: .bold))
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .foregroundColor(vehicle.statusColor) // Orange for Maintenance, Green for Active
+                .foregroundColor(vehicle.statusColor)
                 .background(vehicle.statusColor.opacity(0.1))
                 .clipShape(Capsule())
 

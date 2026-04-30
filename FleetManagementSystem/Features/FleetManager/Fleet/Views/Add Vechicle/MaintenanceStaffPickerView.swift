@@ -13,7 +13,7 @@ struct MaintenanceStaffPickerView: View {
     @State private var taskDescription = ""
     @State private var isProcessing = false
     
-    // Optional data for autofill from driver reports
+
     var driverReportId: UUID? = nil
     var initialSummary: String? = nil
     var initialDescription: String? = nil
@@ -89,7 +89,7 @@ struct MaintenanceStaffPickerView: View {
         }
     }
     
-    // MARK: - Networking Functions
+  
     
     private func fetchMaintenanceStaff() async {
         await MainActor.run { isLoading = true; errorMessage = nil }
@@ -122,7 +122,7 @@ struct MaintenanceStaffPickerView: View {
         do {
             let taskId = UUID()
             
-            // FIX 2: AnyEncodable is used here, defined at the bottom
+          
             let issueData: [String: AnyEncodable] = [
                 "issue_id": AnyEncodable(taskId),
                 "vehicle_id": AnyEncodable(vehicle.id),
@@ -137,23 +137,22 @@ struct MaintenanceStaffPickerView: View {
                 .eq("vehicle_id", value: vehicle.id)
                 .execute()
             
-            // NOTE: I changed "user_id" to "recipient_id" because that is what your notifications table uses!
+            
+            let session = try await SupabaseManager.shared.client.auth.session
+            let currentUserId = session.user.id
+            
             let notificationData: [String: AnyEncodable] = [
                 "recipient_id": AnyEncodable(technician.id),
-                
-                // 🚨 NEW: Tell the mechanic who sent this!
-                // (Replace this with however you get the logged-in manager's ID, or hardcode your UUID to test it)
-                "sender_id": AnyEncodable("3695958a-2a6e-4cac-a311-7541e5c03a2f"),
-                
-                "type": AnyEncodable("Maintenance"), // <-- Add the type so the mechanic's view catches it!
+                "sender_id": AnyEncodable(currentUserId),
+                "type": AnyEncodable("Maintenance"),
                 "title": AnyEncodable("New Task: \(issueSummary)"),
                 "message": AnyEncodable("You have been assigned to repair \(vehicle.name)"),
-                "related_entity_id": AnyEncodable(taskId), // This is the issue_id
+                "related_entity_id": AnyEncodable(taskId),
                 "is_read": AnyEncodable(false)
             ]
             try await SupabaseManager.shared.client.from("notifications").insert(notificationData).execute()
             
-            // 🚨 NEW: If this came from a driver report, update its status
+            
             if let reportId = driverReportId {
                 struct StatusUpdate: Encodable { let status: String }
                 try await SupabaseManager.shared.client
@@ -171,4 +170,4 @@ struct MaintenanceStaffPickerView: View {
             }
         }
     }
-} // End of MaintenanceStaffPickerView
+} 

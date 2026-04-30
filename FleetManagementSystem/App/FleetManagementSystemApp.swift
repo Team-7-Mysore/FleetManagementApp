@@ -5,7 +5,11 @@ import Supabase
 
 @main
 struct FleetManagementSystemApp: App {
-    
+
+
+    @AppStorage("hasSelectedLanguage") private var hasSelectedLanguage: Bool = false
+    @AppStorage("selectedLanguage") private var selectedLanguage: String = "en"
+
     @StateObject private var appSession = AppSession()
     @StateObject private var notificationManager = NotificationManager()
     @State private var showSetPassword = false
@@ -14,7 +18,9 @@ struct FleetManagementSystemApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if isLoading {
+                if !hasSelectedLanguage {
+                    LanguageSelectionOnboardingView()
+                } else if isLoading {
                     ProgressView("Loading...")
                 } else if showSetPassword {
                     SetPasswordView {
@@ -40,8 +46,14 @@ struct FleetManagementSystemApp: App {
                     LoginView(viewModel: AuthViewModel(appSession: appSession))
                 }
             }
+
             .tint(AppTheme.accentColor(for: appSession.profile?.role))
             .environmentObject(notificationManager)
+
+            .tint(Color(hex: "#A3352A"))
+            .hideKeyboardOnTap()
+            .environment(\.locale, .init(identifier: selectedLanguage))
+
             .onAppear {
                 notificationManager.requestPermission()
                 Task {

@@ -17,7 +17,8 @@ struct InventoryView: View {
     @State private var scannedQuantity: Int?
     @State private var scannedCost: Double?
     @State private var showNotifications = false
-    @State private var showingProfile = false // Added for Profile routing
+    @State private var showingProfile = false
+    @AppStorage("selectedLanguage") private var selectedLanguage: String = "en"
     
     // Initializer added to receive profile data without breaking previews
     init(viewModel: InventoryViewModel, profile: UserProfile? = nil, onSignOut: @escaping () async -> Void = {}) {
@@ -199,10 +200,10 @@ struct InventoryView: View {
                 MaintenanceNotificationsView(unreadCount: .constant(viewModel.notifications.count))
             }
             .sheet(isPresented: $showingProfile) {
-                // 🚨 Swap this with your actual Maintenance Profile View name if it's different!
                 MaintenanceProfileView(profile: profile, onSignOut: onSignOut)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
+                    .environment(\.locale, .init(identifier: selectedLanguage))
             }
             
             .fullScreenCover(isPresented: $showScanner) {

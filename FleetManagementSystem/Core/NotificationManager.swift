@@ -1,43 +1,69 @@
-import Foundation
-import Combine
+
+import UIKit
 import UserNotifications
 
-@MainActor
-final class NotificationManager: ObservableObject {
+/// Manages all local (iOS-native) notification concerns.
+/// No APNs, no external services — purely UNUserNotificationCenter.
+///
+/// How in-app push works:
+///   1. Supabase Realtime fires when a row is INSERTed into `notifications`.
+///   2. RealtimeManager checks the recipient_id matches the logged-in user.
+///   3. RealtimeManager calls NotificationManager.shared.sendInAppNotification().
+///   4. UNUserNotificationCenter delivers a banner — even while the app is in the foreground
+///      because this class sets itself as the UNUserNotificationCenterDelegate.
+final class NotificationManager: NSObject {
     static let shared = NotificationManager()
 
-    @Published var notifications: [NotificationItem] = []
-    @Published var isLoading: Bool = false
-    @Published var unreadCount: Int = 0
-    @Published var isPermissionGranted: Bool = false
+    private override init() {
+        super.init()
+        // Must be set before the app finishes launching so foreground banners work
+        UNUserNotificationCenter.current().delegate = self
+    }
 
-    init() {}
+    // MARK: - Permission
+
 
     func requestPermission() {
         UNUserNotificationCenter.current().requestAuthorization(
             options: [.alert, .sound, .badge]
-        ) { [weak self] granted, error in
+
+        ) { granted, error in
             if let error {
-                print("❌ Notification Permission Error:", error.localizedDescription)
+                print("❌ Notification permission error:", error.localizedDescription)
             }
-
-            Task { @MainActor in
-                self?.isPermissionGranted = granted
-            }
-
-            print("🔔 Notification Permission:", granted)
+            print("🔔 Notification permission granted:", granted)
         }
     }
 
-    func fetchNotifications() {
-        isLoading = true
+    // MARK: - In-App Push (triggered by Supabase Realtime INSERT on notifications table)
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-            guard let self else { return }
-            self.notifications = []
-            self.isLoading = false
+    /// Call this whenever a new notification row is inserted for the current user.
+    /// Delivers a native iOS banner regardless of whether the app is foreground or background.
+    func sendInAppNotification(title: String, message: String, notificationId: String? = nil) {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = message
+        content.sound = .default
+
+        // Use the Supabase notification ID as the identifier so duplicate inserts
+        // don't produce duplicate banners (UNUserNotificationCenter deduplicates by id)
+        let identifier = notificationId ?? UUID().uuidString
+
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: nil  // nil = deliver immediately
+        )
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                print("❌ Failed to deliver in-app notification:", error.localizedDescription)
+            }
         }
     }
+
+    // MARK: - Low Stock Local Notification
+
 
     func sendLowStockNotification(partName: String, quantity: Int) {
         let content = UNMutableNotificationContent()
@@ -46,15 +72,41 @@ final class NotificationManager: ObservableObject {
         content.sound = .default
 
         let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
+            identifier: "low_stock_\(partName)",
             content: content,
             trigger: nil
         )
 
         UNUserNotificationCenter.current().add(request) { error in
             if let error {
+
                 print("❌ Failed to add notification:", error.localizedDescription)
+
             }
         }
+    }
+}
+
+// MARK: - UNUserNotificationCenterDelegate
+
+extension NotificationManager: UNUserNotificationCenterDelegate {
+
+    /// Show banners even when the app is in the foreground.
+    /// Without this, iOS silently drops local notifications while the app is active.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound, .badge])
+    }
+
+    /// Handle tap on a notification banner (brings app to foreground if backgrounded).
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        completionHandler()
     }
 }
