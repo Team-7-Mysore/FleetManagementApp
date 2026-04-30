@@ -138,10 +138,13 @@ struct Trip: Codable, Identifiable {
         return fmt.string(from: date)
     }
 
-    /// Estimated delivery date (pickup + 7 days) formatted as "28 Dec, 2025"
+    /// Estimated arrival date (pickup + ETA minutes) formatted as "28 Dec, 2025"
     var formattedEstimatedDate: String {
         guard let date = parsedPickupDate else { return "N/A" }
-        let estimated = Calendar.current.date(byAdding: .day, value: 7, to: date) ?? date
+        let etaMinutes = Int((eta ?? 0).rounded())
+        let estimated = etaMinutes > 0
+            ? (Calendar.current.date(byAdding: .minute, value: etaMinutes, to: date) ?? date)
+            : date
         let fmt = DateFormatter()
         fmt.dateFormat = "dd MMM, yyyy"
         return fmt.string(from: estimated)
