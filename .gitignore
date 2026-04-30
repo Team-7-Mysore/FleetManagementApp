@@ -48,3 +48,4 @@ fastlane/screenshots/
 
 # App-specific (optional)
 # Add your own here if needed
+*.sql
