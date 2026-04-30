@@ -130,31 +130,23 @@ struct VehiclePartsView: View {
 
             if !displayedTopUsedParts.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
-                    ForEach(Array(displayedTopUsedParts.enumerated()), id: \.element.item.id) { index, entry in
-                        HStack(alignment: .top, spacing: 12) {
+                    ForEach(displayedTopUsedParts, id: \.item.id) { entry in
+                        HStack(spacing: 12) {
                             ZStack {
                                 Circle()
                                     .fill(Color(hex: "#A3352A").opacity(0.12))
                                     .frame(width: 40, height: 40)
 
-                                Image(systemName: index == 0 ? "chart.line.uptrend.xyaxis" : "shippingbox.fill")
+                                Image(systemName: entry.item.id == displayedTopUsedParts.first?.item.id ? "chart.line.uptrend.xyaxis" : "shippingbox.fill")
                                     .font(.system(size: 16, weight: .semibold))
                                     .foregroundColor(Color(hex: "#A3352A"))
                             }
 
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(entry.item.partName)
-                                    .font(.subheadline)
-                                    .fontWeight(index == 0 ? .semibold : .regular)
-                                    .foregroundColor(.primary)
-                                    .lineLimit(2)
-
-                                if let latestUsageDate = entry.latestUsageDate {
-                                    Text("Latest use: \(latestUsageDate, style: .date)")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
+                            Text(entry.item.partName)
+                                .font(.subheadline)
+                                .fontWeight(entry.item.id == displayedTopUsedParts.first?.item.id ? .semibold : .regular)
+                                .foregroundColor(.primary)
+                                .lineLimit(2)
 
                             Spacer(minLength: 12)
 
@@ -168,13 +160,6 @@ struct VehiclePartsView: View {
                                 .clipShape(Capsule())
                         }
                     }
-                }
-
-                if let first = displayedTopUsedParts.first, first.usageCount > 0 {
-                    Text("This part is frequently used. Consider restocking regularly.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
                 }
             } else {
                 HStack(spacing: 10) {

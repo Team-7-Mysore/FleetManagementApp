@@ -438,17 +438,15 @@ final class InventoryViewModel: ObservableObject {
             }
             print("📊 fetchMostUsedPart rows after category filter (\(normalizedCategory)):", filteredRows.count)
 
-            let aggregatedUsage = filteredRows.reduce(into: [UUID: Int]()) { partial, row in
-                guard let inventoryUUID = row.inventoryUUID else { return }
-                partial[inventoryUUID, default: 0] += 1
+            let aggregatedUsage = rows.reduce(into: [UUID: Int]()) { partial, row in
+                partial[row.inventoryId, default: 0] += row.quantityRequired
             }
             let latestUsageDates = filteredRows.reduce(into: [UUID: Date]()) { partial, row in
-                guard let inventoryUUID = row.inventoryUUID,
-                      let usageDate = row.usageDate else { return }
-                if let existing = partial[inventoryUUID] {
-                    partial[inventoryUUID] = max(existing, usageDate)
+                guard let usageDate = row.usageDate else { return }
+                if let existing = partial[row.inventoryId] {
+                    partial[row.inventoryId] = max(existing, usageDate)
                 } else {
-                    partial[inventoryUUID] = usageDate
+                    partial[row.inventoryId] = usageDate
                 }
             }
             weeklyUsage = aggregatedUsage
@@ -748,25 +746,7 @@ private extension InventoryViewModel {
                 )
             }
             .filter { $0.usageCount > 0 }
-            .sorted { lhs, rhs in
-                if lhs.usageCount == rhs.usageCount {
-                    switch (lhs.latestUsageDate, rhs.latestUsageDate) {
-                    case let (lhsDate?, rhsDate?):
-                        if lhsDate != rhsDate {
-                            return lhsDate > rhsDate
-                        }
-                    case (_?, nil):
-                        return true
-                    case (nil, _?):
-                        return false
-                    case (nil, nil):
-                        break
-                    }
-
-                    return lhs.item.partName.localizedCaseInsensitiveCompare(rhs.item.partName) == .orderedAscending
-                }
-                return lhs.usageCount > rhs.usageCount
-            }
+            .sorted { $0.usageCount > $1.usageCount }
 
         topUsedParts = Array(rankedParts.prefix(2))
         mostUsedPartCache[normalizedCategory] = MostUsedPartCacheEntry(entries: topUsedParts)
@@ -836,7 +816,7 @@ private struct MostUsedPartCacheEntry {
 }
 
 private struct MostUsedPartUsageRow: Decodable {
-    let inventoryId: String
+    let inventoryId: UUID
     let quantityRequired: Int
     let inventory: InventoryItem?
     let workOrder: MostUsedPartWorkOrder?
@@ -850,10 +830,6 @@ private struct MostUsedPartUsageRow: Decodable {
 
     var usageDate: Date? {
         workOrder?.createdAt
-    }
-
-    var inventoryUUID: UUID? {
-        UUID(uuidString: inventoryId)
     }
 }
 
