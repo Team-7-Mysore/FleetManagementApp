@@ -27,86 +27,180 @@ struct SDVAutoScannerView: View {
     ]
     
     var body: some View {
-        VStack(spacing: 30) {
-            Text("SDV Diagnostics Sequence")
-                .font(.headline)
+        ZStack {
+            AppTheme.pageBackground.ignoresSafeArea()
             
-            // Wireframe representation of a vehicle
-            ZStack(alignment: .top) {
-                Image(systemName: "car.top.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(height: 250)
-                    .foregroundColor(Color.blue.opacity(0.3))
+            VStack(spacing: 24) {
+                // Header
+                Text("SDV Diagnostics Sequence")
+                    .font(.headline)
+                    .padding(.top, 20)
                 
-                // Scanning Laser
-                Rectangle()
-                    .fill(
-                        LinearGradient(
-                            gradient: Gradient(colors: [.clear, .cyan, .clear]),
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                    .frame(height: 10)
-                    .offset(y: scanProgress)
-                    .opacity(isComplete ? 0 : 1)
-            }
-            .frame(height: 250)
-            
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(checks.indices, id: \.self) { index in
-                    let checkName = checks[index]
-                    let isChecked = completedChecks.contains(checkName)
-                    let hasFault = fetchedReports.contains(where: { report in
-                        if report.category == "mechanical" && checkName.contains("Engine") { return true }
-                        if report.category == "body damage" && checkName.contains("Lighting") { return true }
-                        return false
-                    })
+                // Scanner Area
+                ZStack(alignment: .top) {
+                    // Grid background
+                    gridBackground
                     
-                    HStack {
-                        Image(systemName: !isChecked ? "circle.dashed" : (hasFault ? "xmark.circle.fill" : "checkmark.circle.fill"))
-                            .foregroundColor(!isChecked ? .gray : (hasFault ? .red : .green))
-                        Text(checkName)
-                            .font(.subheadline)
-                            .foregroundColor(!isChecked ? .secondary : (hasFault ? .red : .primary))
-                        Spacer()
-                    }
+                    // Vehicle Wireframe
+                    Image(systemName: "truck.box.fill")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(height: 140)
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [AppTheme.primaryGreen.opacity(0.6), AppTheme.darkGreen],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .shadow(color: AppTheme.primaryGreen.opacity(0.4), radius: 10, x: 0, y: 0)
+                        .padding(.top, 60)
+                    
+                    // Scanning Laser
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [.clear, AppTheme.mintGreen, .clear],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(height: 4)
+                        .shadow(color: AppTheme.mintGreen, radius: 8, x: 0, y: 0)
+                        .offset(y: scanProgress)
+                        .opacity(isComplete ? 0 : 1)
+                        .padding(.horizontal, 40)
                 }
-            }
-            .padding(.horizontal, 40)
-            
-            if isComplete {
-                HStack {
-                    Image(systemName: fetchedReports.isEmpty ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
-                        .foregroundColor(fetchedReports.isEmpty ? .green : .red)
-                    Text(fetchedReports.isEmpty ? "All Systems Go" : "\(fetchedReports.count) Issues Detected")
-                        .fontWeight(.bold)
-                }
-                .padding()
-                .background(fetchedReports.isEmpty ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
-                .cornerRadius(10)
-                
-                Button(action: {
-                    Task { await submitAutoInspection() }
-                }) {
-                    Text("Submit & Proceed")
-                        .bold()
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
-                }
+                .frame(height: 260)
+                .background(Color.black.opacity(0.03))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadius)
+                        .stroke(AppTheme.primaryGreen.opacity(0.2), lineWidth: 1)
+                )
                 .padding(.horizontal)
+                
+                // Checklist
+                ScrollView {
+                    VStack(spacing: 12) {
+                        ForEach(checks.indices, id: \.self) { index in
+                            checkRow(for: checks[index], at: index)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, 20)
+                }
+                
+                // Footer / Button
+                if isComplete {
+                    VStack(spacing: 16) {
+                        HStack(spacing: 12) {
+                            Image(systemName: fetchedReports.isEmpty ? "checkmark.shield.fill" : "exclamationmark.triangle.fill")
+                                .font(.title3)
+                                .foregroundStyle(fetchedReports.isEmpty ? AppTheme.primaryGreen : AppTheme.statusDanger)
+                            Text(fetchedReports.isEmpty ? "All Systems Verified" : "\(fetchedReports.count) Issues Detected")
+                                .font(.headline)
+                                .foregroundStyle(fetchedReports.isEmpty ? AppTheme.primaryGreen : AppTheme.statusDanger)
+                        }
+                        .padding(.vertical, 12)
+                        .frame(maxWidth: .infinity)
+                        .background(
+                            (fetchedReports.isEmpty ? AppTheme.primaryGreen : AppTheme.statusDanger).opacity(0.1)
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadius))
+                        .padding(.horizontal)
+                        
+                        Button {
+                            Task { await submitAutoInspection() }
+                        } label: {
+                            Text("Complete Diagnostics")
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .padding(.horizontal)
+                    }
+                    .padding(.bottom, 20)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
-            
-            Spacer()
         }
         .task {
             await fetchDiagnostics()
         }
         .onAppear(perform: startScans)
+    }
+
+    private var gridBackground: some View {
+        GeometryReader { geo in
+            Path { path in
+                let step: CGFloat = 20
+                for x in stride(from: 0, to: geo.size.width, by: step) {
+                    path.move(to: CGPoint(x: x, y: 0))
+                    path.addLine(to: CGPoint(x: x, y: geo.size.height))
+                }
+                for y in stride(from: 0, to: geo.size.height, by: step) {
+                    path.move(to: CGPoint(x: 0, y: y))
+                    path.addLine(to: CGPoint(x: geo.size.width, y: y))
+                }
+            }
+            .stroke(AppTheme.primaryGreen.opacity(0.15), lineWidth: 1)
+        }
+    }
+
+    @ViewBuilder
+    private func checkRow(for checkName: String, at index: Int) -> some View {
+        let isChecked = completedChecks.contains(checkName)
+        let hasFault = fetchedReports.contains(where: { report in
+            if report.category == "mechanical" && checkName.contains("Engine") { return true }
+            if report.category == "body damage" && checkName.contains("Lighting") { return true }
+            return false
+        })
+        
+        let statusColor = !isChecked ? Color.secondary.opacity(0.3) : (hasFault ? AppTheme.statusDanger : AppTheme.primaryGreen)
+        let iconName = !isChecked ? "hourglass" : (hasFault ? "xmark.circle.fill" : "checkmark.circle.fill")
+        
+        HStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(statusColor.opacity(0.1))
+                    .frame(width: 36, height: 36)
+                
+                Image(systemName: iconName)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(statusColor)
+                    // Apply rotation only if we are scanning this item
+                    .rotationEffect(.degrees((!isChecked && completedChecks.count == index) ? 180 : 0))
+                    .animation((!isChecked && completedChecks.count == index) ? .linear(duration: 2).repeatForever(autoreverses: false) : .default, value: completedChecks.count == index)
+            }
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(checkName)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(isChecked ? .primary : .secondary)
+                
+                Text(isChecked ? (hasFault ? "Fault Detected" : "Verified") : (completedChecks.count == index ? "Scanning..." : "Pending..."))
+                    .font(.caption)
+                    .foregroundStyle(isChecked ? statusColor : .secondary)
+            }
+            
+            Spacer()
+            
+            if isChecked {
+                Text("OK")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(statusColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(statusColor.opacity(0.1))
+                    .clipShape(Capsule())
+                    .opacity(hasFault ? 0 : 1)
+            }
+        }
+        .padding(12)
+        .background(AppTheme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .shadow(color: AppTheme.cardShadowColor, radius: 4, x: 0, y: 2)
+        .opacity(completedChecks.count >= index ? 1 : 0.4)
+        .animation(.easeIn, value: completedChecks.count)
     }
     
     private func fetchDiagnostics() async {

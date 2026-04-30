@@ -41,7 +41,7 @@ struct LoginView: View {
                         .shadow(color: .blue.opacity(0.22), radius: 18, x: 0, y: 10)
 
                     VStack(spacing: 6) {
-                        Text("The FMS")
+                        Text("FleetSync")
                             .font(.system(size: 40, weight: .bold, design: .rounded))
                             .multilineTextAlignment(.center)
 
