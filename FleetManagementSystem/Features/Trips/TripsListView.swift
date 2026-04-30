@@ -12,9 +12,6 @@ struct TripsListView: View {
     @State private var showingProfile = false
     @State private var selectedWorkOrder: WorkOrder? = nil
 
-    // State to handle the "Awaiting Approval" focus filter
-    @State private var isShowingOnlyApprovals = false
-
     init(profile: UserProfile? = nil, onSignOut: @escaping () async -> Void = {}) {
         self.profile = profile
         self.onSignOut = onSignOut
@@ -34,7 +31,6 @@ struct TripsListView: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
-                .opacity(isShowingOnlyApprovals ? 0.4 : 1.0)
 
                 // 2. Ongoing Trips Section
                 Section(header: sectionHeader(title: "Ongoing Trips", destination: AnyView(AllTripsView()))) {
@@ -43,7 +39,6 @@ struct TripsListView: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 10, trailing: 16))
-                .opacity(isShowingOnlyApprovals ? 0.4 : 1.0)
 
                 // 3. Vehicles in Maintenance (Combined Section with Focus Logic)
                 maintenanceFocusSection
@@ -88,10 +83,6 @@ struct TripsListView: View {
                 let isPending = workOrder.status == .pending
 
                 MaintenanceVehicleCard(workOrder: workOrder)
-                    // Focus Visuals
-                    .opacity(!isShowingOnlyApprovals || isPending ? 1.0 : 0.3)
-                    .scaleEffect(isShowingOnlyApprovals && isPending ? 1.02 : 1.0)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isShowingOnlyApprovals)
                     .onTapGesture {
                         selectedWorkOrder = workOrder
                     }
@@ -129,24 +120,15 @@ struct TripsListView: View {
 
             Spacer()
 
-            if !pendingApprovals.isEmpty {
-                Button(action: {
-                    withAnimation { isShowingOnlyApprovals.toggle() }
-                }) {
-                    HStack(spacing: 6) {
-                        Text("\(pendingApprovals.count) Awaiting Approval")
-                        if isShowingOnlyApprovals {
-                            Image(systemName: "xmark.circle.fill")
-                        }
-                    }
-                    .font(.caption.weight(.bold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(isShowingOnlyApprovals ? Color.orange : Color.orange.opacity(0.15))
-                    .foregroundColor(isShowingOnlyApprovals ? .white : .orange)
-                    .clipShape(Capsule())
+            NavigationLink(destination: AllMaintenanceView()) {
+                HStack(spacing: 4) {
+                    Text("View All")
+                    Image(systemName: "chevron.right").font(.caption)
                 }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.TechBlue)
             }
+            .buttonStyle(.plain)
         }
         .padding(.vertical, 8)
     }
@@ -264,10 +246,26 @@ struct EnhancedTripCard: View {
                     Spacer()
                     statusBadge
                 }
-                HStack(spacing: 6) {
-                    Text(trip.originText).frame(maxWidth: .infinity, alignment: .leading).font(.subheadline).foregroundColor(.secondary).lineLimit(1)
-                    Image(systemName: "arrow.right").font(.caption).foregroundColor(.secondary)
-                    Text(trip.destinationText).frame(maxWidth: .infinity, alignment: .leading).font(.subheadline).foregroundColor(.secondary).lineLimit(1)
+                HStack(alignment: .top, spacing: 8) {
+
+                    Text(trip.originText)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Image(systemName: "arrow.right")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.top, 4)
+
+                    Text(trip.destinationText)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .frame(maxWidth: .infinity, minHeight: 100, alignment: .leading)
