@@ -560,9 +560,7 @@ struct AddEditWorkOrderView: View {
                         workOrderId: newWorkOrderId,
                         inventoryId: uiPart.inventoryId,
                         quantityRequired: uiPart.quantity,
-                        costAtTime: nil,
-                        createdAt: Date(),
-                        usedAt: Date()
+                        costAtTime: nil
                     )
                 }
 

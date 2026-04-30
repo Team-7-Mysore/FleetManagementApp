@@ -204,16 +204,12 @@ struct WorkOrderPart: Codable {
     var inventoryId: UUID
     var quantityRequired: Int
     var costAtTime: Double?
-    var createdAt: Date?
-    var usedAt: Date?
 
     enum CodingKeys: String, CodingKey {
         case workOrderId = "work_order_id"
         case inventoryId = "inventory_id"
         case quantityRequired = "quantity_required"
         case costAtTime = "cost_at_time"
-        case createdAt = "created_at"
-        case usedAt = "used_at"
     }
 }
 

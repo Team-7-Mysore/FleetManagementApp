@@ -524,9 +524,7 @@ struct WorkOrderDetailView: View {
                     workOrderId: workOrder.workOrderId,
                     inventoryId: uiPart.inventoryId,
                     quantityRequired: uiPart.quantity,
-                    costAtTime: uiPart.unitCost,
-                    createdAt: Date(),
-                    usedAt: Date()
+                    costAtTime: uiPart.unitCost
                 )
             }
             try await viewModel.upsertParts(workOrderParts)

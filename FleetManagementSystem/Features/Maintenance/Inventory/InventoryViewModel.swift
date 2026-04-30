@@ -19,9 +19,24 @@ final class InventoryViewModel: ObservableObject {
         let quantityUsed: Int
         let costAtTime: Double
         let workOrderReference: String
-        let usedAt: Date?
+        let usageTimestamp: Date
+        let vehicle: PartUsageVehicle
 
         var id: String { "\(workOrderId.uuidString)-\(vehicleId.uuidString)" }
+    }
+
+    struct PartUsageVehicle: Codable, Equatable {
+        let vehicleId: UUID
+        let vin: String?
+        let numberPlate: String?
+        let vehicleName: String?
+        let vehicleType: String?
+    }
+
+    struct PartUsageSummary {
+        let item: InventoryItem
+        let usageCount: Int
+        let latestUsageDate: Date?
     }
 
     enum InventoryDeletionError: LocalizedError {
@@ -52,7 +67,7 @@ final class InventoryViewModel: ObservableObject {
     @Published var partUsage: [PartUsage] = []
     @Published var isLoadingPartUsage = false
     @Published private(set) var activePartUsageInventoryId: UUID?
-    @Published var topUsedParts: [(item: InventoryItem, count: Int)] = []
+    @Published var topUsedParts: [PartUsageSummary] = []
     @Published private(set) var activeMostUsedCategory: String?
     @Published var weeklyUsage: [UUID: Int] = [:]
 
@@ -63,6 +78,7 @@ final class InventoryViewModel: ObservableObject {
     private var partUsageCache: [UUID: [PartUsage]] = [:]
     private var mostUsedPartCache: [String: MostUsedPartCacheEntry] = [:]
     private var weeklyUsageCacheByCategory: [String: [UUID: Int]] = [:]
+    private var weeklyLatestUsageCacheByCategory: [String: [UUID: Date]] = [:]
     private var hasLoadedInitialInventory = false
     private var inventoryRealtimeChannel: RealtimeChannelV2?
     private var inventoryRealtimeTask: Task<Void, Never>?
@@ -119,6 +135,7 @@ final class InventoryViewModel: ObservableObject {
         partUsageCache.removeAll()
         mostUsedPartCache.removeAll()
         weeklyUsageCacheByCategory.removeAll()
+        weeklyLatestUsageCacheByCategory.removeAll()
         partUsage = []
         activePartUsageInventoryId = nil
         topUsedParts = []
@@ -298,13 +315,11 @@ final class InventoryViewModel: ObservableObject {
                 inventory_id,
                 quantity_required,
                 cost_at_time,
-                used_at,
                 work_orders:work_orders!inner(
                     work_order_id,
                     vehicle_id,
                     created_at,
-                    updated_at,
-                    vehicles(
+                    vehicles!inner(
                         vehicle_id,
                         vin,
                         number_plate,
@@ -319,17 +334,16 @@ final class InventoryViewModel: ObservableObject {
 
         print("🔎 work_order_parts rows fetched:", rows.count)
         for row in rows {
-            print("🔎 usage row workOrderId=\(row.workOrderId.uuidString) inventoryId=\(row.inventoryId.uuidString) quantity=\(row.quantityRequired) usedAt=\(row.usedAt?.description ?? "nil") usageDate=\(row.usageDate?.description ?? "nil")")
+            print("🔎 usage row workOrderId=\(row.workOrderId.uuidString) inventoryId=\(row.inventoryId.uuidString) quantity=\(row.quantityRequired) usageTimestamp=\(row.usageTimestamp.description)")
         }
 
         let usage = rows.compactMap { row -> PartUsage? in
-            guard let workOrder = row.workOrder,
-                  let vehicle = workOrder.vehicle else {
+            guard let vehicle = row.workOrder?.vehicle else {
                 return nil
             }
 
             let vehicleName = vehicle.vehicleName ?? vehicle.numberPlate ?? "Unknown Vehicle"
-            let vehicleId = workOrder.vehicleId ?? vehicle.vehicleId
+            let vehicleId = row.workOrder?.vehicleId ?? vehicle.vehicleId
 
             return PartUsage(
                 workOrderId: row.workOrderId,
@@ -340,20 +354,21 @@ final class InventoryViewModel: ObservableObject {
                 quantityUsed: row.quantityRequired,
                 costAtTime: row.costAtTime ?? 0,
                 workOrderReference: "WO-\(row.workOrderId.uuidString.prefix(6).uppercased())",
-                usedAt: row.usageDate ?? workOrder.createdAt
+                usageTimestamp: row.usageTimestamp,
+                vehicle: PartUsageVehicle(
+                    vehicleId: vehicle.vehicleId,
+                    vin: vehicle.vin,
+                    numberPlate: vehicle.numberPlate,
+                    vehicleName: vehicle.vehicleName,
+                    vehicleType: vehicle.vehicleType?.rawValue
+                )
             )
         }
         .sorted {
-            switch ($0.usedAt, $1.usedAt) {
-            case let (lhs?, rhs?):
-                return lhs > rhs
-            case (_?, nil):
-                return true
-            case (nil, _?):
-                return false
-            case (nil, nil):
-                return $0.workOrderReference > $1.workOrderReference
+            if $0.usageTimestamp != $1.usageTimestamp {
+                return $0.usageTimestamp > $1.usageTimestamp
             }
+            return $0.workOrderReference > $1.workOrderReference
         }
 
         partUsageCache[inventoryId] = usage
@@ -383,6 +398,7 @@ final class InventoryViewModel: ObservableObject {
 
         topUsedParts = []
         weeklyUsage = [:]
+        weeklyLatestUsageCacheByCategory[normalizedCategory] = [:]
 
         let sevenDaysAgo = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-7 * 24 * 60 * 60))
         print("📊 fetchMostUsedPart category:", normalizedCategory)
@@ -395,7 +411,16 @@ final class InventoryViewModel: ObservableObject {
                     inventory_id,
                     quantity_required,
                     inventory:inventory!inner(*),
-                    work_orders!inner(created_at)
+                    work_orders:work_orders!inner(
+                        created_at,
+                        vehicles!inner(
+                            vehicle_id,
+                            vin,
+                            number_plate,
+                            vehicle_name,
+                            vehicle_type
+                        )
+                    )
                 """)
                 .gte("work_orders.created_at", value: sevenDaysAgo)
                 .execute()
@@ -403,7 +428,7 @@ final class InventoryViewModel: ObservableObject {
 
             print("📊 Rows fetched:", rows.count)
             for row in rows {
-                print("📊 weekly usage row inventoryId=\(row.inventoryId) usageDate=\(row.usageDate?.description ?? "nil") nestedWorkOrderNil=\(row.workOrders == nil)")
+                print("📊 weekly usage row inventoryId=\(row.inventoryId) usageDate=\(row.usageDate?.description ?? "nil") nestedWorkOrderNil=\(row.workOrder == nil)")
             }
 
             let filteredRows = rows.filter { row in
@@ -415,16 +440,27 @@ final class InventoryViewModel: ObservableObject {
 
             let aggregatedUsage = filteredRows.reduce(into: [UUID: Int]()) { partial, row in
                 guard let inventoryUUID = row.inventoryUUID else { return }
-                partial[inventoryUUID, default: 0] += row.quantityRequired
+                partial[inventoryUUID, default: 0] += 1
+            }
+            let latestUsageDates = filteredRows.reduce(into: [UUID: Date]()) { partial, row in
+                guard let inventoryUUID = row.inventoryUUID,
+                      let usageDate = row.usageDate else { return }
+                if let existing = partial[inventoryUUID] {
+                    partial[inventoryUUID] = max(existing, usageDate)
+                } else {
+                    partial[inventoryUUID] = usageDate
+                }
             }
             weeklyUsage = aggregatedUsage
             weeklyUsageCacheByCategory[normalizedCategory] = aggregatedUsage
+            weeklyLatestUsageCacheByCategory[normalizedCategory] = latestUsageDates
             print("📊 weeklyUsage dictionary:", aggregatedUsage)
             refreshTopUsedParts(for: normalizedCategory)
         } catch {
             print("Error fetching most used weekly part for \(normalizedCategory):", error)
             topUsedParts = []
             weeklyUsage = [:]
+            weeklyLatestUsageCacheByCategory[normalizedCategory] = [:]
         }
     }
 
@@ -705,14 +741,31 @@ private extension InventoryViewModel {
 
         let rankedParts = categoryItems
             .map { item in
-                (item: item, count: weeklyUsage[item.inventoryId] ?? 0)
+                PartUsageSummary(
+                    item: item,
+                    usageCount: weeklyUsage[item.inventoryId] ?? 0,
+                    latestUsageDate: weeklyLatestUsageCacheByCategory[normalizedCategory]?[item.inventoryId]
+                )
             }
-            .filter { $0.count > 0 }
+            .filter { $0.usageCount > 0 }
             .sorted { lhs, rhs in
-                if lhs.count == rhs.count {
+                if lhs.usageCount == rhs.usageCount {
+                    switch (lhs.latestUsageDate, rhs.latestUsageDate) {
+                    case let (lhsDate?, rhsDate?):
+                        if lhsDate != rhsDate {
+                            return lhsDate > rhsDate
+                        }
+                    case (_?, nil):
+                        return true
+                    case (nil, _?):
+                        return false
+                    case (nil, nil):
+                        break
+                    }
+
                     return lhs.item.partName.localizedCaseInsensitiveCompare(rhs.item.partName) == .orderedAscending
                 }
-                return lhs.count > rhs.count
+                return lhs.usageCount > rhs.usageCount
             }
 
         topUsedParts = Array(rankedParts.prefix(2))
@@ -749,7 +802,6 @@ private struct PartUsageRow: Decodable {
     let inventoryId: UUID
     let quantityRequired: Int
     let costAtTime: Double?
-    let usedAt: Date?
     let workOrder: PartUsageWorkOrder?
 
     enum CodingKeys: String, CodingKey {
@@ -757,50 +809,47 @@ private struct PartUsageRow: Decodable {
         case inventoryId = "inventory_id"
         case quantityRequired = "quantity_required"
         case costAtTime = "cost_at_time"
-        case usedAt = "used_at"
         case workOrder = "work_orders"
     }
 
-    var usageDate: Date? {
-        usedAt ?? workOrder?.createdAt
+    var usageTimestamp: Date {
+        workOrder?.createdAt ?? Date.distantPast
     }
 }
 
 private struct PartUsageWorkOrder: Decodable {
     let workOrderId: UUID
     let vehicleId: UUID?
-    let createdAt: Date?
-    let updatedAt: Date?
+    let createdAt: Date
     let vehicle: WorkOrderVehicle?
 
     enum CodingKeys: String, CodingKey {
         case workOrderId = "work_order_id"
         case vehicleId = "vehicle_id"
         case createdAt = "created_at"
-        case updatedAt = "updated_at"
         case vehicle = "vehicles"
     }
 }
 
 private struct MostUsedPartCacheEntry {
-    let entries: [(item: InventoryItem, count: Int)]
+    let entries: [InventoryViewModel.PartUsageSummary]
 }
 
 private struct MostUsedPartUsageRow: Decodable {
     let inventoryId: String
     let quantityRequired: Int
     let inventory: InventoryItem?
-    let workOrders: WorkOrderDate?
+    let workOrder: MostUsedPartWorkOrder?
 
     enum CodingKeys: String, CodingKey {
         case inventoryId = "inventory_id"
         case quantityRequired = "quantity_required"
         case inventory
-        case workOrders = "work_orders"
+        case workOrder = "work_orders"
     }
 
     var usageDate: Date? {
-        workOrders?.createdAt
+        workOrder?.createdAt
     }
 
     var inventoryUUID: UUID? {
@@ -808,11 +857,13 @@ private struct MostUsedPartUsageRow: Decodable {
     }
 }
 
-private struct WorkOrderDate: Decodable {
+private struct MostUsedPartWorkOrder: Decodable {
     let createdAt: Date
+    let vehicle: WorkOrderVehicle?
 
     enum CodingKeys: String, CodingKey {
         case createdAt = "created_at"
+        case vehicle = "vehicles"
     }
 }
 

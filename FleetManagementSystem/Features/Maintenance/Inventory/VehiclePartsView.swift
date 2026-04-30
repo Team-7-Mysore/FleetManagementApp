@@ -8,7 +8,7 @@ struct VehiclePartsView: View {
     @State private var itemToDelete: InventoryItem?
     @State private var showInsightsCard = false
     
-    private var displayedTopUsedParts: [(item: InventoryItem, count: Int)] {
+    private var displayedTopUsedParts: [InventoryViewModel.PartUsageSummary] {
         guard viewModel.activeMostUsedCategory == category else { return [] }
         return viewModel.topUsedParts
     }
@@ -131,7 +131,7 @@ struct VehiclePartsView: View {
             if !displayedTopUsedParts.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(Array(displayedTopUsedParts.enumerated()), id: \.element.item.id) { index, entry in
-                        HStack(spacing: 12) {
+                        HStack(alignment: .top, spacing: 12) {
                             ZStack {
                                 Circle()
                                     .fill(Color(hex: "#A3352A").opacity(0.12))
@@ -142,15 +142,23 @@ struct VehiclePartsView: View {
                                     .foregroundColor(Color(hex: "#A3352A"))
                             }
 
-                            Text(entry.item.partName)
-                                .font(.subheadline)
-                                .fontWeight(index == 0 ? .semibold : .regular)
-                                .foregroundColor(.primary)
-                                .lineLimit(2)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(entry.item.partName)
+                                    .font(.subheadline)
+                                    .fontWeight(index == 0 ? .semibold : .regular)
+                                    .foregroundColor(.primary)
+                                    .lineLimit(2)
+
+                                if let latestUsageDate = entry.latestUsageDate {
+                                    Text("Latest use: \(latestUsageDate, style: .date)")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                            }
 
                             Spacer(minLength: 12)
 
-                            Text("\(entry.count)")
+                            Text("\(entry.usageCount)")
                                 .font(.subheadline)
                                 .fontWeight(.bold)
                                 .foregroundColor(Color(hex: "#A3352A"))
@@ -162,7 +170,7 @@ struct VehiclePartsView: View {
                     }
                 }
 
-                if let first = displayedTopUsedParts.first, first.count > 0 {
+                if let first = displayedTopUsedParts.first, first.usageCount > 0 {
                     Text("This part is frequently used. Consider restocking regularly.")
                         .font(.caption)
                         .foregroundColor(.secondary)
