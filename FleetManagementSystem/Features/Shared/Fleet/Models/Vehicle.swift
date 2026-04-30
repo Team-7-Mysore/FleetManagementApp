@@ -24,7 +24,8 @@ struct Vehicle: Identifiable, Codable {
     // Document status flags (from vehicles table)
     var hasRC: Bool = false
     var hasInsurance: Bool = false
-    var hasPUC: Bool = false    var isSdvsEnabled: Bool = false
+    var hasPUC: Bool = false
+    var isSdvsEnabled: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id = "vehicle_id"
