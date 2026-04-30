@@ -142,7 +142,6 @@ struct WorkOrdersView: View {
                                 .font(.system(size: 18, weight: .medium))
                                 .foregroundColor(Color(hex:"#A3352A"))
 
-                            // 👇 ADDED OVERLAY BADGE HERE
                             if unreadNotificationCount > 0 {
                                 Text("\(unreadNotificationCount)")
                                     .font(.system(size: 10, weight: .bold))
@@ -308,77 +307,127 @@ struct FilteredWorkOrdersView: View {
     let sections: [(header: String, orders: [WorkOrder])]
     var onRefresh: (() async -> Void)? = nil
     let profile: UserProfile?
-
+    
     @State private var selectedDetailOrder: WorkOrder?
     @State private var selectedReportOrder: WorkOrder?
-
+    
     // Controls the segmented picker
     @State private var selectedTabIndex: Int = 0
-
+    
+    @StateObject private var localViewModel = WorkOrderViewModel()
+    
+    // 👇 NEW: State for Alert and Instant UI hiding
+    @State private var orderToDelete: WorkOrder? = nil
+    @State private var deletedOrderIds: Set<UUID> = []
+    
     var isEmpty: Bool {
         sections.allSatisfy { $0.orders.isEmpty }
     }
-
+    
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                // MARK: - Segmented Control (Placed naturally under Large Title)
-                if sections.count > 1 {
-                    Picker("Category", selection: $selectedTabIndex) {
-                        ForEach(0..<sections.count, id: \.self) { index in
-                            Text(sections[index].header).tag(index)
-                        }
+        VStack(spacing: 0) {
+            // MARK: - Segmented Control
+            if sections.count > 1 {
+                Picker("Category", selection: $selectedTabIndex) {
+                    ForEach(0..<sections.count, id: \.self) { index in
+                        Text(sections[index].header).tag(index)
                     }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 16)
                 }
-
-                // MARK: - List Content
-                VStack(alignment: .leading, spacing: 16) {
-                    if isEmpty {
-                        Text("No orders in this category.")
-                            .foregroundColor(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .padding(.top, 40)
-                    } else {
-                        // Extract the currently active section
-                        let currentSection = sections[sections.count > 1 ? selectedTabIndex : 0]
-
-                        if currentSection.orders.isEmpty {
-                            Text("No orders in \(currentSection.header.lowercased()).")
-                                .foregroundColor(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                                .padding(.top, 40)
-                        } else {
-                            VStack(spacing: 12) {
-                                ForEach(currentSection.orders, id: \.workOrderId) { order in
-                                    Button(action: {
-                                        selectedDetailOrder = order
-                                    }) {
-                                        WorkOrderRowView(
-                                            workOrder: order,
-                                            showStatus: false,
-                                            isLargeTitle: false,
-                                            onViewReport: {
-                                                selectedReportOrder = order
-                                            }
-                                        )
-                                        // Visual cue: fade out if waiting for approval
-                                        .opacity(!order.isApproved && order.status == .pending ? 0.6 : 1.0)
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+            }
+            
+            // MARK: - List Content
+            if isEmpty {
+                Text("No orders in this category.")
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 40)
+                Spacer()
+            } else {
+                let currentSection = sections[sections.count > 1 ? selectedTabIndex : 0]
+                
+                // 👇 FIX: Instantly filter out items the user just swiped to delete
+                let visibleOrders = currentSection.orders.filter { !deletedOrderIds.contains($0.workOrderId) }
+                
+                if visibleOrders.isEmpty {
+                    Text("No orders in \(currentSection.header.lowercased()).")
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 40)
+                    Spacer()
+                } else {
+                    List {
+                        ForEach(visibleOrders, id: \.workOrderId) { order in
+                            Button(action: {
+                                selectedDetailOrder = order
+                            }) {
+                                WorkOrderRowView(
+                                    workOrder: order,
+                                    showStatus: false,
+                                    isLargeTitle: false,
+                                    onViewReport: {
+                                        selectedReportOrder = order
                                     }
-                                    .buttonStyle(PlainButtonStyle())
+                                )
+                                .opacity(!order.isApproved && order.status == .pending ? 0.6 : 1.0)
+                            }
+                            .buttonStyle(PlainButtonStyle())
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            
+                            // 👇 CHANGED: allowsFullSwipe is false so they are forced to see the alert
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                if order.status != .inProgress {
+                                    Button(role: .destructive) {
+                                        // Trigger the confirmation alert
+                                        orderToDelete = order
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
                                 }
                             }
                         }
                     }
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    // 👇 NEW: The Confirmation Alert
+                    .alert("Delete Work Order", isPresented: Binding(
+                        get: { orderToDelete != nil },
+                        set: { if !$0 { orderToDelete = nil } }
+                    ), presenting: orderToDelete) { order in
+                        Button("Delete", role: .destructive) {
+                            // 1. Instantly hide it from the UI so it doesn't "ghost"
+                            deletedOrderIds.insert(order.workOrderId)
+                            
+                            Task {
+                                do {
+                                    // 2. Delete it from the database
+                                    try await localViewModel.deleteWorkOrder(order.workOrderId)
+                                    // 3. Refresh the parent views in the background
+                                    await onRefresh?()
+                                } catch {
+                                    print("🚨 Supabase Delete Failed: \(error)")
+                                    // 👇 FIX: If the DB blocked the delete, put it back on the UI!
+                                    await MainActor.run {
+                                        deletedOrderIds.remove(order.workOrderId)
+                                    }
+                                }
+                            }
+                        }
+                        Button("Cancel", role: .cancel) {
+                            orderToDelete = nil
+                        }
+                    } message: { order in
+                        Text("Are you sure you want to delete this work order? This action cannot be undone.")
+                    }
                 }
-                .padding(.horizontal, 16)
             }
-            .padding(.top, 16)
         }
-        .navigationTitle(title) // <--- Restored native iOS Large Title behavior!
+        .navigationTitle(title)
         .background(Color(uiColor: .systemGroupedBackground))
         .sheet(item: $selectedDetailOrder, onDismiss: {
             Task {
@@ -400,6 +449,8 @@ struct FilteredWorkOrdersView: View {
         }
     }
 }
+
+
 // MARK: - Summary Card Subview
 struct SummaryCardView: View {
     let title: String

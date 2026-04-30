@@ -1,25 +1,23 @@
 import SwiftUI
 import UIKit
 import PhotosUI
+import UniformTypeIdentifiers
 
 struct ImagePicker: UIViewControllerRepresentable {
     var sourceType: UIImagePickerController.SourceType = .camera
     var onImagePicked: (UIImage) -> Void
+    var onPDFPicked: ((URL) -> Void)? = nil
     
     func makeUIViewController(context: Context) -> UIViewController {
-        // Use PHPicker for Photo Library (Modern API)
         if sourceType == .photoLibrary || sourceType == .savedPhotosAlbum {
             var config = PHPickerConfiguration()
-            config.filter = .images
             config.selectionLimit = 1
             
             let picker = PHPickerViewController(configuration: config)
             picker.delegate = context.coordinator
             return picker
         } else {
-            // Use UIImagePicker for Camera
             let picker = UIImagePickerController()
-            // Safety check for Simulator or devices without cameras
             if UIImagePickerController.isSourceTypeAvailable(.camera) {
                 picker.sourceType = .camera
             } else {
@@ -33,24 +31,47 @@ struct ImagePicker: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
     
     func makeCoordinator() -> Coordinator {
-        Coordinator(onImagePicked: onImagePicked)
+        Coordinator(onImagePicked: onImagePicked, onPDFPicked: onPDFPicked)
     }
     
     class Coordinator: NSObject, UINavigationControllerDelegate, UIImagePickerControllerDelegate, PHPickerViewControllerDelegate {
         let onImagePicked: (UIImage) -> Void
+        var onPDFPicked: ((URL) -> Void)?
         
-        init(onImagePicked: @escaping (UIImage) -> Void) {
+        init(onImagePicked: @escaping (UIImage) -> Void, onPDFPicked: ((URL) -> Void)?) {
             self.onImagePicked = onImagePicked
+            self.onPDFPicked = onPDFPicked
         }
         
-        // MARK: - PHPickerViewControllerDelegate (Library)
         func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
             picker.dismiss(animated: true)
             
-            guard let item = results.first?.itemProvider,
-                  item.canLoadObject(ofClass: UIImage.self) else { return }
+            guard let result = results.first else { return }
             
-            item.loadObject(ofClass: UIImage.self) { [weak self] image, _ in
+            // Check if PDF
+            if result.itemProvider.hasItemConformingToTypeIdentifier(UTType.pdf.identifier) {
+                let tempDir = FileManager.default.temporaryDirectory
+                let tempFile = tempDir.appendingPathComponent(UUID().uuidString + ".pdf")
+                
+                result.itemProvider.loadFileRepresentation(forTypeIdentifier: UTType.pdf.identifier) { url, error in
+                    if let sourceURL = url {
+                        do {
+                            try FileManager.default.copyItem(at: sourceURL, to: tempFile)
+                            DispatchQueue.main.async {
+                                self.onPDFPicked?(tempFile)
+                            }
+                        } catch {
+                            print("Error copying PDF: \(error)")
+                        }
+                    }
+                }
+                return
+            }
+            
+            // Otherwise check if image
+            guard result.itemProvider.canLoadObject(ofClass: UIImage.self) else { return }
+            
+            result.itemProvider.loadObject(ofClass: UIImage.self) { [weak self] image, _ in
                 if let img = image as? UIImage {
                     DispatchQueue.main.async {
                         self?.onImagePicked(img)
@@ -59,7 +80,6 @@ struct ImagePicker: UIViewControllerRepresentable {
             }
         }
         
-        // MARK: - UIImagePickerControllerDelegate (Camera)
         func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
             if let image = info[.originalImage] as? UIImage {
                 onImagePicked(image)

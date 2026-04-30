@@ -6,7 +6,7 @@ import UIKit
 struct VehicleDocument: Identifiable, Hashable {
     let id: String
     let type: String
-    var fileURL: String
+    var fileURL: String = ""
     var fileName: String? = nil
 
     var title: String {
@@ -36,6 +36,12 @@ struct VehicleDocument: Identifiable, Hashable {
     }
 }
 
+struct VehicleUsageReportResult {
+    let localURL: URL
+    let publicURL: String
+    let fileName: String
+}
+
 private struct VehicleUpdatePayload: Encodable {
     let vehicle_name: String
     let number_plate: String
@@ -50,6 +56,7 @@ private struct VehicleUpdatePayload: Encodable {
     let registration_date: String?
     let rc_expiry_date: String?
     let puc_expiry_date: String?
+    let is_sdvs_enabled: Bool
 }
 
 @MainActor
@@ -61,18 +68,69 @@ class VehicleDetailViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var documentsErrorMessage: String?
     @Published var maintenanceReports: [WorkOrderReportRecord] = []
-    
-    // MARK: - NEW INITIALIZER FOR OPTIMISTIC LOADING
+    @Published var autofilledFields: Set<String> = []
+    @Published var isGeneratingUsageReport = false
+    @Published var isSdvsEnabled = false
+
     init(initialVehicle: Vehicle? = nil) {
         self.vehicle = initialVehicle
+        self.isSdvsEnabled = initialVehicle?.isSdvsEnabled ?? false
     }
 
+
+
+    func processVehicleOCR(from source: Any) async {
+        let rawText = await VehicleOCRService.shared.recognizeText(from: source)
+        print("OCR Raw Text: \(rawText)")
+
+        let result = extractVehicleData(from: rawText)
+        print("OCR Result: \(result)")
+
+        await MainActor.run {
+            guard var currentVehicle = self.vehicle else { return }
+            self.autofilledFields.removeAll()
+
+            if let plate = result.plate {
+                currentVehicle.registrationNumber = plate
+                self.autofilledFields.insert("licensePlate")
+            }
+            if let brand = result.manufacturer {
+                currentVehicle.brand = brand
+                let modelName = result.model ?? ""
+                currentVehicle.model = modelName
+                currentVehicle.name = "\(brand) \(modelName)".trimmingCharacters(in: .whitespaces)
+                self.autofilledFields.insert("vehicleName")
+                self.autofilledFields.insert("brand")
+                self.autofilledFields.insert("model")
+            }
+            if let year = result.modelYear {
+                currentVehicle.modelYear = year
+                self.autofilledFields.insert("modelYear")
+            }
+            self.vehicle = currentVehicle
+        }
+    }
+
+    private func extractVehicleData(from text: String) -> (plate: String?, vin: String?, manufacturer: String?, model: String?, modelYear: String?) {
+        let raw = text.uppercased()
+        let normalized = raw.replacingOccurrences(of: "O", with: "0").replacingOccurrences(of: "I", with: "1")
+        let plateRegex = "[A-Z]{2}[0-9]{2}[A-Z]{1,2}[0-9]{4}"
+        let yearRegex = "\\b(19|20)\\d{2}\\b"
+
+        let plate = normalized.range(of: plateRegex, options: .regularExpression).map { String(normalized[$0]) }
+        let year = raw.range(of: yearRegex, options: .regularExpression).map { String(raw[$0]) }
+        let brands = ["MARUTI", "HYUNDAI", "TATA", "HONDA", "TOYOTA", "MAHINDRA", "ASHOK LEYLAND", "KIA", "MG", "BMW", "MERCEDES", "AUDI", "JEEP", "SKODA", "VOLKSWAGEN", "FIAT", "RENAULT", "NISSAN", "MITSUBISHI", "FORD", "CHEVROLET"]
+        let manufacturer = brands.first(where: { raw.contains($0) })
+        let models = ["SWIFT", "DZIRE", "BALENO", "CRETA", "NEXON", "THAR", "I20", "VITARA", "BREZZA", "ERTIGA", "INNOVA", "FORTUNER", "ALTO", "WAGONR", "CELERIO", "DZIRE", "Tiago", "TIGOR", "PUNCH", "HARRIER", "SAFARI", "SCORPIO", "XUV700", "XUV300", "ALTROZ", "NEXON EV", "TIGOR EV", "ACTIVA", "DESTINI", "DIO", "NAVAGER"]
+        let model = models.first(where: { raw.contains($0) })
+
+        return (plate, nil, manufacturer, model, year)
+    }
     func fetchVehicle(vehicleId: UUID) async {
-        // Only show loading if we don't have the vehicle yet
         if self.vehicle == nil {
             isLoading = true
         }
-        
+
         errorMessage = nil
         documentsErrorMessage = nil
         print("Opening vehicle detail id:", vehicleId.uuidString)
@@ -144,7 +202,8 @@ class VehicleDetailViewModel: ObservableObject {
                 registration_no: vehicle.rcNumber,
                 registration_date: vehicle.registrationDate,
                 rc_expiry_date: vehicle.rcExpiryDate,
-                puc_expiry_date: vehicle.pucExpiryDate
+                puc_expiry_date: vehicle.pucExpiryDate,
+                is_sdvs_enabled: isSdvsEnabled
             )
 
             try await SupabaseManager.shared.client
@@ -154,6 +213,18 @@ class VehicleDetailViewModel: ObservableObject {
                 .execute()
 
             try await syncDocuments(for: vehicle.id)
+
+            var components = URLComponents(string: "\(SUPABASE_URL)/rest/v1/vehicle_documents")!
+            components.queryItems = [
+                URLQueryItem(name: "select", value: "document_id,document_type,file_name,file_url,uploaded_at"),
+                URLQueryItem(name: "vehicle_id", value: "eq.\(vehicle.id.uuidString.lowercased())")
+            ]
+            guard let url = components.url else { throw URLError(.badURL) }
+            var request = URLRequest(url: url)
+            request.addValue(SUPABASE_ANON_KEY, forHTTPHeaderField: "apikey")
+            request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
+            let (data, _) = try await URLSession.shared.data(for: request)
+            documents = try Self.parseDocuments(from: data)
             return true
         } catch {
             print("Update failed:", error)
@@ -162,24 +233,142 @@ class VehicleDetailViewModel: ObservableObject {
         }
     }
 
-    // MARK: - IMAGE UPLOAD
+    func generateVehicleUsageReport() async throws -> VehicleUsageReportResult {
+        guard let vehicle else {
+            throw NSError(
+                domain: "VehicleUsageReport",
+                code: 0,
+                userInfo: [NSLocalizedDescriptionKey: "Vehicle details are not loaded yet."]
+            )
+        }
+
+        isGeneratingUsageReport = true
+        defer { isGeneratingUsageReport = false }
+
+        let trips = try await fetchUsageTrips(for: vehicle.id)
+        let fuelLogs = try await fetchFuelLogs(for: vehicle.id)
+        let localURL = try VehicleUsageReportGenerator.generate(vehicle: vehicle, trips: trips, fuelLogs: fuelLogs)
+        let pdfData = try Data(contentsOf: localURL)
+        let uploaded = try await uploadVehicleUsageReportToSupabase(
+            pdfData: pdfData,
+            vehicleId: vehicle.id,
+            plate: vehicle.registrationNumber
+        )
+        try await saveVehicleUsageReportRecord(
+            vehicleId: vehicle.id,
+            reportUrl: uploaded.publicURL,
+            reportName: uploaded.fileName,
+            fileSize: pdfData.count
+        )
+        return VehicleUsageReportResult(
+            localURL: localURL,
+            publicURL: uploaded.publicURL,
+            fileName: uploaded.fileName
+        )
+    }
+
+    private func fetchUsageTrips(for vehicleId: UUID) async throws -> [VehicleUsageTrip] {
+        try await SupabaseManager.shared.client
+            .from("trips")
+            .select("""
+                trip_id,
+                trip_name,
+                origin,
+                destination,
+                status,
+                pickup_time,
+                start_time,
+                end_time,
+                distance_travelled,
+                client_contact
+            """)
+            .eq("vehicle_id", value: vehicleId.uuidString.lowercased())
+            .order("pickup_time", ascending: false)
+            .execute()
+            .value
+    }
+
+    private func fetchFuelLogs(for vehicleId: UUID) async throws -> [VehicleUsageReportFuelLog] {
+        try await SupabaseManager.shared.client
+            .from("fuel_logs")
+            .select("""
+                trip_id,
+                fuel_volume,
+                odometer_reading
+            """)
+            .eq("vehicle_id", value: vehicleId.uuidString.lowercased())
+            .execute()
+            .value
+    }
+
+    private func uploadVehicleUsageReportToSupabase(
+        pdfData: Data,
+        vehicleId: UUID,
+        plate: String
+    ) async throws -> (publicURL: String, fileName: String) {
+        let sanitizedPlate = plate.replacingOccurrences(of: " ", with: "_")
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        let timestamp = formatter.string(from: Date())
+        let fileName = "Vehicle_Usage_Report_\(sanitizedPlate)_\(timestamp).pdf"
+        let path = "usage-reports/\(vehicleId.uuidString.lowercased())/\(fileName)"
+
+        try await SupabaseManager.shared.client.storage
+            .from("vehicle-documents")
+            .upload(
+                path,
+                data: pdfData,
+                options: FileOptions(contentType: "application/pdf")
+            )
+
+        let publicURL = try SupabaseManager.shared.client.storage
+            .from("vehicle-documents")
+            .getPublicURL(path: path)
+
+        return (publicURL.absoluteString, fileName)
+    }
+
+    private func saveVehicleUsageReportRecord(
+        vehicleId: UUID,
+        reportUrl: String,
+        reportName: String,
+        fileSize: Int
+    ) async throws {
+        struct UsageReportRecord: Encodable {
+            let vehicle_id: UUID
+            let document_type: String
+            let file_url: String
+            let file_name: String
+            let file_size: Int
+        }
+
+        let record = UsageReportRecord(
+            vehicle_id: vehicleId,
+            document_type: "USAGE_REPORT",
+            file_url: reportUrl,
+            file_name: reportName,
+            file_size: fileSize
+        )
+
+        try await SupabaseManager.shared.client
+            .from("vehicle_documents")
+            .upsert(record, onConflict: "vehicle_id,document_type")
+            .execute()
+    }
+
     func uploadImage(image: UIImage, type: String = "VEHICLE") async {
         guard let data = image.jpegData(compressionQuality: 0.7) else { return }
 
         let fileName = UUID().uuidString + ".jpg"
         let bucket = type == "VEHICLE" ? "vehicle-images" : "vehicle-documents"
 
-        let url = URL(string: "\(SUPABASE_URL)/storage/v1/object/\(bucket)/\(fileName)")!
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
-        request.addValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-
         do {
-            let (_, res) = try await URLSession.shared.upload(for: request, from: data)
-
-            guard (res as? HTTPURLResponse)?.statusCode == 200 else { return }
+            let storage = SupabaseManager.shared.client.storage
+            let uploaded = try await storage.from(bucket).upload(
+                path: fileName,
+                file: data,
+                options: FileOptions(cacheControl: "3600", contentType: "image/jpeg")
+            )
 
             let publicURL = "\(SUPABASE_URL)/storage/v1/object/public/\(bucket)/\(fileName)"
 
@@ -201,20 +390,14 @@ class VehicleDetailViewModel: ObservableObject {
             let fileExtension = fileURL.pathExtension.isEmpty ? "pdf" : fileURL.pathExtension
             let uniqueName = "\(UUID().uuidString).\(fileExtension)"
 
-            guard let url = URL(string: "\(SUPABASE_URL)/storage/v1/object/vehicle-documents/\(uniqueName)") else {
-                throw URLError(.badURL)
-            }
+            let storage = SupabaseManager.shared.client.storage
+            let contentType = fileExtension == "pdf" ? "application/pdf" : "application/octet-stream"
 
-            var request = URLRequest(url: url)
-            request.httpMethod = "POST"
-            request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
-            request.addValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-
-            let (_, response) = try await URLSession.shared.upload(for: request, from: data)
-            guard let httpResponse = response as? HTTPURLResponse,
-                  200..<300 ~= httpResponse.statusCode else {
-                throw URLError(.badServerResponse)
-            }
+            let uploaded = try await storage.from("vehicle-documents").upload(
+                path: uniqueName,
+                file: data,
+                options: FileOptions(cacheControl: "3600", contentType: contentType)
+            )
 
             let publicURL = "\(SUPABASE_URL)/storage/v1/object/public/vehicle-documents/\(uniqueName)"
             setDocumentURL(publicURL, for: type, fileName: originalName)
@@ -231,7 +414,7 @@ class VehicleDetailViewModel: ObservableObject {
     func setDocumentURL(_ url: String, for type: String, fileName: String? = nil) {
         let normalizedType = type.uppercased()
         let resolvedFileName = fileName ?? URL(string: url)?.lastPathComponent
-        
+
         if let index = documents.firstIndex(where: { $0.type.uppercased() == normalizedType }) {
             documents[index].fileURL = url
             documents[index].fileName = resolvedFileName
@@ -250,14 +433,14 @@ class VehicleDetailViewModel: ObservableObject {
         try await SupabaseManager.shared.client
             .from("vehicle_documents")
             .delete()
-            .eq("vehicle_id", value: vehicleID)
+            .eq("vehicle_id", value: vehicleID.uuidString.lowercased())
             .execute()
 
         let records = documents
             .filter { !$0.fileURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
             .map {
             [
-                "vehicle_id": vehicleID.uuidString,
+                "vehicle_id": vehicleID.uuidString.lowercased(),
                 "document_type": $0.type,
                 "file_url": $0.fileURL
             ]
@@ -279,7 +462,7 @@ extension VehicleDetailViewModel {
         }
 
         components.queryItems = [
-            URLQueryItem(name: "select", value: "document_id,document_type,file_url,file_name,uploaded_at"),
+            URLQueryItem(name: "select", value: "document_id,document_type,file_name,uploaded_at"),
             URLQueryItem(name: "vehicle_id", value: "eq.\(vehicleId.uuidString.lowercased())")
         ]
 
@@ -290,6 +473,7 @@ extension VehicleDetailViewModel {
         var request = URLRequest(url: url)
         request.addValue(SUPABASE_ANON_KEY, forHTTPHeaderField: "apikey")
         request.addValue("Bearer \(SUPABASE_ANON_KEY)", forHTTPHeaderField: "Authorization")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
 
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -306,6 +490,28 @@ extension VehicleDetailViewModel {
         }
 
         return data
+    }
+
+    func fetchDocumentURL(for type: String, vehicleId: UUID) async -> String? {
+        do {
+            let response = try await SupabaseManager.shared.client
+                .from("vehicle_documents")
+                .select("file_url")
+                .eq("vehicle_id", value: vehicleId.uuidString.lowercased())
+                .eq("document_type", value: type.uppercased())
+                .limit(1)
+                .execute()
+
+            let rows = try JSONSerialization.jsonObject(with: response.data) as? [[String: Any]] ?? []
+            guard let row = rows.first,
+                  let fileUrl = row["file_url"] as? String else {
+                return nil
+            }
+            return fileUrl
+        } catch {
+            print("Error fetching document URL: \(error)")
+            return nil
+        }
     }
 
     static func parseVehicleDetail(from data: Data) throws -> (vehicle: Vehicle, documents: [VehicleDocument]) {
@@ -374,17 +580,17 @@ extension VehicleDetailViewModel {
 
         let parsed: [VehicleDocument] = rows.compactMap { row in
             guard let type = stringValue(row["document_type"])?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !type.isEmpty,
-                  let fileURL = stringValue(row["file_url"])?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !fileURL.isEmpty else {
+                  !type.isEmpty else {
                 return nil
             }
+
+            let fileURL = stringValue(row["file_url"])?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
 
             return VehicleDocument(
                 id: type.uppercased(),
                 type: type.uppercased(),
                 fileURL: fileURL,
-                fileName: row["file_name"] as? String ?? URL(string: fileURL)?.lastPathComponent
+                fileName: row["file_name"] as? String ?? stringValue(row["document_type"])
             )
         }
 
@@ -429,37 +635,32 @@ extension VehicleDetailViewModel {
             return lhsOrder < rhsOrder
         }
     }
-    
-    // MARK: - Fetch Maintenance Reports
+
     func fetchMaintenanceReports(vehicleId: UUID) async {
         do {
-            // Step 1: Find all work orders for this vehicle
             struct WOId: Decodable { let work_order_id: UUID }
-            
+
             let woResponse = try await SupabaseManager.shared.client
                 .from("work_orders")
                 .select("work_order_id")
                 .eq("vehicle_id", value: vehicleId.uuidString.lowercased())
                 .execute()
-            
+
             let woIds = try JSONDecoder().decode([WOId].self, from: woResponse.data).map { $0.work_order_id.uuidString }
-            
-            // If the vehicle has no work orders, exit early
+
             guard !woIds.isEmpty else {
                 await MainActor.run { self.maintenanceReports = [] }
                 return
             }
-            
-            // Step 2: Fetch the completed reports for those work orders
+
             let reportsResponse = try await SupabaseManager.shared.client
                 .from("work_order_reports")
                 .select()
-                .in("work_order_id", values: woIds) // Fetch all in one batch!
+                .in("work_order_id", values: woIds)
                 .execute()
-            
+
             let reports = try JSONDecoder().decode([WorkOrderReportRecord].self, from: reportsResponse.data)
-            
-            // Update the UI
+
             await MainActor.run {
                 self.maintenanceReports = reports
             }

@@ -289,11 +289,20 @@ struct SetPasswordView: View {
 
         Task {
             do {
-                try await SupabaseManager.shared.client.auth.update(
+                let user = try await SupabaseManager.shared.client.auth.update(
                     user: UserAttributes(password: password)
                 )
 
                 print("✅ Password set successfully")
+
+                // Update user status to active
+                try await SupabaseManager.shared.client
+                    .from("users")
+                    .update(["status": "active"])
+                    .eq("user_id", value: user.id)
+                    .execute()
+                
+                print("✅ User status updated to active")
 
                 await MainActor.run {
                     isLoading = false

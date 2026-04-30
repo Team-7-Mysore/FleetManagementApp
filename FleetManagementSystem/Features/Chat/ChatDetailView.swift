@@ -106,10 +106,8 @@ struct ChatDetailView: View {
     }
 
     private func markLatestMessageRead() {
-        guard let latest = viewModel.messages.last else { return }
-        guard let otherId = otherParticipantId else { return }
-        guard latest.senderId == otherId else { return }
-        let createdAt = latest.createdAt ?? Date()
+        guard let latestFromOther = viewModel.messages.last(where: { $0.senderId != currentUserId }) else { return }
+        let createdAt = latestFromOther.createdAt ?? Date()
         Task {
             await viewModel.markChatRead(
                 chatRoomId: chatRoom.id,

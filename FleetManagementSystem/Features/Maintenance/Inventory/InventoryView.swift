@@ -15,6 +15,7 @@ struct InventoryView: View {
     @State private var navigateToScanned = false
     @State private var scannedName: String?
     @State private var scannedQuantity: Int?
+    @State private var scannedCost: Double?
     @State private var showNotifications = false
     @State private var showingProfile = false
     @AppStorage("selectedLanguage") private var selectedLanguage: String = "en"
@@ -53,18 +54,23 @@ struct InventoryView: View {
                     
                     // Low Stock Section
                     if viewModel.hasLowStock {
-                        Section {
-                            ForEach(viewModel.lowStockItems) { item in
-                                LowStockItemCard(item: item)
-                                    .padding(.horizontal, 16)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Low in Stock")
+                                .font(.title3)
+                                .fontWeight(.bold)
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, 16)
+                            
+                            VStack(spacing: 10) {
+                                ForEach(viewModel.lowStockItems) { item in
+                                    Button {
                                         selectedItem = item
+                                    } label: {
+                                        LowStockItemCard(item: item)
+                                            .padding(.horizontal, 16)
                                     }
-                                    .listRowInsets(EdgeInsets(top: 6, leading: 0, bottom: 6, trailing: 0))
-                                    .listRowBackground(Color.clear)
-                                    .listRowSeparator(.hidden)
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    .buttonStyle(.plain)
+                                    .contextMenu {
                                         Button(role: .destructive) {
                                             itemToDelete = item
                                             showDeleteAlert = true
@@ -72,23 +78,18 @@ struct InventoryView: View {
                                             Label("Delete", systemImage: "trash")
                                         }
                                     }
+                                }
                             }
-                        } header: {
-                            Text("Low in Stock")
-                                .font(.title3)
-                                .fontWeight(.bold)
-                                .foregroundColor(.primary)
-                                .textCase(nil)
-                                .padding(.horizontal, 16)
-                                .padding(.top, 24)
-                                .padding(.bottom, 8)
                         }
+                        .padding(.top, 24)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                     }
                 }
                 .listStyle(.plain)
                 .refreshable {
-                    await viewModel.fetchInventory()
-                    await viewModel.syncLowStockNotifications()
+                    await viewModel.refreshInventory()
                 }
             }
             .navigationTitle("Inventory")
@@ -189,7 +190,8 @@ struct InventoryView: View {
                 AddPartView(
                     viewModel: viewModel,
                     prefilledName: scannedName,
-                    prefilledQuantity: scannedQuantity
+                    prefilledQuantity: scannedQuantity,
+                    prefilledCost: scannedCost
                 )
             }
             
@@ -213,6 +215,7 @@ struct InventoryView: View {
                             await MainActor.run {
                                 scannedName = result.name
                                 scannedQuantity = result.quantity
+                                scannedCost = result.costPerUnit
                                 navigateToScanned = true
                             }
                         } catch {
@@ -265,7 +268,6 @@ struct InventoryView: View {
             }
             .task {
                 await viewModel.fetchInventory()
-                await viewModel.syncLowStockNotifications()
             }
         }
     }

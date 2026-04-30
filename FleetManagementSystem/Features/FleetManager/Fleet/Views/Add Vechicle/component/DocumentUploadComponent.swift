@@ -32,7 +32,7 @@ struct DocumentUploadComponent<Action: View>: View {
             
             Spacer()
             
-            // Render the action view (the Menu or Button)
+       
             action
         }
         .padding(.vertical, 8)
