@@ -5,15 +5,22 @@
 xcuserdata/
 *.xcuserdatad/
 *.xcuserstate
+Package.resolved
 
 # Xcode workspace user data
+
 *.xcworkspace/xcuserdata/
+*.xcworkspace/xcshareddata/
+# Swift Package Manager
+*.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
 # Derived data
 DerivedData/
 .build/
 
 # Swift Package Manager
+# SwiftPM resolved file inside Xcode workspace (causes merge conflicts)
+**/xcshareddata/swiftpm/Package.resolved
 .swiftpm/
 Packages/
 
@@ -41,3 +48,5 @@ fastlane/screenshots/
 
 # App-specific (optional)
 # Add your own here if needed
+*.sql
+*.sql
