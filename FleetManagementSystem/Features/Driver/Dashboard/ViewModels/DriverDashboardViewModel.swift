@@ -2,6 +2,10 @@ import Foundation
 import Combine
 import Supabase
 
+extension Notification.Name {
+    static let driverTripCompleted = Notification.Name("driverTripCompleted")
+}
+
 // MARK: - Vehicle DTO
 struct VehicleDTO: Decodable {
     let vehicleId: String
@@ -49,6 +53,15 @@ final class DriverDashboardViewModel: ObservableObject {
 
     init(user: User) {
         self.user = user
+        
+        // Listen for trip status changes (start/end) to refresh dashboard immediately
+        NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("TripStatusChanged"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.loadData(forceRefresh: true)
+        }
     }
 
     func loadData(forceRefresh: Bool = false) {
@@ -65,15 +78,18 @@ final class DriverDashboardViewModel: ObservableObject {
                     .from("drivers")
                     .select("driver_id")
                     .eq("user_id", value: user.id)
-                    .single()
                     .execute()
 
-                let driverData = try JSONDecoder().decode(
-                    [String: String].self,
+                let driverDataList = try JSONDecoder().decode(
+                    [[String: String]].self,
                     from: driverResponse.data
                 )
-                guard let driverId = driverData["driver_id"] else {
-                    print("❌ driver_id not found")
+                
+                guard let driverId = driverDataList.first?["driver_id"] else {
+                    print("⚠️ No driver record found for user_id: \(user.id). User might not be fully onboarded as a driver.")
+                    self.assignedVehicle = nil
+                    self.upcomingTrips = []
+                    self.activeTrip = nil
                     return
                 }
 
@@ -140,7 +156,7 @@ final class DriverDashboardViewModel: ObservableObject {
         }
     }
 
-    func startAutoRefresh(interval: TimeInterval = 60) {
+    func startAutoRefresh(interval: TimeInterval = 300) {
         guard refreshTimer == nil else { return }
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -195,6 +211,28 @@ final class DriverDashboardViewModel: ObservableObject {
             } catch {
                 print("❌ START TRIP ERROR:", error)
             }
+        }
+    }
+
+    func handleTripCompleted(tripId: UUID?) {
+        if let tripId {
+            if activeTrip?.id == tripId {
+                activeTrip = nil
+            }
+            upcomingTrips.removeAll { $0.id == tripId }
+        } else {
+            activeTrip = nil
+        }
+
+        assignedVehicle = nil
+
+        if isLoading {
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                self?.loadData(forceRefresh: true)
+            }
+        } else {
+            loadData(forceRefresh: true)
         }
     }
 }

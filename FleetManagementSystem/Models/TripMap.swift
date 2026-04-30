@@ -2,15 +2,29 @@ import Foundation
 
 enum BackendDateParser {
     static func parse(_ raw: String) -> Date? {
+        // Handle microsecond precision from Supabase (e.g. 2026-04-29T08:50:03.123456+00:00)
+        var cleanRaw = raw
+        if let dotIndex = raw.lastIndex(of: ".") {
+            let substring = raw[dotIndex...]
+            if let tzIndex = substring.firstIndex(where: { $0 == "+" || $0 == "-" || $0 == "Z" }) {
+                let fractionLength = raw.distance(from: raw.index(after: dotIndex), to: tzIndex)
+                if fractionLength > 3 {
+                    // Truncate to 3 digits for ISO8601DateFormatter
+                    let startToRemove = raw.index(dotIndex, offsetBy: 4)
+                    cleanRaw.removeSubrange(startToRemove..<tzIndex)
+                }
+            }
+        }
+        
         let isoWithFractional = ISO8601DateFormatter()
         isoWithFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = isoWithFractional.date(from: raw) {
+        if let date = isoWithFractional.date(from: cleanRaw) {
             return date
         }
 
         let iso = ISO8601DateFormatter()
         iso.formatOptions = [.withInternetDateTime]
-        if let date = iso.date(from: raw) {
+        if let date = iso.date(from: cleanRaw) {
             return date
         }
 
@@ -18,7 +32,7 @@ enum BackendDateParser {
         formatterWithMillis.locale = Locale(identifier: "en_US_POSIX")
         formatterWithMillis.timeZone = TimeZone(secondsFromGMT: 0)
         formatterWithMillis.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS"
-        if let date = formatterWithMillis.date(from: raw) {
+        if let date = formatterWithMillis.date(from: cleanRaw) {
             return date
         }
 
@@ -26,7 +40,7 @@ enum BackendDateParser {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-        return formatter.date(from: raw)
+        return formatter.date(from: cleanRaw)
     }
 }
 
@@ -74,7 +88,7 @@ struct TripMap: Identifiable, Codable, Hashable {
     var startTime: Date?
     var endTime: Date?
     var scheduledStartTime: Date
-    var distance: Double          // miles
+    var distance: Double          // kilometers
     var estimatedDuration: TimeInterval // seconds
     var fuelUsed: Double?         // gallons
     var status: TripStatus
@@ -87,7 +101,7 @@ struct TripMap: Identifiable, Codable, Hashable {
     var isActive: Bool { status == .inProgress }
 
     var formattedDistance: String {
-        String(format: "%.0f mi", distance)
+        String(format: "%.0f km", distance)
     }
 
     var formattedETA: String {

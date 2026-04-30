@@ -35,7 +35,7 @@ struct DriverWorkspaceView: View {
                     }
                 }
         }
-        .tint(AppTheme.primaryGreen)
+        .tint(AppTheme.accentColor(for: .driver))
         .environmentObject(router)
         .onAppear {
             router.resetPath()

@@ -174,7 +174,7 @@ final class TripDetailViewModel: ObservableObject {
         locationPollingTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refreshVehicleLocation()
-                try? await Task.sleep(nanoseconds: 900_000_000_000) // 2 seconds
+                try? await Task.sleep(nanoseconds: 900_000_000_000)
             }
         }
     }
@@ -638,6 +638,7 @@ struct TripDetail: Codable {
     let end_time: String?
     let status: String?
     let client_contact: String?
+    let fuel_used: Double?
     // via_points is stored as jsonb – decode flexibly to avoid crashes
     let via_points: [String]?
 
@@ -655,6 +656,7 @@ struct TripDetail: Codable {
         end_time       = try c.decodeIfPresent(String.self, forKey: .end_time)
         status         = try c.decodeIfPresent(String.self, forKey: .status)
         client_contact = try c.decodeIfPresent(String.self, forKey: .client_contact)
+        fuel_used      = try c.decodeIfPresent(Double.self, forKey: .fuel_used)
         // Try [String] first; if the jsonb contains objects just treat as empty.
         via_points     = (try? c.decodeIfPresent([String].self, forKey: .via_points)) ?? []
     }

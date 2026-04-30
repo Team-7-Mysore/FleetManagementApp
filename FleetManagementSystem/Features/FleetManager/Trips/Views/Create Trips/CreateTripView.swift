@@ -1,7 +1,8 @@
 import SwiftUI
 import MapKit
 import CoreLocation
-
+import Supabase
+internal import PostgREST
 // MARK: - CreateTripView
 
 struct CreateTripView: View {
@@ -49,8 +50,158 @@ struct CreateTripView: View {
     @State private var pendingViaAddress = ""
     @State private var pendingViaCoordinate: CLLocationCoordinate2D?
 
+    // Validation state
+    @State private var tripNameWarning: String? = nil      // validation 9: duplicate name warning
+    @State private var driverLicenseWarning: String? = nil // validation 10: license expiry warning
+
     private enum FormField { case tripName, clientContact }
     private static let istTimeZone = TimeZone(identifier: "Asia/Kolkata")!
+
+    // MARK: - Validation
+
+    /// All hard-block validation errors. Save is disabled when this is non-empty.
+    private var validationErrors: [String] {
+        var errors: [String] = []
+
+        // 4. Trip name minimum 3 characters
+        let trimmedName = tripName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedName.isEmpty && trimmedName.count < 3 {
+            errors.append("Trip name must be at least 3 characters")
+        }
+
+        // 3. Valid Indian mobile number (10 digits, starts with 6–9)
+        if !clientContact.isEmpty {
+            if clientContact.count == 10, let first = clientContact.first {
+                let validStarts: Set<Character> = ["6", "7", "8", "9"]
+                if !validStarts.contains(first) {
+                    errors.append("Enter a valid 10-digit mobile number")
+                }
+            }
+        }
+
+        // 1. Origin ≠ Destination
+        if !origin.isEmpty && !destination.isEmpty &&
+           origin.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ==
+           destination.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            errors.append("Origin and destination cannot be the same location")
+        }
+
+        // 2. Pickup at least 15 minutes from now
+        if let pickupDate, pickupDate < Date().addingTimeInterval(15 * 60) {
+            errors.append("Pickup time must be at least 15 minutes from now")
+        }
+
+        // 5. Minimum trip duration 30 minutes
+        if let pickupDate, let expectedEndDate,
+           expectedEndDate.timeIntervalSince(pickupDate) < 30 * 60 {
+            errors.append("Trip duration must be at least 30 minutes")
+        }
+
+        // 6. Route must be calculated (coordinates resolved)
+        if !origin.isEmpty && !destination.isEmpty {
+            if originCoordinate == nil || destinationCoordinate == nil || vm.calculatedDistance == nil {
+                errors.append("Route not calculated — set locations and wait for route to load")
+            }
+        }
+
+        // 7. Selected vehicle still exists in the loaded list
+        if let vid = selectedVehicleID,
+           !vm.availableVehicles.isEmpty,
+           !vm.availableVehicles.contains(where: { $0.vehicle_id == vid }) {
+            errors.append("Selected vehicle is no longer available — please refresh")
+        }
+
+        // 8. Via points must all have resolved coordinates
+        for (i, coord) in viaCoordinates.enumerated() {
+            if coord == nil {
+                errors.append("Via point \(i + 1) could not be located on the map")
+            }
+        }
+
+        // 11. Maximum 5 via points
+        if viaPoints.count > 5 {
+            errors.append("Maximum 5 via points allowed")
+        }
+
+        return errors
+    }
+
+    private var canSave: Bool {
+        let trimmedName = tripName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedName.count >= 3 &&
+               clientContact.count == 10 &&
+               !origin.isEmpty &&
+               !destination.isEmpty &&
+               selectedVehicleID != nil &&
+               selectedDriverID != nil &&
+               validationErrors.isEmpty
+    }
+
+    /// Check for a duplicate trip name on the same date (soft warning, doesn't block save)
+    private func checkDuplicateTripName() async {
+        let trimmed = tripName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 3 else { tripNameWarning = nil; return }
+
+        do {
+        guard let pickupDate else {
+            tripNameWarning = nil
+            return
+        }
+
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: pickupDate)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? startOfDay
+
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            formatter.timeZone = TimeZone(identifier: "UTC")
+
+            let existing: [Trip] = try await SupabaseManager.shared.client
+                .from("trips")
+                .select("trip_id, trip_name, pickup_time")
+                .ilike("trip_name", value: trimmed)
+                .gte("pickup_time", value: formatter.string(from: startOfDay))
+                .lt("pickup_time", value: formatter.string(from: endOfDay))
+                .execute()
+                .value
+
+            tripNameWarning = existing.isEmpty ? nil :
+                "A trip named '\(trimmed)' already exists on this date"
+        } catch {
+            tripNameWarning = nil
+        }
+    }
+
+    /// Check if the selected driver's license expires before the trip ends (soft warning)
+    private func checkDriverLicenseExpiry() {
+        guard let driverId = selectedDriverID,
+              let driver = vm.availableDrivers.first(where: { $0.id == driverId }) else {
+            driverLicenseWarning = nil
+            return
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+
+        guard let expiryDate = formatter.date(from: driver.licenseExpiry) else {
+            driverLicenseWarning = nil
+            return
+        }
+
+        guard let expectedEndDate else {
+            driverLicenseWarning = nil
+            return
+        }
+
+        if expiryDate < expectedEndDate {
+            let display = DateFormatter()
+            display.dateStyle = .medium
+            driverLicenseWarning = "Driver's license expires \(display.string(from: expiryDate)) — before trip ends"
+        } else {
+            driverLicenseWarning = nil
+        }
+    }
 
     // MARK: - Body
 
@@ -146,6 +297,20 @@ struct CreateTripView: View {
                 } else {
                     clientContact = filtered
                 }
+            }
+            // Validation 9: check duplicate trip name when name or date changes
+            .onChange(of: tripName) { _, _ in
+                Task { await checkDuplicateTripName() }
+            }
+            .onChange(of: pickupDate) { _, _ in
+                Task { await checkDuplicateTripName() }
+            }
+            // Validation 10: check driver license expiry when driver or end date changes
+            .onChange(of: selectedDriverID) { _, _ in
+                checkDriverLicenseExpiry()
+            }
+            .onChange(of: expectedEndDate) { _, _ in
+                checkDriverLicenseExpiry()
             }
         }
     }
@@ -277,6 +442,37 @@ struct CreateTripView: View {
             deliveryZoneSection
             routeMonitoringSection
 
+            // Soft warnings (don't block save)
+            if let warning = tripNameWarning {
+                warningBanner(warning, icon: "exclamationmark.triangle")
+            }
+            if let warning = driverLicenseWarning {
+                warningBanner(warning, icon: "creditcard.trianglebadge.exclamationmark")
+            }
+
+            // Hard validation errors (block save)
+            if !validationErrors.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    ForEach(validationErrors, id: \.self) { error in
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.red)
+                                .font(.caption)
+                                .padding(.top, 1)
+                            Text(error)
+                                .font(.footnote)
+                                .foregroundColor(.red)
+                        }
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.red.opacity(0.07))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .padding(.horizontal)
+            }
+
+            // Legacy error from ViewModel
             if let error = vm.errorMessage ?? geofenceVM.errorMessage {
                 Text(error)
                     .font(.footnote).foregroundColor(.red)
@@ -287,6 +483,23 @@ struct CreateTripView: View {
             Color.clear.frame(height: 20)
         }
         .padding(.top, 20)
+    }
+
+    private func warningBanner(_ message: String, icon: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: icon)
+                .foregroundColor(.orange)
+                .font(.caption)
+                .padding(.top, 1)
+            Text(message)
+                .font(.footnote)
+                .foregroundColor(.orange)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal)
     }
 
     // MARK: - Trip Info Section
@@ -344,9 +557,10 @@ struct CreateTripView: View {
             } label: {
                 Label("Add Via Point", systemImage: "plus.circle")
                     .font(.subheadline)
-                    .foregroundColor(.TechBlue)
+                    .foregroundColor(viaPoints.count >= 5 ? .secondary : .TechBlue)
             }
             .padding(.leading, 4)
+            .disabled(viaPoints.count >= 5)
         }
         .padding(.horizontal)
     }
@@ -752,7 +966,7 @@ struct CreateTripView: View {
     private var routeMonitoringSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("Route Monitoring", systemImage: "point.topleft.down.curvedto.point.bottomright.up.curved.fill")
+                Label("Route Monitoring", systemImage: "road.lanes.curved.right")
                     .font(.headline).foregroundColor(.primary)
                 Spacer()
                 Toggle("", isOn: $enableRouteMonitoring)
@@ -889,18 +1103,6 @@ struct CreateTripView: View {
         }
 
         dismiss()
-    }
-
-    private var canSave: Bool {
-        !tripName.isEmpty &&
-        !clientContact.isEmpty &&
-        clientContact.count == 10 &&
-        !origin.isEmpty &&
-        !destination.isEmpty &&
-        pickupDate != nil &&
-        expectedEndDate != nil &&
-        selectedVehicleID != nil &&
-        selectedDriverID != nil
     }
 
     // MARK: - Helpers

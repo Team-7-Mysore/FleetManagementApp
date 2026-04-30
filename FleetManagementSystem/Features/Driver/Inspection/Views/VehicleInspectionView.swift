@@ -4,11 +4,16 @@ import SwiftUI
 struct VehicleInspectionView: View {
     let user: User
     let trip: TripMap?
+    
     @StateObject private var vm: InspectionViewModel
     @State private var showNewInspectionSheet = false
     @State private var overallNotes = ""
     @State private var showSubmissionConfirmation = false
     @State private var showReportIssue = false
+    @State private var showSDVScanner = false
+    @State private var showTripCompletionError = false
+    @State private var inspectionSnapshot: Inspection?
+    
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var router: AppRouter
 
@@ -24,6 +29,42 @@ struct VehicleInspectionView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                if let tripId = trip?.id {
+                     Button(action: { showSDVScanner = true }) {
+                         HStack {
+                             Image(systemName: "sparkles")
+                             Text("Run SDV Diagnostics")
+                         }
+                         .font(.headline)
+                         .foregroundColor(.white)
+                         .padding()
+                         .frame(maxWidth: .infinity)
+                         .background(LinearGradient(colors: [.blue, .purple], startPoint: .leading, endPoint: .trailing))
+                         .cornerRadius(12)
+                     }
+                     .padding(.bottom, 8)
+                     .sheet(isPresented: $showSDVScanner) {
+                         if let unwrappedTrip = trip {
+                             SDVAutoScannerView(vehicleId: unwrappedTrip.vehicleId, inspectionType: defaultType) { reports in
+                                 vm.autoPassAllItems()
+                                 
+                                 // If SDV diagnostics found issues, mark them as failed
+                                 if !reports.isEmpty {
+                                     for report in reports {
+                                         if report.category == "mechanical" {
+                                             vm.failCategory("Mechanical", reason: report.description)
+                                         } else if report.category == "body damage" {
+                                             vm.failCategory("Exterior", reason: report.description)
+                                         } else if report.category == "electrical" {
+                                             vm.failCategory("Safety", reason: report.description)
+                                         }
+                                     }
+                                 }
+                             }
+                         }
+                     }
+                }
+                
                 currentInspectionContent
             }
             .padding(.horizontal)
@@ -33,7 +74,7 @@ struct VehicleInspectionView: View {
         .navigationTitle("Vehicle Inspection")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if vm.currentInspection == nil {
+            if displayedInspection == nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showNewInspectionSheet = true } label: {
                         Image(systemName: "plus")
@@ -59,19 +100,90 @@ struct VehicleInspectionView: View {
         } message: {
             Text(confirmationMessage)
         }
+        .alert("Couldn’t End Trip", isPresented: $showTripCompletionError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Trip could not be marked completed. Please try again.")
+        }
         .sheet(isPresented: $showReportIssue) {
-            ReportIssueView(user: user, vehicle: nil)
+            reportIssueSheet
         }
         .onAppear {
             vm.loadDataAndAutoStart(for: trip, type: defaultType)
         }
+        .onChange(of: showReportIssue) { _, isPresented in
+            if !isPresented {
+                inspectionSnapshot = nil
+            }
+        }
+    }
+
+    // MARK: - Extracted Sheet
+    @ViewBuilder
+    private var reportIssueSheet: some View {
+        let vehicleToReport: Vehicle? = trip.map { trip in
+            Vehicle(
+                id: trip.vehicleId,
+                name: trip.startLocation,
+                registrationNumber: "",
+                vehicleType: "unknown"
+            )
+        }
+
+        ReportIssueView(
+            user: user,
+            vehicle: vehicleToReport,
+            activeTripId: trip?.id,
+            prefilledDescription: nil as String?,
+            prefilledCategory: nil as String?,
+            prefilledSeverity: nil as String?,
+            showsCloseButton: true
+        ) {
+            handleReportSubmit()
+        }
+    }
+
+    // MARK: - Extracted Logic
+    private func handleReportSubmit() {
+        if let trip {
+            if isPostTripFlow {
+                Task {
+                    let didComplete = await vm.submitAndCompleteTrip(notes: overallNotes, trip: trip)
+                    await MainActor.run {
+                        if didComplete {
+                            NotificationCenter.default.post(
+                                name: .driverTripCompleted,
+                                object: nil,
+                                userInfo: ["tripId": trip.id]
+                            )
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("TripStatusChanged"),
+                                object: nil
+                            )
+                            router.resetPath()
+                        } else {
+                            showTripCompletionError = true
+                        }
+                    }
+                }
+            } else {
+                vm.submitInspection(notes: overallNotes)
+                router.resetPath()
+            }
+        } else {
+            vm.submitInspection(notes: overallNotes)
+            dismiss()
+        }
+    }
+
+    private var displayedInspection: Inspection? {
+        vm.currentInspection ?? inspectionSnapshot
     }
 
     // MARK: - Current Inspection
     @ViewBuilder
     private var currentInspectionContent: some View {
-        if let inspection = vm.currentInspection {
-            // Progress header
+        if let inspection = displayedInspection {
             VStack(spacing: 12) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
@@ -85,7 +197,6 @@ struct VehicleInspectionView: View {
                     progressCircle(inspection)
                 }
 
-                // Completion bar
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 4)
@@ -169,7 +280,6 @@ struct VehicleInspectionView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
                         Button {
-                            vm.submitInspection(notes: overallNotes)
                             showReportIssue = true
                         } label: {
                             HStack(spacing: 8) {
@@ -349,8 +459,21 @@ struct VehicleInspectionView: View {
             if isPostTripFlow {
                 Task {
                     let didComplete = await vm.submitAndCompleteTrip(notes: overallNotes, trip: trip)
-                    if didComplete {
-                        router.resetPath()
+                    await MainActor.run {
+                        if didComplete {
+                            NotificationCenter.default.post(
+                                name: .driverTripCompleted,
+                                object: nil,
+                                userInfo: ["tripId": trip.id]
+                            )
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("TripStatusChanged"),
+                                object: nil
+                            )
+                            router.resetPath()
+                        } else {
+                            showTripCompletionError = true
+                        }
                     }
                 }
             } else {

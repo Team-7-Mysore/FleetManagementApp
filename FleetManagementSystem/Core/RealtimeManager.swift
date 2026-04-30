@@ -97,11 +97,38 @@ final class RealtimeManager {
             
             Task {
                 for await action in changes {
+                    // Post the in-app update so notification list views refresh
                     NotificationCenter.default.post(name: .notificationsUpdated, object: action)
+
+                    // Fire a native iOS banner only for INSERT events addressed to this user
+                    if case .insert(let insertAction) = action {
+                        await fireLocalBannerIfNeeded(record: insertAction.record)
+                    }
                 }
             }
         } catch {
             print("🚨 RealtimeManager: Notifications subscription failed: \(error)")
         }
+    }
+
+    /// Checks the inserted notification's recipient_id against the logged-in user.
+    /// If it matches, fires a UNUserNotificationCenter banner immediately.
+    private func fireLocalBannerIfNeeded(record: [String: AnyJSON]) async {
+        // Resolve the current user's ID from the active session
+        guard let session = try? await supabase.auth.session else { return }
+        let currentUserId = session.user.id.uuidString.lowercased()
+
+        guard let recipientId = record["recipient_id"]?.stringValue?.lowercased(),
+              recipientId == currentUserId else { return }
+
+        let title   = record["title"]?.stringValue   ?? "New Notification"
+        let message = record["message"]?.stringValue ?? ""
+        let notifId = record["id"]?.stringValue
+
+        NotificationManager.shared.sendInAppNotification(
+            title: title,
+            message: message,
+            notificationId: notifId
+        )
     }
 }

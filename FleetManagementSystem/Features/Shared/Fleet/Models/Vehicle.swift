@@ -21,6 +21,12 @@ struct Vehicle: Identifiable, Codable {
     var rcExpiryDate: String = ""
     var pucExpiryDate: String = ""
 
+    // Document status flags (from vehicles table)
+    var hasRC: Bool = false
+    var hasInsurance: Bool = false
+    var hasPUC: Bool = false
+    var isSdvsEnabled: Bool = false
+
     enum CodingKeys: String, CodingKey {
         case id = "vehicle_id"
         case name = "vehicle_name"
@@ -36,7 +42,10 @@ struct Vehicle: Identifiable, Codable {
         case registrationDate = "registration_date"
         case rcExpiryDate = "rc_expiry_date"
         case pucExpiryDate = "puc_expiry_date"
-    }
+        case isSdvsEnabled = "is_sdvs_enabled"
+        case hasRC = "has_rc"
+        case hasInsurance = "has_insurance"
+        case hasPUC = "has_puc"     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -49,12 +58,19 @@ struct Vehicle: Identifiable, Codable {
         imageURL = try container.decodeIfPresent(String.self, forKey: .imageURL)
         vehicleType = (try container.decodeIfPresent(String.self, forKey: .vehicleType)) ?? "Unknown"
         fuelType = try container.decodeIfPresent(String.self, forKey: .fuelType)
+
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
         vin = try container.decodeIfPresent(String.self, forKey: .vin) ?? ""
         rcNumber = try container.decodeIfPresent(String.self, forKey: .rcNumber) ?? ""
         registrationDate = try container.decodeIfPresent(String.self, forKey: .registrationDate) ?? ""
         rcExpiryDate = try container.decodeIfPresent(String.self, forKey: .rcExpiryDate) ?? ""
         pucExpiryDate = try container.decodeIfPresent(String.self, forKey: .pucExpiryDate) ?? ""
+
+        // Decode document status flags
+        hasRC = try container.decodeIfPresent(Bool.self, forKey: .hasRC) ?? false
+        hasInsurance = try container.decodeIfPresent(Bool.self, forKey: .hasInsurance) ?? false
+        hasPUC = try container.decodeIfPresent(Bool.self, forKey: .hasPUC) ?? false
+        isSdvsEnabled = try container.decodeIfPresent(Bool.self, forKey: .isSdvsEnabled) ?? false
 
         if let stringYear = try? container.decodeIfPresent(String.self, forKey: .modelYear) {
             modelYear = stringYear

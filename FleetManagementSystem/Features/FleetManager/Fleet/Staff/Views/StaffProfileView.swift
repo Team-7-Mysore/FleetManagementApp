@@ -14,8 +14,9 @@ import Supabase
 
 private struct DriverRecord: Decodable {
     let driver_id: String
-    let license_no: String
-    let license_expiry: String
+    var license_no: String
+    var license_expiry: String
+    var license_image_url: String?
 }
 
 private struct DriverTripRow: Decodable {
@@ -108,16 +109,19 @@ private struct IssueSummary {
 // MARK: - StaffProfileView
 
 struct StaffProfileView: View {
-    let staff: StaffUser
+    @State private var staff: StaffUser
+
+    init(staff: StaffUser) {
+        self._staff = State(initialValue: staff)
+    }
 
     @Environment(\.dismiss) private var dismiss
 
     // Existing state
+    @State private var showEditProfile:          Bool         = false
     @State private var creatorName:              String?      = nil
-    @State private var isDeactivating:           Bool         = false
     @State private var errorMessage:             String?      = nil
     @State private var showAlert:                Bool         = false
-    @State private var showDeactivateConfirmation: Bool       = false
 
     // New state – driver data
     @State private var driverDetails:  DriverRecord?   = nil
@@ -142,6 +146,7 @@ struct StaffProfileView: View {
 
     @State private var isLoadingMaintenance: Bool = false
     @State private var maintenanceError: String? = nil
+    @State private var totalWorkOrdersCount: Int = 0
 
     // MARK: Accent colour (unchanged)
     private var accentColor: Color {
@@ -341,7 +346,7 @@ struct StaffProfileView: View {
                                         .padding(.top, 8)
 
                                     Chart {
-                                        let trips = Array(recentTrips.prefix(5).reversed())
+                                        let trips = Array(recentTrips.reversed())
                                         ForEach(Array(zip(trips.indices, trips)), id: \.1.trip_id) { index, trip in
                                             let km = trip.distance_travelled ?? 0
                                             let dateStr = trip.start_time.flatMap { formatShortDate($0) } ?? ""
@@ -361,6 +366,8 @@ struct StaffProfileView: View {
                                         }
                                     }
                                     .frame(height: 180)
+                                    .chartScrollableAxes(.horizontal)
+                                    .chartXVisibleDomain(length: 5)
                                     .chartXAxis {
                                         AxisMarks { value in
                                             AxisValueLabel {
@@ -512,7 +519,7 @@ struct StaffProfileView: View {
                                 RoundedRectangle(cornerRadius: 10)
                                     .fill(accentColor.opacity(0.1))
                                     .frame(width: 52, height: 52)
-                                Image(systemName: "car.fill")
+                                Image(systemName: vehicleTypeIcon(vehicle.vehicle_type))
                                     .font(.title2)
                                     .foregroundColor(accentColor)
                             }
@@ -577,7 +584,21 @@ struct StaffProfileView: View {
 
             // ── 7. RECENT TRIPS ────────────────────
             if staff.role == .driver && !recentTrips.isEmpty {
-                Section(header: Text("Recent Activity").foregroundColor(.primary)) {
+                Section(header: 
+                    HStack {
+                        Text("Recent Activity")
+                        Spacer()
+                        if tripStats.totalTrips > 5 {
+                            NavigationLink(destination: StaffActivityListView(staff: staff)) {
+                                Text("See All")
+                                    .font(.subheadline)
+                                    .foregroundColor(accentColor)
+                                    .textCase(nil)
+                            }
+                        }
+                    }
+                    .foregroundColor(.primary)
+                ) {
                     ForEach(recentTrips, id: \.trip_id) { trip in
                         HStack(spacing: 16) {
                             let statusRaw = trip.status?.lowercased() ?? "unknown"
@@ -633,6 +654,7 @@ struct StaffProfileView: View {
                         }
                         .padding(.vertical, 6)
                     }
+
                 }
             }
 
@@ -717,6 +739,68 @@ struct StaffProfileView: View {
                                     Text(formatDate(lastDate))
                                         .font(.subheadline.weight(.semibold))
                                 }
+                            }
+
+                            if !recentWorkOrders.isEmpty {
+                                VStack(alignment: .leading, spacing: 16) {
+                                    Text("Recent Hours Worked")
+                                        .font(.footnote.weight(.semibold))
+                                        .foregroundColor(.secondary)
+                                        .textCase(.uppercase)
+                                        .padding(.top, 8)
+
+                                    Chart {
+                                        let orders = Array(recentWorkOrders.reversed())
+                                        ForEach(Array(zip(orders.indices, orders)), id: \.1.work_order_id) { index, order in
+                                            let hours = order.hours_worked ?? 0
+                                            let dateStr = order.created_at.flatMap { formatShortDate($0) } ?? ""
+                                            let label = "WO \(index + 1)|\(dateStr)"
+
+                                            BarMark(
+                                                x: .value("Work Order", label),
+                                                y: .value("Hours", hours)
+                                            )
+                                            .foregroundStyle(accentColor.gradient)
+                                            .cornerRadius(6)
+                                            .annotation(position: .top) {
+                                                Text(formatDistanceNum(hours))
+                                                    .font(.caption2.bold())
+                                                    .foregroundColor(.secondary)
+                                            }
+                                        }
+                                    }
+                                    .frame(height: 180)
+                                    .chartScrollableAxes(.horizontal)
+                                    .chartXVisibleDomain(length: 5)
+                                    .chartXAxis {
+                                        AxisMarks { value in
+                                            AxisValueLabel {
+                                                if let label = value.as(String.self) {
+                                                    let parts = label.split(separator: "|")
+                                                    if parts.count == 2 {
+                                                        VStack(spacing: 2) {
+                                                            Text(String(parts[0]))
+                                                                .font(.caption2.weight(.medium))
+                                                                .foregroundColor(.primary)
+                                                            Text(String(parts[1]))
+                                                                .font(.system(size: 10))
+                                                                .foregroundColor(.secondary)
+                                                        }
+                                                    } else {
+                                                        Text(label)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    .chartYAxis {
+                                        AxisMarks(position: .leading) {
+                                            AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [4]))
+                                            AxisValueLabel()
+                                        }
+                                    }
+                                }
+                                .padding(.bottom, 4)
                             }
 
                             // Task & Issues summary
@@ -830,7 +914,21 @@ struct StaffProfileView: View {
 
                 // 4. RECENT WORK ORDERS
                 if !recentWorkOrders.isEmpty {
-                    Section(header: Text("Recent Work Orders").foregroundColor(.primary)) {
+                    Section(header: 
+                        HStack {
+                            Text("Recent Work Orders")
+                            Spacer()
+                            if totalWorkOrdersCount > 5 {
+                                NavigationLink(destination: StaffActivityListView(staff: staff)) {
+                                    Text("See All")
+                                        .font(.subheadline)
+                                        .foregroundColor(accentColor)
+                                        .textCase(nil)
+                                }
+                            }
+                        }
+                        .foregroundColor(.primary)
+                    ) {
                         ForEach(recentWorkOrders, id: \.work_order_id) { order in
                             HStack(spacing: 16) {
                                 let statusRaw = order.status?.lowercased() ?? "unknown"
@@ -871,38 +969,14 @@ struct StaffProfileView: View {
                             }
                             .padding(.vertical, 6)
                         }
+                        
+
                     }
                 }
             }
 
-            // ── 8. ACTIONS ──────────────────────────────────
-            Section {
-                Button(role: .destructive) {
-                    showDeactivateConfirmation = true
-                } label: {
-                    if isDeactivating {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                    } else {
-                        Text("Deactivate Staff Account")
-                            .frame(maxWidth: .infinity)
-                    }
-                }
-                .disabled(isDeactivating || staff.status == .inactive)
-            }
         }
         // Existing alerts (unchanged)
-        .alert(
-            "Deactivate Account?",
-            isPresented: $showDeactivateConfirmation
-        ) {
-            Button("Cancel", role: .cancel) {}
-            Button("Deactivate", role: .destructive) {
-                Task { await deactivateStaff() }
-            }
-        } message: {
-            Text("Are you sure you want to deactivate \(staff.name)'s account?")
-        }
         .alert("Error Deactivating", isPresented: $showAlert) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -910,6 +984,30 @@ struct StaffProfileView: View {
         }
         .navigationTitle("Profile")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Edit") {
+                    showEditProfile = true
+                }
+            }
+        }
+        .sheet(isPresented: $showEditProfile) {
+            EditStaffProfileView(
+                staff: $staff,
+                initialLicenseNumber: driverDetails?.license_no,
+                initialLicenseExpiry: driverDetails.map { formatDateStringForEdit($0.license_expiry) },
+                initialLicenseImageURL: driverDetails?.license_image_url,
+                onSaveDriverDetails: { newNo, newExpiry, newImageUrl in
+                    driverDetails?.license_no = newNo
+                    driverDetails?.license_expiry = newExpiry
+                    if let newUrl = newImageUrl {
+                        driverDetails?.license_image_url = newUrl
+                    }
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
         .task {
             await fetchCreatorName()
             if staff.role == .driver {
@@ -981,7 +1079,7 @@ struct StaffProfileView: View {
             // Step 1: get driver row by user_id
             let drivers: [DriverRecord] = try await SupabaseManager.shared.client
                 .from("drivers")
-                .select("driver_id, license_no, license_expiry")
+                .select("driver_id, license_no, license_expiry, license_image_url")
                 .eq("user_id", value: staff.user_id)
                 .limit(1)
                 .execute()
@@ -1102,7 +1200,6 @@ struct StaffProfileView: View {
                 .eq("driver_id", value: driverId)
                 .eq("status", value: "completed")
                 .order("end_time", ascending: false)
-                .limit(5)
                 .execute()
                 .value
 
@@ -1129,28 +1226,7 @@ struct StaffProfileView: View {
         }
     }
 
-    // MARK: - Deactivate (unchanged)
-    private func deactivateStaff() async {
-        await MainActor.run { isDeactivating = true }
-        do {
-            try await SupabaseManager.shared.client
-                .from("users")
-                .update(["status": "inactive"])
-                .eq("user_id", value: staff.user_id)
-                .execute()
 
-            await MainActor.run {
-                isDeactivating = false
-                dismiss()
-            }
-        } catch {
-            await MainActor.run {
-                self.errorMessage  = error.localizedDescription
-                self.showAlert     = true
-                self.isDeactivating = false
-            }
-        }
-    }
     // MARK: - Maintenance Fetch Logic
 
     private func fetchMaintenanceDetails() async {
@@ -1202,12 +1278,13 @@ struct StaffProfileView: View {
                 }
             }
 
-            recent = Array(rows.prefix(5))
+            recent = rows
 
             await MainActor.run {
                 self.activeWorkOrder = activeWO
                 self.workStats = stats
                 self.recentWorkOrders = recent
+                self.totalWorkOrdersCount = rows.count
                 self.lastActivityDate = latestDate
             }
 
@@ -1457,5 +1534,22 @@ struct StaffProfileView: View {
     /// Shorten long address to first component
     private func shortAddress(_ address: String) -> String {
         address.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? address
+    }
+    
+    private func formatDateStringForEdit(_ raw: String) -> String {
+        guard let d = parseDateString(raw) else { return raw }
+        let fmt = DateFormatter()
+        fmt.dateFormat = "dd/MM/yyyy"
+        return fmt.string(from: d)
+    }
+
+    private func vehicleTypeIcon(_ type: String?) -> String {
+        switch type?.lowercased() {
+        case "bus":   return "bus.fill"
+        case "truck": return "box.truck.fill"
+        case "bike":  return "motorcycle"
+        case "car":   return "car.fill"
+        default:      return "car.fill"
+        }
     }
 }

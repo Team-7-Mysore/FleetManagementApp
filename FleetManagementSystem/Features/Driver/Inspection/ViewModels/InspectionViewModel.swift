@@ -94,20 +94,35 @@ final class InspectionViewModel: ObservableObject {
         currentInspection = service.currentInspection(forDriver: user.id)
         history = service.inspectionHistory(forDriver: user.id)
 
-        guard trip != nil, currentInspection == nil else { return }
+        if let trip = trip, currentInspection == nil {
+            let vehicleId = (trip.vehicleId != UUID(uuidString: "00000000-0000-0000-0000-000000000000"))
+                ? trip.vehicleId
+                : UUID()
 
-        let vehicleId = (trip?.vehicleId != UUID(uuidString: "00000000-0000-0000-0000-000000000000"))
-            ? (trip?.vehicleId ?? UUID())
-            : UUID()
+            _ = service.createNewInspection(
+                vehicleId: vehicleId,
+                driverId: user.id,
+                type: type
+            )
 
-        _ = service.createNewInspection(
-            vehicleId: vehicleId,
-            driverId: user.id,
-            type: type
-        )
+            if type == .preTrip {
+                Task {
+                    do {
+                        try await SupabaseManager.shared.client
+                            .from("trips")
+                            .update(["status": "in_progress"])
+                            .eq("trip_id", value: trip.id.uuidString)
+                            .execute()
+                        NotificationCenter.default.post(name: NSNotification.Name("TripStatusChanged"), object: nil)
+                    } catch {
+                        print("❌ Error marking trip as active: \(error)")
+                    }
+                }
+            }
 
-        currentInspection = service.currentInspection(forDriver: user.id)
-        history = service.inspectionHistory(forDriver: user.id)
+            currentInspection = service.currentInspection(forDriver: user.id)
+            history = service.inspectionHistory(forDriver: user.id)
+        }
     }
 
     func updateItem(itemId: UUID, status: InspectionItemStatus, notes: String = "") {
@@ -118,6 +133,36 @@ final class InspectionViewModel: ObservableObject {
             status: status,
             notes: notes
         )
+        loadData()
+    }
+
+    func autoPassAllItems() {
+        guard let inspection = currentInspection else { return }
+        for item in inspection.items {
+            if item.status != .pass {
+                service.updateItemStatus(
+                    inspectionId: inspection.id,
+                    itemId: item.id,
+                    status: .pass,
+                    notes: "Auto-cleared by SDV Diagnostics"
+                )
+            }
+        }
+        loadData()
+    }
+
+    func failCategory(_ category: String, reason: String) {
+        guard let inspection = currentInspection else { return }
+        for item in inspection.items {
+            if item.category == category {
+                service.updateItemStatus(
+                    inspectionId: inspection.id,
+                    itemId: item.id,
+                    status: .fail,
+                    notes: reason
+                )
+            }
+        }
         loadData()
     }
 
@@ -151,16 +196,20 @@ final class InspectionViewModel: ObservableObject {
                     ])
                     .eq("trip_id", value: trip.id.uuidString)
                     .execute()
+                loadData()
+                NotificationCenter.default.post(name: NSNotification.Name("TripStatusChanged"), object: nil)
             } catch {
                 print("❌ submitAndStartTrip error:", error)
             }
         }
-        loadData()
     }
 
     func submitAndCompleteTrip(notes: String, trip: TripMap) async -> Bool {
-        guard let inspection = currentInspection else { return false }
-        service.submitInspection(id: inspection.id, notes: notes)
+        print("🏁 Completing trip: \(trip.id.uuidString)")
+        
+        if let inspection = currentInspection {
+            service.submitInspection(id: inspection.id, notes: notes)
+        }
 
         do {
             let completedAt = ISO8601DateFormatter().string(from: Date())
@@ -188,7 +237,18 @@ final class InspectionViewModel: ObservableObject {
                 }
             }
 
+            print("✅ Trip updated successfully")
             loadData()
+            
+            // Give Supabase a moment to ensure the update is reflected in subsequent queries
+            Task {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                await MainActor.run {
+                    NotificationCenter.default.post(name: NSNotification.Name("TripStatusChanged"), object: nil)
+                    print("🔔 TripStatusChanged notification posted")
+                }
+            }
+            
             return true
         } catch {
             print("❌ submitAndCompleteTrip error:", error)
