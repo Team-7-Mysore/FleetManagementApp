@@ -152,16 +152,6 @@ struct DriverProfileView: View {
                     }
                 }
 
-                // MARK: - Preferences
-                Section("Preferences") {
-                    HStack {
-                        Label("Language", systemImage: "globe")
-                            .foregroundStyle(.primary)
-                        Spacer()
-                        LanguagePickerView()
-                    }
-                }
-
                 // MARK: - App Info
                 Section("App") {
                     HStack {

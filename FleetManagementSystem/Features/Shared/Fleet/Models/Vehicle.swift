@@ -19,7 +19,7 @@ struct Vehicle: Identifiable, Codable {
     var rcNumber: String = ""
     var registrationDate: String = ""
     var rcExpiryDate: String = ""
-var pucExpiryDate: String = ""
+    var pucExpiryDate: String = ""
 
     // Document status flags (from vehicles table)
     var hasRC: Bool = false
@@ -42,11 +42,10 @@ var pucExpiryDate: String = ""
         case registrationDate = "registration_date"
         case rcExpiryDate = "rc_expiry_date"
         case pucExpiryDate = "puc_expiry_date"
+        case isSdvsEnabled = "is_sdvs_enabled"
         case hasRC = "has_rc"
         case hasInsurance = "has_insurance"
-        case hasPUC = "has_puc"
-        case isSdvsEnabled = "is_gps_enabled"
-    }
+        case hasPUC = "has_puc"     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -59,6 +58,7 @@ var pucExpiryDate: String = ""
         imageURL = try container.decodeIfPresent(String.self, forKey: .imageURL)
         vehicleType = (try container.decodeIfPresent(String.self, forKey: .vehicleType)) ?? "Unknown"
         fuelType = try container.decodeIfPresent(String.self, forKey: .fuelType)
+
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
         vin = try container.decodeIfPresent(String.self, forKey: .vin) ?? ""
         rcNumber = try container.decodeIfPresent(String.self, forKey: .rcNumber) ?? ""

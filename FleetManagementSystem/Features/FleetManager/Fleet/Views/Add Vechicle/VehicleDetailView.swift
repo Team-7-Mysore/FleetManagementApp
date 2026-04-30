@@ -98,6 +98,16 @@ struct VehicleDetailView: View {
                     InfoRow(title: "RC Expiry", value: currentVehicle.rcExpiryDate.isEmpty ? "—" : currentVehicle.rcExpiryDate, isEditing: isEditing, text: binding(\.rcExpiryDate))
                     InfoRow(title: "PUC Expiry", value: currentVehicle.pucExpiryDate.isEmpty ? "—" : currentVehicle.pucExpiryDate, isEditing: isEditing, text: binding(\.pucExpiryDate))
                 }
+                
+                // MARK: - Documents
+                Section(header: Text("Required Documents")) {
+                    let requiredTypes = ["RC", "INSURANCE", "PUC"]
+                    ForEach(requiredTypes, id: \.self) { type in
+                        documentRowLogic(for: type)
+                    }
+                }
+                
+                // MARK: - Actions
 
 
                 Section(header: Text("Actions")) {
@@ -113,6 +123,12 @@ struct VehicleDetailView: View {
                     } label: {
                         Label("Maintaince Reports", systemImage: "chart.bar.doc.horizontal.fill")
                             .foregroundColor(.purple)
+                    }
+
+                    // SDV Integration: Fleet Manager Route
+                    NavigationLink(destination: VehicleReportView(vehicleId: vehicle.id)) {
+                        Label("Generate Stats Report", systemImage: "car.top.radiowaves.rear.left.and.rear.right")
+                            .foregroundColor(.blue)
                     }
                     Button {
                         Task { await createVehicleUsageReport() }

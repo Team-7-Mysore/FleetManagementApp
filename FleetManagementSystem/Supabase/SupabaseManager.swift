@@ -9,7 +9,7 @@ final class SupabaseManager {
     
     private init() {
 
-        let memoryCapacity = 50 *    1024 * 1024
+        let memoryCapacity = 50 * 1024 * 1024
         let diskCapacity = 100 * 1024 * 1024
         
         let cache = URLCache(

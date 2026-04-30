@@ -67,7 +67,7 @@ final class TripDetailViewModel: ObservableObject {
             // Fetch all trips to check for conflicts
             let trips: [AssignmentTripRecord] = try await SupabaseManager.shared.client
                 .from("trips")
-                .select("trip_id, vehicle_id, driver_id, status, start_time, end_time, pickup_time")
+                .select("trip_id, vehicle_id, driver_id, route_id, status, start_time, end_time, pickup_time")
                 .execute()
                 .value
 
@@ -123,7 +123,9 @@ final class TripDetailViewModel: ObservableObject {
                         name: user?.name ?? "Driver \(d.driver_id.uuidString.prefix(4))",
                         licenseNumber: d.license_no,
                         licenseExpiry: d.license_expiry,
-                        locationHint: nil
+                        locationHint: nil,
+                        routeExperienceCount: 0,
+                        isRecommended: false
                     )
                 }
                 .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
@@ -172,7 +174,7 @@ final class TripDetailViewModel: ObservableObject {
         locationPollingTask = Task { [weak self] in
             while !Task.isCancelled {
                 await self?.refreshVehicleLocation()
-                try? await Task.sleep(nanoseconds: 900_000_000_000)
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
         }
     }
