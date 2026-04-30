@@ -226,7 +226,7 @@ final class TripListViewModel: ObservableObject {
        }
    }
 
-   private func fetchWorkOrders(ignoreCache: Bool = false) async {
+   func fetchWorkOrders(ignoreCache: Bool = false) async {
        // Skip if data is still fresh, unless explicitly bypassed
        if !ignoreCache,
           let last = lastWorkOrderFetch,
@@ -293,7 +293,7 @@ final class TripListViewModel: ObservableObject {
           .sink { [weak self] in Task { await self?.fetchVehicles(ignoreCache: true) } }
           .store(in: &cancellables)
 
-      // Work orders: debounce 500ms — only re-fetch work orders
+      // Work orders: debounce 500ms — bypass cache since realtime means data changed
       workOrdersRefreshSubject
           .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
           .sink { [weak self] in Task { await self?.fetchWorkOrders(ignoreCache: true) } }
@@ -330,6 +330,15 @@ final class TripListViewModel: ObservableObject {
                       
                       if recipientId == userId.uuidString {
                           await self.updateUnreadCount(userId: userId)
+
+                          // If this is a maintenance notification (new work order approval request),
+                          // also refresh work orders so the dashboard cards update immediately
+                          if case .insert(let act) = action {
+                              let notifType = act.record["type"]?.stringValue?.lowercased() ?? ""
+                              if notifType == "maintenance" || notifType == "alert" {
+                                  await self.fetchWorkOrders(ignoreCache: true)
+                              }
+                          }
                       }
                   }
               }
@@ -353,6 +362,13 @@ final class TripListViewModel: ObservableObject {
       } catch {
          print("🚨 Failed to update unread count: \(error)")
       }
+   }
+
+   /// Public wrapper — called when returning from the notifications screen
+   /// so the bell badge reflects the latest read state.
+   func updateUnreadCountPublic() async {
+      guard let session = try? await SupabaseManager.shared.client.auth.session else { return }
+      await updateUnreadCount(userId: session.user.id)
    }
 
    // MARK: - Maintenance Approval Actions

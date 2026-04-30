@@ -96,13 +96,19 @@ struct AllPendingApprovalsView: View {
             .listRowSeparator(.hidden)
             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                 Button(role: .destructive) {
-                    Task { await vm.declineWorkOrder(workOrder) }
+                    Task {
+                        await vm.declineWorkOrder(workOrder)
+                        await vm.fetchTrips()
+                    }
                 } label: { Label("Decline", systemImage: "xmark") }
                 .tint(.red)
             }
             .swipeActions(edge: .leading, allowsFullSwipe: true) {
                 Button {
-                    Task { await vm.approveWorkOrder(workOrder) }
+                    Task {
+                        await vm.approveWorkOrder(workOrder)
+                        await vm.fetchTrips()
+                    }
                 } label: { Label("Approve", systemImage: "checkmark") }
                 .tint(.green)
             }

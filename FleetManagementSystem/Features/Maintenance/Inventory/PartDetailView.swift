@@ -29,11 +29,11 @@ struct PartDetailView: View {
     private var hasChanges: Bool {
         let originalCostStr = currentItem.costPerUnit != nil ? String(format: "%.2f", currentItem.costPerUnit!) : ""
         return editPartName != currentItem.partName ||
-            editVehicleCategory != (currentItem.vehicleCategory ?? "Car") ||
-            editSupplier != (currentItem.supplier ?? "") ||
-            editQuantity != currentItem.quantity ||
-            editCostPerUnitText != originalCostStr ||
-            editLocation != (currentItem.location ?? "")
+        // Category is now locked, so it won't contribute to 'hasChanges' via user input
+        editSupplier != (currentItem.supplier ?? "") ||
+        editQuantity != currentItem.quantity ||
+        editCostPerUnitText != originalCostStr ||
+        editLocation != (currentItem.location ?? "")
     }
 
     var body: some View {
@@ -125,18 +125,10 @@ struct PartDetailView: View {
                     .padding(.horizontal)
 
                 VStack(spacing: 0) {
-                    detailRow(title: "Vehicle Category", isEditing: isEditing) {
-                        if isEditing {
-                            Picker("Category", selection: $editVehicleCategory) {
-                                ForEach(categories, id: \.self) { cat in
-                                    Text(cat).tag(cat)
-                                }
-                            }
-                            .pickerStyle(MenuPickerStyle())
-                        } else {
-                            Text(currentItem.vehicleCategory ?? "Not Set")
-                                .foregroundColor(.primary)
-                        }
+                    // Category is now always a Text label, even when editing
+                    detailRow(title: "Vehicle Category", isEditing: false) {
+                        Text(currentItem.vehicleCategory ?? "Not Set")
+                            .foregroundColor(.secondary) // Secondary color implies it's read-only
                     }
                     Divider().padding(.leading, 16)
 
@@ -166,11 +158,7 @@ struct PartDetailView: View {
                     }
                     Divider().padding(.leading, 16)
 
-                    detailRow(title: "Minimum Required", isEditing: false) {
-                        Text("10")
-                            .foregroundColor(.primary)
-                    }
-                    Divider().padding(.leading, 16)
+                    // Removed "Minimum Required" row as requested
 
                     detailRow(title: "Last Updated", isEditing: false) {
                         if let date = currentItem.updatedAt {
@@ -335,7 +323,7 @@ struct PartDetailView: View {
             try await viewModel.updateInventoryItem(
                 id: currentItem.id,
                 partName: editPartName.trimmingCharacters(in: .whitespaces),
-                vehicleCategory: editVehicleCategory,
+                vehicleCategory: editVehicleCategory, // Remains original value
                 supplier: editSupplier.trimmingCharacters(in: .whitespaces),
                 quantity: editQuantity,
                 costPerUnit: cost,

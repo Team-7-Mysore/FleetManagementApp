@@ -1,16 +1,10 @@
-//
-//  AllMaintenanceView.swift
-//  FleetManagementSystem
-//
-//  Created by Kiro AI
-//
-
 import SwiftUI
 
 struct AllMaintenanceView: View {
     @StateObject private var vm = TripListViewModel()
     @State private var selectedFilter: MaintenanceFilter = .all
     @State private var selectedWorkOrder: WorkOrder? = nil
+    @State private var isSheetPresented = false
 
     enum MaintenanceFilter: String, CaseIterable {
         case all = "All"
@@ -22,14 +16,10 @@ struct AllMaintenanceView: View {
     private var filteredWorkOrders: [WorkOrder] {
         vm.workOrders.filter { workOrder in
             switch selectedFilter {
-            case .all:
-                return true
-            case .pending:
-                return workOrder.status == .pending
-            case .inProgress:
-                return workOrder.status == .inProgress
-            case .completed:
-                return workOrder.status == .completed
+            case .all:        return true
+            case .pending:    return workOrder.status == .pending
+            case .inProgress: return workOrder.status == .inProgress
+            case .completed:  return workOrder.status == .completed
             }
         }
     }
@@ -72,6 +62,7 @@ struct AllMaintenanceView: View {
                     ForEach(filteredWorkOrders) { workOrder in
                         Button(action: {
                             selectedWorkOrder = workOrder
+                            isSheetPresented = true
                         }) {
                             MaintenanceVehicleCard(workOrder: workOrder)
                         }
@@ -110,9 +101,14 @@ struct AllMaintenanceView: View {
         .refreshable {
             await vm.fetchTrips()
         }
-        .sheet(item: $selectedWorkOrder) { workOrder in
-            NavigationStack {
-                WorkOrderDetailView(workOrder: workOrder, isManagerApprovalMode: true)
+        .sheet(isPresented: $isSheetPresented, onDismiss: {
+            selectedWorkOrder = nil
+            Task { await vm.fetchTrips() }
+        }) {
+            if let workOrder = selectedWorkOrder {
+                NavigationStack {
+                    WorkOrderDetailView(workOrder: workOrder, isManagerApprovalMode: true)
+                }
             }
         }
     }

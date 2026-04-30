@@ -11,7 +11,7 @@ struct TripsListView: View {
     @AppStorage("selectedLanguage") private var selectedLanguage: String = "en"
     @State private var showingProfile = false
     @State private var selectedWorkOrder: WorkOrder? = nil
-    @State private var unreadNotificationCount = 0
+    @State private var isWorkOrderSheetPresented = false
     
     init(profile: UserProfile? = nil, onSignOut: @escaping () async -> Void = {}) {
         self.profile = profile
@@ -19,7 +19,7 @@ struct TripsListView: View {
     }
 
     private var pendingApprovals: [WorkOrder] {
-        vm.vehiclesInMaintenance.filter { $0.status == .pending }
+        vm.vehiclesInMaintenance.filter { $0.status == .pending && !$0.isApproved }
     }
 
     var body: some View {
@@ -57,6 +57,12 @@ struct TripsListView: View {
             }
             .task { if vm.trips.isEmpty { await vm.fetchTrips() } }
             .refreshable { await vm.fetchTrips() }
+            .onChange(of: navigateToNotifications) { _, isShowing in
+                // Refresh badge when user returns from notifications screen
+                if !isShowing {
+                    Task { await vm.updateUnreadCountPublic() }
+                }
+            }
             .sheet(isPresented: $showingProfile) {
                 FleetManagerProfileView(profile: profile, onSignOut: onSignOut)
                     .presentationDetents([.large])
@@ -64,12 +70,24 @@ struct TripsListView: View {
                     .environment(\.locale, .init(identifier: selectedLanguage))
             }
             .navigationDestination(isPresented: $navigateToNotifications) {
-                FleetManagerNotificationsView(userId: profile?.userId)
+                FleetManagerNotificationsView(
+                    userId: profile?.userId,
+                    onUnreadCountChanged: { count in
+                        // Sync the badge on the dashboard bell icon
+                        Task { @MainActor in
+                            await vm.updateUnreadCountPublic()
+                        }
+                    }
+                )
             }
-            .sheet(item: $selectedWorkOrder) { workOrder in
-                NavigationStack {
-                    WorkOrderDetailView(workOrder: workOrder, isManagerApprovalMode: true)
-
+            .sheet(isPresented: $isWorkOrderSheetPresented, onDismiss: {
+                selectedWorkOrder = nil
+                Task { await vm.fetchWorkOrders(ignoreCache: true) }
+            }) {
+                if let workOrder = selectedWorkOrder {
+                    NavigationStack {
+                        WorkOrderDetailView(workOrder: workOrder, isManagerApprovalMode: true)
+                    }
                 }
             }
             .overlay(alignment: .bottomTrailing) {
@@ -90,6 +108,7 @@ struct TripsListView: View {
                 MaintenanceVehicleCard(workOrder: workOrder)
                     .onTapGesture {
                         selectedWorkOrder = workOrder
+                        isWorkOrderSheetPresented = true
                     }
                     // Swipe logic: Enabled ONLY for pending items
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -101,12 +120,15 @@ struct TripsListView: View {
                             }
                             .tint(.red)
 
-                            Button {
-                                Task { await vm.approveWorkOrder(workOrder) }
-                            } label: {
-                                Label("Approve", systemImage: "checkmark")
+                            // Only show Approve if not already approved
+                            if !workOrder.isApproved {
+                                Button {
+                                    Task { await vm.approveWorkOrder(workOrder) }
+                                } label: {
+                                    Label("Approve", systemImage: "checkmark")
+                                }
+                                .tint(.green)
                             }
-                            .tint(.green)
                         }
                     }
             }
