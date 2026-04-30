@@ -97,6 +97,8 @@ struct AddVehicleView: View {
                     Picker("Fuel Type", selection: $vm.fuelType) {
                         ForEach(["Petrol", "Diesel", "Electric", "CNG", "Hybrid"], id: \.self) { Text($0).tag($0) }
                     }
+
+                    Toggle("SDV Enabled", isOn: $vm.isSdvsEnabled)
                 }
 
 
@@ -106,7 +108,7 @@ struct AddVehicleView: View {
                             DatePicker("Registration Date", selection: $vm.registrationDate, displayedComponents: .date)
                             DatePicker("RC Expiry", selection: $vm.rcExpiry, displayedComponents: .date)
                         }
-                        
+
                         if vm.pucURL != nil {
                             DatePicker("PUC Expiry", selection: $vm.pucExpiry, displayedComponents: .date)
                         }
@@ -148,7 +150,7 @@ struct AddVehicleView: View {
                 }
             }
             Spacer()
-            
+
             Button(isUploaded ? "Replace" : "Upload") {
                 selectedType = type
                 showSourcePopover = true

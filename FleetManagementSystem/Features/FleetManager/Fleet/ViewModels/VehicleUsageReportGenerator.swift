@@ -29,8 +29,20 @@ struct VehicleUsageTrip: Decodable, Identifiable {
     }
 }
 
+struct VehicleUsageReportFuelLog: Decodable {
+    let tripId: UUID?
+    let fuelVolume: Double
+    let odometerReading: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case tripId = "trip_id"
+        case fuelVolume = "fuel_volume"
+        case odometerReading = "odometer_reading"
+    }
+}
+
 enum VehicleUsageReportGenerator {
-    static func generate(vehicle: Vehicle, trips: [VehicleUsageTrip]) throws -> URL {
+    static func generate(vehicle: Vehicle, trips: [VehicleUsageTrip], fuelLogs: [VehicleUsageReportFuelLog]) throws -> URL {
         let pageRect = CGRect(x: 0, y: 0, width: 595.2, height: 841.8)
         let margin: CGFloat = 36
         let contentWidth = pageRect.width - (margin * 2)
@@ -122,6 +134,7 @@ enum VehicleUsageReportGenerator {
             currentY += 16
 
             let totalDistance = trips.reduce(0.0) { $0 + ($1.distanceTravelled ?? 0) }
+            let totalFuel = fuelLogs.reduce(0.0) { $0 + $1.fuelVolume }
             let completedTrips = trips.filter { ($0.status ?? "").lowercased() == "completed" }.count
             let activeTrips = trips.filter {
                 let status = ($0.status ?? "").lowercased()
@@ -137,6 +150,13 @@ enum VehicleUsageReportGenerator {
             currentY += drawText("Active / Assigned Trips: \(activeTrips)", font: .systemFont(ofSize: 13), y: currentY)
             currentY += 4
             currentY += drawText(String(format: "Total Distance: %.1f km", totalDistance), font: .systemFont(ofSize: 13), y: currentY)
+            currentY += 4
+            currentY += drawText(String(format: "Total Fuel: %.1f L", totalFuel), font: .systemFont(ofSize: 13), y: currentY)
+            currentY += 4
+            if let currentOdometer = fuelLogs.compactMap({ $0.odometerReading }).max() {
+                currentY += drawText(String(format: "Current Odometer: %.0f", currentOdometer), font: .systemFont(ofSize: 13), y: currentY)
+                currentY += 4
+            }
             currentY += 18
 
             currentY += drawText("Trip History", font: .boldSystemFont(ofSize: 16), y: currentY)
@@ -146,7 +166,7 @@ enum VehicleUsageReportGenerator {
                 _ = drawText("No trips found for this vehicle.", font: .italicSystemFont(ofSize: 13), color: .gray, y: currentY)
             } else {
                 for trip in trips {
-                    beginPageIfNeeded(for: 130)
+                    beginPageIfNeeded(for: 150)
 
                     currentY += drawText(trip.tripName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? trip.tripName! : "Unnamed Trip", font: .boldSystemFont(ofSize: 14), y: currentY)
                     currentY += 4
@@ -163,6 +183,17 @@ enum VehicleUsageReportGenerator {
                     currentY += drawText("End: \(formattedDate(trip.endTime))", font: .systemFont(ofSize: 12), y: currentY)
                     currentY += 4
                     currentY += drawText(String(format: "Distance: %.1f km", trip.distanceTravelled ?? 0), font: .systemFont(ofSize: 12), y: currentY)
+
+                    let tripFuelLogs = fuelLogs.filter { $0.tripId == trip.tripId }
+                    let tripFuel = tripFuelLogs.reduce(0.0) { $0 + $1.fuelVolume }
+                    currentY += 4
+                    currentY += drawText(String(format: "Fuel Used: %.1f L", tripFuel), font: .systemFont(ofSize: 12), y: currentY)
+
+                    if let odometer = tripFuelLogs.last?.odometerReading {
+                        currentY += 4
+                        currentY += drawText(String(format: "Odometer: %.0f", odometer), font: .systemFont(ofSize: 12), y: currentY)
+                    }
+
                     if let clientContact = trip.clientContact, !clientContact.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         currentY += 4
                         currentY += drawText("Client Contact: \(clientContact)", font: .systemFont(ofSize: 12), y: currentY)

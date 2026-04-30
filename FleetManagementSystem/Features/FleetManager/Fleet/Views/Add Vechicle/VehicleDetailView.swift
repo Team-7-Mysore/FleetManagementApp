@@ -17,7 +17,7 @@ struct VehicleDetailView: View {
     let vehicle: Vehicle
     @Environment(\.dismiss) var dismiss
     @StateObject private var vm: VehicleDetailViewModel
-    
+
     @State private var showSourcePopover = false
     @State private var isEditing = false
     @State private var draftVehicle: Vehicle?
@@ -31,12 +31,12 @@ struct VehicleDetailView: View {
     @State private var showReportsSheet = false
     @State private var usageReportURL: URL?
     @State private var showUsageReportPreview = false
-    
+
     init(vehicle: Vehicle) {
         self.vehicle = vehicle
         _vm = StateObject(wrappedValue: VehicleDetailViewModel(initialVehicle: vehicle))
     }
-    
+
     var body: some View {
         Form {
             if vm.isLoading {
@@ -47,49 +47,59 @@ struct VehicleDetailView: View {
                 }
                 .listRowBackground(Color.clear)
             } else if let currentVehicle = vm.vehicle {
-                
-            
+
+
                 Section {
                     vehicleImage(currentVehicle)
                         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                         .frame(height: 200)
                 }
                 .listRowBackground(Color.clear)
-                
-          
+
+
                 Section(header: Text("Required Documents")) {
                     let requiredTypes = ["RC", "INSURANCE", "PUC"]
                     ForEach(requiredTypes, id: \.self) { type in
                         documentRowLogic(for: type)
                     }
                 }
-                
-            
+
+
                 Section(header: Text("Vehicle Identification")) {
                     InfoRow(title: "Name", value: currentVehicle.name, isEditing: isEditing, text: binding(\.name))
                     InfoRow(title: "Plate", value: currentVehicle.registrationNumber, isEditing: false, text: nil)
                         .textCase(.uppercase)
                 }
-                
-          
+
+
                 Section(header: Text("Basic Info")) {
                     InfoRow(title: "Brand", value: currentVehicle.brand ?? "—", isEditing: false, text: nil)
                     InfoRow(title: "Model", value: currentVehicle.model ?? "—", isEditing: false, text: nil)
                     InfoRow(title: "Year", value: currentVehicle.modelYear ?? "—", isEditing: false, text: nil)
                     InfoRow(title: "Fuel", value: currentVehicle.fuelType ?? "—", isEditing: false, text: nil)
+                    if isEditing {
+                        Toggle("SDV Enabled", isOn: $vm.isSdvsEnabled)
+                    } else {
+                        HStack {
+                            Text("SDV Enabled")
+                            Spacer()
+                            Text(currentVehicle.isSdvsEnabled ? "Yes" : "No")
+                                .foregroundColor(currentVehicle.isSdvsEnabled ? .orange : .primary)
+                        }
+                    }
                 }
-                
-                
+
+
                 Section(header: Text("Registration Details")) {
                     InfoRow(title: "VIN", value: currentVehicle.vin.isEmpty ? "—" : currentVehicle.vin, isEditing: false, text: nil)
-                    
+
                     // Note: RC Number removed as requested
                     InfoRow(title: "Reg. Date", value: currentVehicle.registrationDate.isEmpty ? "—" : currentVehicle.registrationDate, isEditing: isEditing, text: binding(\.registrationDate))
                     InfoRow(title: "RC Expiry", value: currentVehicle.rcExpiryDate.isEmpty ? "—" : currentVehicle.rcExpiryDate, isEditing: isEditing, text: binding(\.rcExpiryDate))
                     InfoRow(title: "PUC Expiry", value: currentVehicle.pucExpiryDate.isEmpty ? "—" : currentVehicle.pucExpiryDate, isEditing: isEditing, text: binding(\.pucExpiryDate))
                 }
-                
-               
+
+
                 Section(header: Text("Actions")) {
                     Button {
                         showStaffSelection = true
@@ -97,7 +107,7 @@ struct VehicleDetailView: View {
                         Label("Schedule Maintenance", systemImage: "wrench.and.screwdriver.fill")
                             .foregroundColor(.orange)
                     }
-                    
+
                     Button {
                         showReportsSheet = true
                     } label: {
@@ -206,9 +216,9 @@ struct VehicleDetailView: View {
             Text(vm.errorMessage ?? "Unknown error")
         }
     }
-    
-  
-    
+
+
+
     private func vehicleImage(_ vehicle: Vehicle) -> some View {
         ZStack(alignment: .bottomTrailing) {
             Group {
@@ -230,7 +240,7 @@ struct VehicleDetailView: View {
             .clipped()
             .contentShape(Rectangle())
             .onTapGesture { if isEditing { showImageSourceDialog = true } }
-            
+
             if isEditing {
                 Image(systemName: "camera.circle.fill")
                     .symbolRenderingMode(.hierarchical)
@@ -246,11 +256,11 @@ struct VehicleDetailView: View {
             Button("Cancel", role: .cancel) { }
         }
     }
-    
+
     @ViewBuilder
     private func documentRowLogic(for type: String) -> some View {
         let doc = vm.documents.first(where: { $0.type.uppercased() == type })
-        
+
         let expiryDateStr: String? = {
             switch type.uppercased() {
             case "RC": return vm.vehicle?.rcExpiryDate
@@ -259,7 +269,7 @@ struct VehicleDetailView: View {
             default: return nil
             }
         }()
-        
+
         let isExpired: Bool = {
             guard let dateStr = expiryDateStr, !dateStr.isEmpty,
                   let date = DetailViewCache.formatter.date(from: dateStr) else { return false }
@@ -273,19 +283,26 @@ struct VehicleDetailView: View {
                     Text(fileName).font(.caption).foregroundColor(.secondary).lineLimit(1)
                 }
             }
-            
+
             Spacer()
-            
+
             HStack(spacing: 8) {
-                if !isEditing && doc != nil {
+                if doc != nil {
                     Text(isExpired ? "Expired" : "Valid")
                         .font(.system(size: 10, weight: .bold))
                         .padding(.horizontal, 10).padding(.vertical, 4)
                         .background(isExpired ? Color.red.opacity(0.1) : Color.green.opacity(0.1))
                         .foregroundColor(isExpired ? .red : .green)
                         .clipShape(Capsule())
+                } else {
+                    Text("No Document")
+                        .font(.system(size: 10, weight: .bold))
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(Color.gray.opacity(0.1))
+                        .foregroundColor(.gray)
+                        .clipShape(Capsule())
                 }
-                
+
                 if isEditing {
                     Button(doc == nil ? "Upload" : "Replace") {
                         activeDocumentType = type
@@ -316,7 +333,7 @@ struct VehicleDetailView: View {
         .onTapGesture {
             // Lazy load: fetch document URL when user taps (if not already fetched)
             guard !isEditing, let doc = doc, let vehicleId = vm.vehicle?.id else { return }
-            
+
             if doc.fileURL.isEmpty {
                 Task {
                     if let url = await vm.fetchDocumentURL(for: type, vehicleId: vehicleId) {
@@ -333,7 +350,7 @@ struct VehicleDetailView: View {
             }
         }
     }
-    
+
     private func popoverButton(title: String, icon: String, action: @escaping () -> Void) -> some View {
         Button { showSourcePopover = false; action() } label: {
             HStack {
@@ -347,7 +364,7 @@ struct VehicleDetailView: View {
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
     }
-    
+
     private func saveChanges() async {
         guard let draft = draftVehicle else { return }
         vm.vehicle = draft
@@ -372,15 +389,15 @@ struct VehicleDetailView: View {
             }
         }
     }
-    
+
     private func binding(_ keyPath: WritableKeyPath<Vehicle, String>) -> Binding<String> {
         Binding(get: { draftVehicle?[keyPath: keyPath] ?? "" }, set: { draftVehicle?[keyPath: keyPath] = $0 })
     }
-    
+
     private func binding(_ keyPath: WritableKeyPath<Vehicle, String?>) -> Binding<String> {
         Binding(get: { draftVehicle?[keyPath: keyPath] ?? "" }, set: { draftVehicle?[keyPath: keyPath] = $0.isEmpty ? nil : $0 })
     }
-    
+
     private func handleCameraAccess(onGranted: @escaping () -> Void) {
         let status = AVCaptureDevice.authorizationStatus(for: .video)
         if status == .authorized { onGranted() }
@@ -390,7 +407,7 @@ struct VehicleDetailView: View {
             }
         }
     }
-    
+
     private func handlePhotoLibraryAccess(onGranted: @escaping () -> Void) {
         let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         if status == .authorized || status == .limited { onGranted() }
@@ -409,7 +426,7 @@ struct InfoRow: View {
     let value: String
     var isEditing: Bool = false
     var text: Binding<String>? = nil
-    
+
     var body: some View {
         HStack {
             Text(title)
@@ -429,7 +446,7 @@ struct InfoRow: View {
 struct VehicleReportsListView: View {
     let reports: [WorkOrderReportRecord]
     @Environment(\.dismiss) private var dismiss
-    
+
     var body: some View {
         NavigationView {
             List {
