@@ -125,6 +125,7 @@ struct ReportIssueView: View {
             }
             .navigationTitle(issues.count > 1 ? "Report \(issues.count) Issues" : "Report Issue")
             .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(showsCloseButton)
             .toolbar {
                 if showsCloseButton {
                     ToolbarItem(placement: .topBarLeading) {

@@ -106,18 +106,9 @@ final class InspectionViewModel: ObservableObject {
             )
 
             if type == .preTrip {
-                Task {
-                    do {
-                        try await SupabaseManager.shared.client
-                            .from("trips")
-                            .update(["status": "in_progress"])
-                            .eq("trip_id", value: trip.id.uuidString)
-                            .execute()
-                        NotificationCenter.default.post(name: NSNotification.Name("TripStatusChanged"), object: nil)
-                    } catch {
-                        print("❌ Error marking trip as active: \(error)")
-                    }
-                }
+                // We no longer mark the trip as 'in_progress' here.
+                // The trip should only be marked 'in_progress' when the inspection is successfully submitted 
+                // using submitAndStartTrip().
             }
 
             currentInspection = service.currentInspection(forDriver: user.id)
