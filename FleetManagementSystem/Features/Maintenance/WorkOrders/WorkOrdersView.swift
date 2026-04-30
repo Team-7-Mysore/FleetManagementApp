@@ -74,10 +74,10 @@ struct WorkOrdersView: View {
                     // MARK: In Progress
                     VStack(alignment: .leading, spacing: 16) {
 
-                        Text("IN PROGRESS TASKS")
-                            .font(.caption)
-                            .fontWeight(.bold)
-                            .foregroundColor(.secondary)
+                        Text("In Progress Tasks")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.black)
                             .tracking(1)
                             .padding(.top,8)
 

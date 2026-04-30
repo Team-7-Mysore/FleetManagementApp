@@ -308,15 +308,16 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = YD8V4N5AAK;
+				DEVELOPMENT_TEAM = U32SNWLWG9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FleetManagementSystem/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "This app needs camera access to capture vehicle documents.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "We need your location to help you select pickup and delivery addresses on the map.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to help you select pickup and delivery addresses on the map.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app needs microphone access to capture your voice for trip logging.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "This app needs photo library access to upload vehicle documents.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "We need speech recognition to let you dictate.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "This app uses speech recognition to let you log trip details hands-free.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -328,7 +329,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.MyOrganization.FleetManagementHarshwardhan;
+				PRODUCT_BUNDLE_IDENTIFIER = com.MyOrganization.FleetManagementManushree;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
@@ -347,15 +348,16 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = YD8V4N5AAK;
+				DEVELOPMENT_TEAM = U32SNWLWG9;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FleetManagementSystem/Info.plist;
 				INFOPLIST_KEY_NSCameraUsageDescription = "This app needs camera access to capture vehicle documents.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "We need your location to help you select pickup and delivery addresses on the map.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need your location to help you select pickup and delivery addresses on the map.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "This app needs microphone access to capture your voice for trip logging.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "This app needs photo library access to upload vehicle documents.";
-				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "We need speech recognition to let you dictate.";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "This app uses speech recognition to let you log trip details hands-free.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -367,7 +369,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.MyOrganization.FleetManagementHarshwardhan;
+				PRODUCT_BUNDLE_IDENTIFIER = com.MyOrganization.FleetManagementManushree;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;

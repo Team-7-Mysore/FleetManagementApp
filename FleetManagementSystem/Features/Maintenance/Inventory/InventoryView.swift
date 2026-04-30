@@ -37,7 +37,7 @@ struct InventoryView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Categories")
                             .font(.title3)
-                            .fontWeight(.bold)
+                            .fontWeight(.semibold)
                             .padding(.horizontal, 16)
                         
                         CategoryGridView(
@@ -57,7 +57,7 @@ struct InventoryView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("Low in Stock")
                                 .font(.title3)
-                                .fontWeight(.bold)
+                                .fontWeight(.semibold)
                                 .foregroundColor(.primary)
                                 .padding(.horizontal, 16)
                             
