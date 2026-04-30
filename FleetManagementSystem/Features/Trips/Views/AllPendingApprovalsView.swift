@@ -10,11 +10,27 @@ struct AllPendingApprovalsView: View {
 
     var body: some View {
         List {
-            // Updated Section with a custom Header
+            // Header row as a regular list row — avoids List header styling issues
+            HStack {
+                Text("Vehicles in Maintenance")
+                    .font(.title3.weight(.semibold))
+                    .foregroundColor(.primary)
+
+                Spacer()
+
+                NavigationLink(destination: AllMaintenanceView()) {
+                    Text("View All")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(.TechBlue)
+                }
+                .buttonStyle(.plain)
+            }
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+
             Section {
                 mainContent
-            } header: {
-                customHeader
             }
         }
         .listStyle(.insetGrouped)
@@ -34,36 +50,6 @@ struct AllPendingApprovalsView: View {
                 WorkOrderDetailView(workOrder: workOrder, isManagerApprovalMode: true)
             }
         }
-    }
-
-    // MARK: - Custom Header (The "View All" Style)
-
-    private var customHeader: some View {
-        HStack {
-            Text("Awaiting Approval")
-                .font(.subheadline.weight(.semibold))
-                .foregroundColor(.secondary)
-
-            // This circle badge replicates the "little heading" look
-            Text("\(pendingApprovals.count)")
-                .font(.caption2.weight(.bold))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.secondary.opacity(0.2))
-                .clipShape(Capsule())
-
-            Spacer()
-
-            // The "View All" and Chevron
-            HStack(spacing: 4) {
-                Text("View All")
-                Image(systemName: "chevron.right")
-            }
-            .font(.caption.weight(.medium))
-            .foregroundColor(.accentColor)
-            .textCase(nil) // Prevents the List header from forcing uppercase
-        }
-        .padding(.vertical, 8)
     }
 
     @ViewBuilder
