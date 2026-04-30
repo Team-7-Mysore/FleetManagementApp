@@ -270,15 +270,6 @@ struct FleetManagerTripDetailView: View {
                                     .foregroundStyle(.green)
                             }
                             .buttonStyle(.plain)
-
-                            Button {
-                                // Message driver
-                            } label: {
-                                Image(systemName: "message.circle.fill")
-                                    .font(.title2)
-                                    .foregroundStyle(.blue)
-                            }
-                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.vertical, 4)
