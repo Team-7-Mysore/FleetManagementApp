@@ -351,37 +351,6 @@ extension WorkOrderViewModel {
             print("Failed to send notification: \(error)")
         }
     }
-    
-    // Fetches past work orders and returns a raw text string of the history
-    func fetchVehicleHistoryContext(vehicleId: UUID, currentWorkOrderId: UUID) async throws -> String {
-        let pastOrders: [PastMaintenanceRecord] = try await SupabaseManager.shared.client
-            .from("work_orders")
-            .select("issue_title, issue_description, maintenance_notes, created_at, work_order_tasks(description)")
-            .eq("vehicle_id", value: vehicleId.uuidString)
-            .eq("status", value: "completed") // adjust capitalization if needed
-            .neq("work_order_id", value: currentWorkOrderId.uuidString)
-            .order("created_at", ascending: false)
-            .limit(5)
-            .execute()
-            .value
-        
-        guard !pastOrders.isEmpty else { return "" }
-        
-        var context = ""
-        for (index, order) in pastOrders.enumerated() {
-            context += "--- Past Work Order \(index + 1) ---\n"
-            context += "Issue: \(order.issueTitle)\n"
-            if let desc = order.issueDescription, !desc.isEmpty { context += "Description: \(desc)\n" }
-            if let notes = order.maintenanceNotes, !notes.isEmpty { context += "Mechanic Notes: \(notes)\n" }
-            
-            if let tasks = order.tasks, !tasks.isEmpty {
-                let taskList = tasks.map { "- \($0.description)" }.joined(separator: "\n")
-                context += "Tasks Completed:\n\(taskList)\n"
-            }
-            context += "\n"
-        }
-        return context
-    }
 }
 
 
