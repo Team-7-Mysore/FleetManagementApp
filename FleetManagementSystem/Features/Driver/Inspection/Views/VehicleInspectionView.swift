@@ -9,6 +9,7 @@ struct VehicleInspectionView: View {
     @State private var overallNotes = ""
     @State private var showSubmissionConfirmation = false
     @State private var showReportIssue = false
+    @State private var showSDVScanner = false
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var router: AppRouter
 
@@ -24,6 +25,42 @@ struct VehicleInspectionView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                if let tripId = trip?.id {
+                     Button(action: { showSDVScanner = true }) {
+                         HStack {
+                             Image(systemName: "sparkles")
+                             Text("Run SDV Diagnostics")
+                         }
+                         .font(.headline)
+                         .foregroundColor(.white)
+                         .padding()
+                         .frame(maxWidth: .infinity)
+                         .background(LinearGradient(colors: [.blue, .purple], startPoint: .leading, endPoint: .trailing))
+                         .cornerRadius(12)
+                     }
+                     .padding(.bottom, 8)
+                     .sheet(isPresented: $showSDVScanner) {
+                         if let unwrappedTrip = trip {
+                             SDVAutoScannerView(vehicleId: unwrappedTrip.vehicleId, inspectionType: defaultType) { reports in
+                                 vm.autoPassAllItems()
+                                 
+                                 // If SDV diagnostics found issues, mark them as failed
+                                 if !reports.isEmpty {
+                                     for report in reports {
+                                         if report.category == "mechanical" {
+                                             vm.failCategory("Mechanical", reason: report.description)
+                                         } else if report.category == "body damage" {
+                                             vm.failCategory("Exterior", reason: report.description)
+                                         } else if report.category == "electrical" {
+                                             vm.failCategory("Safety", reason: report.description)
+                                         }
+                                     }
+                                 }
+                             }
+                         }
+                     }
+                }
+                
                 currentInspectionContent
             }
             .padding(.horizontal)

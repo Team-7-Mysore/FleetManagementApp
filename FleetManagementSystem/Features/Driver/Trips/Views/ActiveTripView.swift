@@ -60,6 +60,8 @@ struct ActiveTripView: View {
         }
     }
 
+    @State private var showLogFuel = false
+
     var body: some View {
         VStack(spacing: 0) {
             // MARK: - Map
@@ -141,18 +143,31 @@ struct ActiveTripView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
 
-                        Button { showEndTripConfirmation = true } label: {
+                        Button { showLogFuel = true } label: {
                             HStack(spacing: 6) {
-                                Image(systemName: "stop.fill")
-                                Text("End Trip")
+                                Image(systemName: "fuelpump.fill")
+                                Text("Log Fuel")
                             }
                             .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.blue)
                             .frame(maxWidth: .infinity)
                             .frame(height: 46)
-                            .background(AppTheme.primaryGreen)
+                            .background(Color.blue.opacity(0.1))
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
+                    }
+                    
+                    Button { showEndTripConfirmation = true } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "stop.fill")
+                            Text("End Trip")
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 46)
+                        .background(AppTheme.primaryGreen)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
                 }
                 .padding(.horizontal)
@@ -198,6 +213,9 @@ struct ActiveTripView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This will immediately dial emergency contact. Only proceed in a genuine emergency.")
+        }
+        .sheet(isPresented: $showLogFuel) {
+            LogFuelView(vehicleId: trip.vehicleId)
         }
         .sheet(isPresented: $showReportIssue) {
             let tripVehicle = Vehicle(

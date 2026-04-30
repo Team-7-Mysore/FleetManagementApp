@@ -121,6 +121,36 @@ final class InspectionViewModel: ObservableObject {
         loadData()
     }
 
+    func autoPassAllItems() {
+        guard let inspection = currentInspection else { return }
+        for item in inspection.items {
+            if item.status != .pass {
+                service.updateItemStatus(
+                    inspectionId: inspection.id,
+                    itemId: item.id,
+                    status: .pass,
+                    notes: "Auto-cleared by SDV Diagnostics"
+                )
+            }
+        }
+        loadData()
+    }
+
+    func failCategory(_ category: String, reason: String) {
+        guard let inspection = currentInspection else { return }
+        for item in inspection.items {
+            if item.category == category {
+                service.updateItemStatus(
+                    inspectionId: inspection.id,
+                    itemId: item.id,
+                    status: .fail,
+                    notes: reason
+                )
+            }
+        }
+        loadData()
+    }
+
     func submitInspection(notes: String) {
         guard let inspection = currentInspection else { return }
         service.submitInspection(id: inspection.id, notes: notes)

@@ -108,7 +108,7 @@ struct VehicleDetailView: View {
                     }
                 }
                 
-                // MARK: - Maintenance & Actions
+                // MARK: - Actions
                 Section(header: Text("Actions")) {
                     Button {
                         showStaffSelection = true
@@ -122,6 +122,12 @@ struct VehicleDetailView: View {
                     } label: {
                         Label("View Reports", systemImage: "chart.bar.doc.horizontal.fill")
                             .foregroundColor(.purple)
+                    }
+
+                    // SDV Integration: Fleet Manager Route
+                    NavigationLink(destination: VehicleReportView(vehicleId: vehicle.id)) {
+                        Label("Generate Stats Report", systemImage: "car.top.radiowaves.rear.left.and.rear.right")
+                            .foregroundColor(.blue)
                     }
                 }
             }

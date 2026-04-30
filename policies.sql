@@ -97,3 +97,6 @@ CREATE POLICY "Allow public updates" ON public.notifications FOR UPDATE TO publi
 CREATE POLICY "Managers can delete staff" ON public.users FOR DELETE TO authenticated USING ((EXISTS ( SELECT 1
    FROM users users_1
   WHERE ((users_1.user_id = auth.uid()) AND (users_1.role = 'fleet_manager'::user_role)))));
+CREATE POLICY "simulator_insert_fuel_logs" ON public.fuel_logs FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "simulator_insert_telemetry" ON public.vehicle_telemetry_snapshots FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "simulator_update_telemetry" ON public.vehicle_telemetry_snapshots FOR UPDATE TO anon USING (true) WITH CHECK (true);

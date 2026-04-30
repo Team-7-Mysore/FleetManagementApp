@@ -20,6 +20,7 @@ struct Vehicle: Identifiable, Codable {
     var registrationDate: String = ""
     var rcExpiryDate: String = ""
     var pucExpiryDate: String = ""
+    var isSdvsEnabled: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case id = "vehicle_id"
@@ -36,6 +37,7 @@ struct Vehicle: Identifiable, Codable {
         case registrationDate = "registration_date"
         case rcExpiryDate = "rc_expiry_date"
         case pucExpiryDate = "puc_expiry_date"
+        case isSdvsEnabled = "is_sdvs_enabled"
     }
 
     init(from decoder: Decoder) throws {
@@ -49,20 +51,21 @@ struct Vehicle: Identifiable, Codable {
         imageURL = try container.decodeIfPresent(String.self, forKey: .imageURL)
         vehicleType = (try container.decodeIfPresent(String.self, forKey: .vehicleType)) ?? "Unknown"
         fuelType = try container.decodeIfPresent(String.self, forKey: .fuelType)
-        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
-        vin = try container.decodeIfPresent(String.self, forKey: .vin) ?? ""
-        rcNumber = try container.decodeIfPresent(String.self, forKey: .rcNumber) ?? ""
-        registrationDate = try container.decodeIfPresent(String.self, forKey: .registrationDate) ?? ""
-        rcExpiryDate = try container.decodeIfPresent(String.self, forKey: .rcExpiryDate) ?? ""
-        pucExpiryDate = try container.decodeIfPresent(String.self, forKey: .pucExpiryDate) ?? ""
-
-        if let stringYear = try? container.decodeIfPresent(String.self, forKey: .modelYear) {
-            modelYear = stringYear
-        } else if let intYear = try? container.decodeIfPresent(Int.self, forKey: .modelYear) {
-            modelYear = String(intYear)
+        
+        // Handle modelYear (Int or String from DB)
+        if let yearInt = try? container.decodeIfPresent(Int.self, forKey: .modelYear) {
+            modelYear = String(yearInt)
         } else {
-            modelYear = nil
+            modelYear = try container.decodeIfPresent(String.self, forKey: .modelYear)
         }
+        
+        vin = (try container.decodeIfPresent(String.self, forKey: .vin)) ?? ""
+        rcNumber = (try container.decodeIfPresent(String.self, forKey: .rcNumber)) ?? ""
+        registrationDate = (try container.decodeIfPresent(String.self, forKey: .registrationDate)) ?? ""
+        rcExpiryDate = (try container.decodeIfPresent(String.self, forKey: .rcExpiryDate)) ?? ""
+        pucExpiryDate = (try container.decodeIfPresent(String.self, forKey: .pucExpiryDate)) ?? ""
+        isSdvsEnabled = (try container.decodeIfPresent(Bool.self, forKey: .isSdvsEnabled)) ?? false
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
     }
 
     init(
